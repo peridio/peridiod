@@ -1,28 +1,26 @@
-defmodule PeridioAgent.MixProject do
+defmodule Peridiod.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :peridio_agent,
-      version: "0.1.0",
-      elixir: "~> 1.13",
+      app: :peridiod,
+      version: "1.0.0",
+      elixir: "~> 1.0",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      releases: [
+        peridiod: [include_erts: System.get_env("PERIDIOD_INCLUDE_ERTS_DIR") || true]
+      ]
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
-  def application do
-    [
-      extra_applications: [:logger]
-    ]
-  end
+  def application, do: [extra_applications: [:crypto, :logger]]
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:nerves_hub_link, "~> 1.2"},
-      {:nerves_hub_cli, "~> 0.12"}
+      {:jason, "~> 1.0"},
+      {:nerves_hub_cli, "~> 0.11.1", runtime: false},
+      {:nerves_hub_link, "~> 1.2"}
     ]
   end
 end
