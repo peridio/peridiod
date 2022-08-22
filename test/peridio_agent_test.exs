@@ -1,8 +1,4 @@
-defmodule PeridioAgentTest do
+defmodule PeridiodTest do
   use ExUnit.Case
-  doctest PeridioAgent
-
-  test "greets the world" do
-    assert PeridioAgent.hello() == :world
-  end
+  doctest Peridiod
 end

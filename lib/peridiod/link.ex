@@ -1,6 +1,7 @@
-defmodule PeridioAgent.Link do
-  @behaviour NervesHubLink.Client
+defmodule Peridiod.Link do
   require Logger
+
+  @behaviour NervesHubLink.Client
 
   @impl NervesHubLink.Client
   def update_available(_update) do
@@ -35,6 +36,8 @@ defmodule PeridioAgent.Link do
 
   @impl NervesHubLink.Client
   def reboot() do
+    # this function must reboot the system
     Logger.warn("[Peridio] Rebooting System")
+    Nerves.Runtime.reboot()
   end
 end
