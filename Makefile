@@ -9,4 +9,4 @@ compile:
 	mix compile
 
 release: compile
-	mix release
+	mix release --overwrite
