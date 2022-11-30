@@ -20,7 +20,8 @@ defmodule Peridiod.MixProject do
     [
       {:jason, "~> 1.0"},
       {:nerves_hub_cli, "~> 0.11.1", runtime: false},
-      {:nerves_hub_link, "~> 1.2"}
+      {:nerves_hub_link, "~> 1.2"},
+      {:x509, "~> 0.8"}
     ]
   end
 end

@@ -1,5 +1,8 @@
 defmodule Peridiod.Configurator do
+  alias __MODULE__
   alias Peridiod.Config
+
+  require Logger
 
   @behaviour NervesHubLink.Configurator
 
@@ -14,7 +17,7 @@ defmodule Peridiod.Configurator do
         true -> :verify_peer
         false -> :verify_none
       end
-
+    config =
     %{
       base_nerves_config
       | device_api_host: peridio_config.device_api.url,
@@ -27,9 +30,16 @@ defmodule Peridiod.Configurator do
           server_name_indication: to_charlist(peridio_config.device_api.url),
           verify: verify,
           cacertfile: peridio_config.device_api.certificate_path,
-          certfile: peridio_config.node.certificate_path,
-          keyfile: peridio_config.node.private_key_path
         ]
     }
+
+    case peridio_config.node.key_pair_source do
+      "file" ->
+        Configurator.File.config(peridio_config.node.key_pair_config, config)
+      "pkcs11" ->
+        Configurator.PKCS11.config(peridio_config.node.key_pair_config, config)
+      type ->
+        Logger.error("Unknown key pair type: #{type}")
+    end
   end
 end
