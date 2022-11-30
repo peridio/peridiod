@@ -14,9 +14,8 @@ defmodule Peridiod.Config do
       },
       "remote_shell" => cremini_remote_shell,
       "node" => %{
-        "key_pair_source" => _key_pair_source,
-        "certificate_path" => node_certificate_path,
-        "private_key_path" => node_private_key_path
+        "key_pair_source" => key_pair_source,
+        "key_pair_config" => key_pair_config
       },
       "version" => 1
     } = config
@@ -33,8 +32,8 @@ defmodule Peridiod.Config do
       },
       remote_shell: cremini_remote_shell,
       node: %{
-        certificate_path: node_certificate_path,
-        private_key_path: node_private_key_path
+        key_pair_source: key_pair_source,
+        key_pair_config: key_pair_config
       }
     }
   end
