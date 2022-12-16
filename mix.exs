@@ -14,13 +14,16 @@ defmodule Peridiod.MixProject do
     ]
   end
 
-  def application, do: [extra_applications: [:crypto, :logger]]
+  def application, do: [extra_applications: [:crypto, :logger, :inets], mod: {Peridiod.Application, []}]
 
   defp deps do
     [
+      {:extty, "~> 0.2"},
       {:jason, "~> 1.0"},
-      {:nerves_hub_cli, "~> 0.11.1", runtime: false},
-      {:nerves_hub_link, "~> 1.2"},
+      {:fwup, "~> 1.0"},
+      {:hackney, "~> 1.10"},
+      {:uboot_env, "~> 1.0"},
+      {:slipstream, "~> 1.0 or ~> 0.8"},
       {:x509, "~> 0.8"}
     ]
   end

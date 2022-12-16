@@ -1,14 +1,14 @@
-defmodule Peridiod.Link do
+defmodule Peridiod.Client.Default do
   require Logger
 
-  @behaviour NervesHubLink.Client
+  @behaviour Peridiod.Client
 
-  @impl NervesHubLink.Client
+  @impl Peridiod.Client
   def update_available(_update) do
     :apply
   end
 
-  @impl NervesHubLink.Client
+  @impl Peridiod.Client
   def handle_fwup_message({:progress, percent}) do
     Logger.debug("[Peridio] Update Progress: #{percent}%")
   end
@@ -29,15 +29,15 @@ defmodule Peridiod.Link do
     Logger.warn("Unknown FWUP message: #{inspect(fwup_message)}")
   end
 
-  @impl NervesHubLink.Client
+  @impl Peridiod.Client
   def handle_error(error) do
     Logger.warn("[Peridio] error: #{inspect(error)}")
   end
 
-  @impl NervesHubLink.Client
+  @impl Peridiod.Client
   def reboot() do
     # this function must reboot the system
     Logger.warn("[Peridio] Rebooting System")
-    Nerves.Runtime.reboot()
+    System.cmd("reboot", [], stderr_to_stdout: true)
   end
 end
