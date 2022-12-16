@@ -19,6 +19,7 @@ defmodule Peridiod.MixProject do
   defp deps do
     [
       {:extty, "~> 0.2"},
+      {:castore, "~> 0.1"},
       {:jason, "~> 1.0"},
       {:fwup, "~> 1.0"},
       {:hackney, "~> 1.10"},
