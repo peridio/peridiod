@@ -1,5 +1,11 @@
 # peridiod releases
 
+## v2.0.0
+
+* Enhancements
+  * Remove dependency on nerves and nerves_hub
+  * Add support for Peridio U-Boot environment key names
+
 ## v1.1.0
 
 * Enhancements
