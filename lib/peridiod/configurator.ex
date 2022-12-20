@@ -40,7 +40,6 @@ defmodule Peridiod.Configurator do
 
   @callback build(%Config{}) :: Config.t()
 
-  @fwup_devpath "peridio_disk_devpath"
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, nil, name: __MODULE__)
@@ -222,7 +221,7 @@ defmodule Peridiod.Configurator do
       |> Keyword.put_new(:versions, [:"tlsv1.2"])
       |> Keyword.put_new(:server_name_indication, to_charlist(base.device_api_sni))
 
-    fwup_devpath = Peridiod.KV.get(@fwup_devpath)
+    fwup_devpath = Peridiod.KV.get("peridio_disk_devpath") || Peridiod.KV.get("nerves_fw_devpath")
     peridio_uuid = Peridiod.KV.get_active("peridio_uuid") || Peridiod.KV.get_active("nerves_fw_uuid")
     params =
       Peridiod.KV.get_all_active()
