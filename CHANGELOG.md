@@ -1,5 +1,12 @@
 # peridiod releases
 
+## v2.0.1
+
+* Bug Fixes
+  * Fix support for using peridiod with Nerves targets
+* Enhancements
+  * Default the KVBackend to use UBootEnv.
+
 ## v2.0.0
 
 * Enhancements
