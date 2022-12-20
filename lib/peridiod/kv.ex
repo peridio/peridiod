@@ -292,7 +292,7 @@ defmodule Peridiod.KV do
         initialize(backend, [])
 
       _ ->
-        initialize(Peridiod.KVBackend.InMemory, contents: [])
+        initialize(Peridiod.KVBackend.UBootEnv, [])
     end
   rescue
     error ->
