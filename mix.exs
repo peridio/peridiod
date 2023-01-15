@@ -9,7 +9,10 @@ defmodule Peridiod.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: [
-        peridiod: [include_erts: System.get_env("PERIDIOD_INCLUDE_ERTS_DIR") || true]
+        peridiod: [
+          applications: [peridiod: :permanent],
+          steps: [:assemble, :tar],
+          include_erts: System.get_env("MIX_TARGET_INCLUDE_ERTS") || true]
       ]
     ]
   end
