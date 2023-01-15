@@ -415,5 +415,5 @@ defmodule Peridiod.Downloader do
     do: [{"X-Retry-Number", "#{retry_number}"} | headers]
 
   defp add_user_agent_header(headers, _),
-    do: [{"User-Agent", "NHL/#{Application.spec(:nerves_hub_link_common)[:vsn]}"} | headers]
+    do: [{"User-Agent", "Peridiod/#{Application.spec(:peridiod)[:vsn]}"} | headers]
 end
