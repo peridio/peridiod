@@ -79,7 +79,7 @@ defmodule Peridiod.Client do
   @doc """
   Optional callback to reboot the device when a firmware update completes
 
-  The default behavior is to call `Nerves.Runtime.reboot/0` after a successful update. This
+  The default behavior is to call `reboot` after a successful update. This
   is useful for testing and for doing additional work like notifying users in a UI that a reboot
   will happen soon. It is critical that a reboot does happen.
   """
@@ -139,7 +139,7 @@ defmodule Peridiod.Client do
 
   After a successful firmware update, Peridiod calls this to start the
   reboot process. It calls `c:reboot/0` if supplied or
-  `Nerves.Runtime.reboot/0`.
+  `:os.cmd('reboot')`.
   """
   @spec initiate_reboot() :: :ok
   def initiate_reboot() do
@@ -148,7 +148,7 @@ defmodule Peridiod.Client do
     {mod, fun, args} =
       if function_exported?(client, :reboot, 0),
         do: {client, :reboot, []},
-        else: {Nerves.Runtime, :reboot, []}
+        else: {:os, :cmd, ['reboot']}
 
     _ = spawn(mod, fun, args)
     :ok

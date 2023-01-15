@@ -1,6 +1,6 @@
 defmodule Peridiod.Configurator.PKCS11 do
   require Logger
-  def config(%{"key_id" => key_id, "cert_id" => cert_id} = key_pair_config, nerves_config) do
+  def config(%{"key_id" => key_id, "cert_id" => cert_id} = key_pair_config, base_config) do
     pkcs11_path = key_pair_config["pkcs11_path"] || pkcs11_path()
 
     {:ok, engine} = :crypto.ensure_engine_loaded("pkcs11", pkcs11_path)
@@ -20,11 +20,11 @@ defmodule Peridiod.Configurator.PKCS11 do
       end
 
     ssl_opts =
-      nerves_config.ssl
+      base_config.ssl
       |> Keyword.put(:cert, cert)
       |> Keyword.put(:key, key)
 
-    %{nerves_config | ssl: ssl_opts}
+    %{base_config | ssl: ssl_opts}
   end
 
 

@@ -11,13 +11,12 @@ defmodule Peridiod.Configurator do
   @console_version "1.0.0"
 
   defmodule Config do
-    defstruct device_api_host: "device.nerves-hub.org",
+    defstruct device_api_host: "device.cremini.peridio.com",
               device_api_port: 443,
-              device_api_sni: "device.nerves-hub.org",
+              device_api_sni: "device.cremini.peridio.com",
               fwup_public_keys: [],
               fwup_devpath: "/dev/mmcblk0",
               fwup_env: [],
-              nerves_key: [],
               params: %{},
               remote_iex: false,
               socket: [],
@@ -30,7 +29,6 @@ defmodule Peridiod.Configurator do
             fwup_public_keys: [binary()],
             fwup_devpath: Path.t(),
             fwup_env: [{String.t(), String.t()}],
-            nerves_key: any(),
             params: map(),
             remote_iex: boolean,
             socket: any(),

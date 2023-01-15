@@ -38,7 +38,7 @@ defmodule Peridiod.KV do
         "a.peridio_application_part0_fstype" => "ext4",
         "a.peridio_application_part0_target" => "/root",
         "a.peridio_architecture" => "arm",
-        "a.peridio_author" => "The Nerves Team",
+        "a.peridio_author" => "Peridio",
         "a.peridio_description" => "",
         "a.peridio_misc" => "",
         "a.peridio_platform" => "rpi0",
@@ -50,7 +50,7 @@ defmodule Peridiod.KV do
         "b.peridio_application_part0_fstype" => "ext4",
         "b.peridio_application_part0_target" => "/root",
         "b.peridio_architecture" => "arm",
-        "b.peridio_author" => "The Nerves Team",
+        "b.peridio_author" => "Peridio",
         "b.peridio_description" => "",
         "b.peridio_misc" => "",
         "b.peridio_platform" => "rpi0",
@@ -60,14 +60,14 @@ defmodule Peridiod.KV do
         "b.peridio_version" => "0.1.1",
         "peridio_active" => "b",
         "peridio_devpath" => "/dev/mmcblk0",
-        "nerves_serial_number" => ""
+        "peridio_serial_number" => ""
       }
 
   Parts of the firmware metadata are global, while others pertain to a
   specific firmware slot. This is indicated by the key - data which describes
   firmware of a specific slot have keys prefixed with the name of the
   firmware slot. In the above example, `"peridio_active"` and
-  `"nerves_serial_number"` are global, while `"a.peridio_version"` and
+  `"peridio_serial_number"` are global, while `"a.peridio_version"` and
   `"b.peridio_version"` apply to the "a" and "b" firmware slots,
   respectively.
 
@@ -80,7 +80,7 @@ defmodule Peridiod.KV do
         "peridio_application_part0_fstype" => "ext4",
         "peridio_application_part0_target" => "/root",
         "peridio_architecture" => "arm",
-        "peridio_author" => "The Nerves Team",
+        "peridio_author" => "Peridio",
         "peridio_description" => "",
         "peridio_misc" => "",
         "peridio_platform" => "rpi0",
@@ -109,10 +109,10 @@ defmodule Peridiod.KV do
   in which case they will overwrite the current value with that key:
 
       iex> :ok = Peridiod.KV.put("my_firmware_key", "my_value")
-      iex> :ok = Peridiod.KV.put("nerves_serial_number", "my_new_serial_number")
+      iex> :ok = Peridiod.KV.put("peridio_serial_number", "my_new_serial_number")
       iex> Peridiod.KV.get("my_firmware_key")
       "my_value"
-      iex> Peridiod.KV.get("nerves_serial_number")
+      iex> Peridiod.KV.get("peridio_serial_number")
       "my_new_serial_number"
 
   It is possible to write a collection of values at once, in order to
@@ -125,9 +125,9 @@ defmodule Peridiod.KV do
   Lastly, `put_active/1` and `put_active/2` allow you to write firmware metadata to the
   currently active firmware slot without specifying the slot prefix yourself:
 
-      iex> :ok = Peridiod.KV.put_active("peridio_misc", "Nerves is awesome")
+      iex> :ok = Peridiod.KV.put_active("peridio_misc", "Peridio is awesome")
       iex> Peridiod.KV.get_active("peridio_misc")
-      "Nerves is awesome"
+      "Peridio is awesome"
   """
   use GenServer
 
