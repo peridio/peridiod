@@ -1,5 +1,13 @@
 # peridiod releases
 
+## v2.1.0
+
+* Updates
+  * `PERIDIOD_INCLUDE_ERTS_DIR` is now `MIX_TARGET_INCLUDE_ERTS`
+    Change environment variable to be friendly to yocto buikds.
+    If you are building peridiod outside yocto, you will need to 
+    update your build scripts to use the new variable.
+
 ## v2.0.1
 
 * Bug Fixes
