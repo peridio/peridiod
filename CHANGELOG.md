@@ -1,5 +1,11 @@
 # peridiod releases
 
+## v2.2.0
+
+* Updated default retry parameters to accommodate slow connections like
+  NB-IoT 1
+* Enhanced debug logging
+
 ## v2.1.0
 
 * Updates
