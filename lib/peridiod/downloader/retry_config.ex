@@ -6,7 +6,7 @@ defmodule Peridiod.Downloader.RetryConfig do
 
   defstruct [
     # stop trying after this many disconnects
-    max_disconnects: 10,
+    max_disconnects: 50,
 
     # attempt a retry after this time
     # if no data comes in after this amount of time, disconnect and retry
@@ -23,8 +23,9 @@ defmodule Peridiod.Downloader.RetryConfig do
 
     # worst case average download speed in bits/second
     # This is used to calculate a "sensible" timeout that is shorter than `max_timeout`.
-    # LTE Cat M1 modems sometimes top out at 32 kbps (30 kbps for some slack)
-    worst_case_download_speed: 30_000
+    # LTE Cat1 NB-IoT modems sometimes top out at 10 kbps but we've seen as slow
+    # as 1 kbps
+    worst_case_download_speed: 1_000
   ]
 
   @typedoc """
