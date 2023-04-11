@@ -10,19 +10,19 @@ defmodule Peridiod.Client.Default do
 
   @impl Peridiod.Client
   def handle_fwup_message({:progress, percent}) do
-    Logger.debug("[Peridio] Update Progress: #{percent}%")
+    Logger.debug("[Peridiod] Update Progress: #{percent}%")
   end
 
   def handle_fwup_message({:error, _, message}) do
-    Logger.error("[Peridio] Update Error: #{message}")
+    Logger.error("[Peridiod] Update Error: #{message}")
   end
 
   def handle_fwup_message({:warning, _, message}) do
-    Logger.warn("[Peridio] Update Warning: #{message}")
+    Logger.warn("[Peridiod] Update Warning: #{message}")
   end
 
   def handle_fwup_message({:ok, status, message}) do
-    Logger.info("[Peridio] Update Finished: #{status} #{message}")
+    Logger.info("[Peridiod] Update Finished: #{status} #{message}")
   end
 
   def handle_fwup_message(fwup_message) do
@@ -31,13 +31,13 @@ defmodule Peridiod.Client.Default do
 
   @impl Peridiod.Client
   def handle_error(error) do
-    Logger.warn("[Peridio] error: #{inspect(error)}")
+    Logger.warn("[Peridiod] error: #{inspect(error)}")
   end
 
   @impl Peridiod.Client
   def reboot() do
     # this function must reboot the system
-    Logger.warn("[Peridio] Rebooting System")
+    Logger.warn("[Peridiod] Rebooting System")
     System.cmd("reboot", [], stderr_to_stdout: true)
   end
 end
