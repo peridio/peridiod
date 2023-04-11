@@ -148,6 +148,7 @@ defmodule Peridiod.Downloader do
           retry_args: %RetryConfig{max_disconnects: retry_number}
         } = state
       ) do
+    Logger.debug("[Peridiod] Max disconnects reached")
     {:stop, :max_disconnects_reached, state}
   end
 
@@ -187,7 +188,7 @@ defmodule Peridiod.Downloader do
       end
 
     timer = Process.send_after(self(), :resume, state.retry_args.time_between_retries)
-
+    Logger.debug("[Peridiod] Increment retry counter #{retry_number + 1}")
     %Downloader{
       state
       | retry_timeout: timer,
@@ -203,6 +204,7 @@ defmodule Peridiod.Downloader do
     %Downloader{retry_args: retry_config, content_length: content_length} = downloader
     %RetryConfig{worst_case_download_speed: speed} = retry_config
     ms = TimeoutCalculation.calculate_worst_case_timeout(content_length, speed)
+    Logger.debug("[Peridiod] Worst case timeout: #{ms}")
     timer = Process.send_after(self(), :worst_case_download_speed_timeout, ms)
     %Downloader{downloader | worst_case_timeout: timer}
   end
@@ -278,7 +280,7 @@ defmodule Peridiod.Downloader do
       )
       when status >= 300 and status < 400 do
     location = fetch_location(headers)
-    Logger.info("Redirecting to #{location}")
+    Logger.debug("Redirecting to #{location}")
 
     state = reset(state)
 
@@ -328,6 +330,7 @@ defmodule Peridiod.Downloader do
         %Downloader{request_ref: request_ref, downloaded_length: downloaded} = state
       ) do
     _ = state.handler_fun.({:data, data})
+    Logger.debug("[Peridiod] Downloading :#{downloaded + byte_size(data)}")
     %Downloader{state | downloaded_length: downloaded + byte_size(data)}
   end
 
@@ -368,7 +371,7 @@ defmodule Peridiod.Downloader do
     # like this. There may be a better way to do this..
     path = if query, do: "#{path}?#{query}", else: path
 
-    Logger.info("Resuming download attempt number #{state.retry_number} #{uri}")
+    Logger.debug("Resuming download attempt number #{state.retry_number} #{uri}")
 
     with {:ok, conn} <- Mint.HTTP.connect(String.to_existing_atom(scheme), host, port),
          {:ok, conn, request_ref} <- Mint.HTTP.request(conn, "GET", path, request_headers, nil) do
