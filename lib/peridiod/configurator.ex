@@ -38,7 +38,6 @@ defmodule Peridiod.Configurator do
 
   @callback build(%Config{}) :: Config.t()
 
-
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   end
@@ -47,7 +46,7 @@ defmodule Peridiod.Configurator do
     GenServer.call(__MODULE__, :get_config)
   end
 
-    @doc """
+  @doc """
   Dynamically resolves the default path for a `peridio-config.json` file.
 
   Environment variables below are expanded before this function returns.
@@ -158,8 +157,8 @@ defmodule Peridiod.Configurator do
         true -> :verify_peer
         false -> :verify_none
       end
-    config =
-    %{
+
+    config = %{
       base_config
       | device_api_host: peridio_config.device_api.url,
         device_api_sni: peridio_config.device_api.url,
@@ -170,15 +169,20 @@ defmodule Peridiod.Configurator do
         ssl: [
           server_name_indication: to_charlist(peridio_config.device_api.url),
           verify: verify,
-          cacertfile: peridio_config.device_api.certificate_path,
+          cacertfile: peridio_config.device_api.certificate_path
         ]
     }
 
     case peridio_config.node.key_pair_source do
       "file" ->
         Configurator.File.config(peridio_config.node.key_pair_config, config)
+
       "pkcs11" ->
         Configurator.PKCS11.config(peridio_config.node.key_pair_config, config)
+
+      "uboot-env" ->
+        Configurator.UBootEnv.config(peridio_config.node.key_pair_config, config)
+
       type ->
         Logger.error("Unknown key pair type: #{type}")
     end
@@ -220,7 +224,10 @@ defmodule Peridiod.Configurator do
       |> Keyword.put_new(:server_name_indication, to_charlist(base.device_api_sni))
 
     fwup_devpath = Peridiod.KV.get("peridio_disk_devpath") || Peridiod.KV.get("nerves_fw_devpath")
-    peridio_uuid = Peridiod.KV.get_active("peridio_uuid") || Peridiod.KV.get_active("nerves_fw_uuid")
+
+    peridio_uuid =
+      Peridiod.KV.get_active("peridio_uuid") || Peridiod.KV.get_active("nerves_fw_uuid")
+
     params =
       Peridiod.KV.get_all_active()
       |> Map.put("nerves_fw_uuid", peridio_uuid)

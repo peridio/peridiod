@@ -50,6 +50,7 @@ defmodule Peridiod.Socket do
   @impl Slipstream
   def init(nil) do
     config = Configurator.get_config()
+
     opts = [
       mint_opts: [protocols: [:http1], transport_opts: config.ssl],
       uri: config.socket[:url],

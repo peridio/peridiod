@@ -103,6 +103,7 @@ defmodule Peridiod.UpdateManager do
   @impl GenServer
   def init(nil) do
     config = Configurator.get_config()
+
     fwup_config = %FwupConfig{
       fwup_public_keys: config.fwup_public_keys,
       fwup_devpath: config.fwup_devpath,
@@ -110,6 +111,7 @@ defmodule Peridiod.UpdateManager do
       handle_fwup_message: &Client.handle_fwup_message/1,
       update_available: &Client.update_available/1
     }
+
     fwup_config = FwupConfig.validate!(fwup_config)
     {:ok, %State{fwup_config: fwup_config}}
   end

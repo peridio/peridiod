@@ -189,6 +189,7 @@ defmodule Peridiod.Downloader do
 
     timer = Process.send_after(self(), :resume, state.retry_args.time_between_retries)
     Logger.debug("[Peridiod] Increment retry counter #{retry_number + 1}")
+
     %Downloader{
       state
       | retry_timeout: timer,
