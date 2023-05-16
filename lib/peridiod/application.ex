@@ -11,12 +11,13 @@ defmodule Peridiod.Application do
 
   def start(_type, _args) do
     application_config = Application.get_all_env(:peridiod)
+
     children = [
       {KV, application_config},
       Configurator,
       UpdateManager,
       Connection,
-      Socket,
+      Socket
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Peridiod.Supervisor)

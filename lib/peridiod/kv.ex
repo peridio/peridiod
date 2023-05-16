@@ -260,7 +260,8 @@ defmodule Peridiod.KV do
     {:reply, reply, s}
   end
 
-  defp active(s), do: Map.get(s.contents, "peridio_active") || Map.get(s.contents, "nerves_fw_active", "")
+  defp active(s),
+    do: Map.get(s.contents, "peridio_active") || Map.get(s.contents, "nerves_fw_active", "")
 
   defp active(key, s) do
     Map.get(s.contents, "#{active(s)}.#{key}")

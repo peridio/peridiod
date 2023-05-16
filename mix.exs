@@ -12,12 +12,14 @@ defmodule Peridiod.MixProject do
         peridiod: [
           applications: [peridiod: :permanent],
           steps: [:assemble, :tar],
-          include_erts: System.get_env("MIX_TARGET_INCLUDE_ERTS") || true]
+          include_erts: System.get_env("MIX_TARGET_INCLUDE_ERTS") || true
+        ]
       ]
     ]
   end
 
-  def application, do: [extra_applications: [:crypto, :logger, :inets], mod: {Peridiod.Application, []}]
+  def application,
+    do: [extra_applications: [:crypto, :logger, :inets], mod: {Peridiod.Application, []}]
 
   defp deps do
     [
