@@ -1,5 +1,21 @@
 # peridiod releases
 
+## v2.3.0
+
+* Enhancements
+  * Add `uboot-env` node configuration for pulling pem encoded x509 certificate 
+    and private key pair in the U-Boot Environment.
+
+    Example:
+
+    ```json
+    "key_pair_source": "uboot-env",
+    "key_pair_config": {
+      "private_key": "peridio_identity_private_key",
+      "certificate": "peridio_identity_certificate"
+    }
+    ```
+
 ## v2.2.0
 
 * Updated default retry parameters to accommodate slow connections like
