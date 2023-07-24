@@ -1,9 +1,14 @@
 # peridiod releases
 
+## v2.3.1
+
+* Bug fixes
+  * Fixed remote console connectivity issues
+
 ## v2.3.0
 
 * Enhancements
-  * Add `uboot-env` node configuration for pulling pem encoded x509 certificate 
+  * Add `uboot-env` node configuration for pulling pem encoded x509 certificate
     and private key pair in the U-Boot Environment.
 
     Example:
@@ -27,7 +32,7 @@
 * Updates
   * `PERIDIOD_INCLUDE_ERTS_DIR` is now `MIX_TARGET_INCLUDE_ERTS`
     Change environment variable to be friendly to yocto buikds.
-    If you are building peridiod outside yocto, you will need to 
+    If you are building peridiod outside yocto, you will need to
     update your build scripts to use the new variable.
 
 ## v2.0.1
