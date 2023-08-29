@@ -148,7 +148,7 @@ defmodule Peridiod.Client do
     {mod, fun, args} =
       if function_exported?(client, :reboot, 0),
         do: {client, :reboot, []},
-        else: {:os, :cmd, ['reboot']}
+        else: {:os, :cmd, [~c"reboot"]}
 
     _ = spawn(mod, fun, args)
     :ok

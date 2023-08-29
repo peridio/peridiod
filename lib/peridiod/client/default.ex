@@ -18,7 +18,7 @@ defmodule Peridiod.Client.Default do
   end
 
   def handle_fwup_message({:warning, _, message}) do
-    Logger.warn("[Peridiod] Update Warning: #{message}")
+    Logger.warning("[Peridiod] Update Warning: #{message}")
   end
 
   def handle_fwup_message({:ok, status, message}) do
@@ -26,18 +26,18 @@ defmodule Peridiod.Client.Default do
   end
 
   def handle_fwup_message(fwup_message) do
-    Logger.warn("Unknown FWUP message: #{inspect(fwup_message)}")
+    Logger.warning("Unknown FWUP message: #{inspect(fwup_message)}")
   end
 
   @impl Peridiod.Client
   def handle_error(error) do
-    Logger.warn("[Peridiod] error: #{inspect(error)}")
+    Logger.warning("[Peridiod] error: #{inspect(error)}")
   end
 
   @impl Peridiod.Client
   def reboot() do
     # this function must reboot the system
-    Logger.warn("[Peridiod] Rebooting System")
+    Logger.warning("[Peridiod] Rebooting System")
     System.cmd("reboot", [], stderr_to_stdout: true)
   end
 end

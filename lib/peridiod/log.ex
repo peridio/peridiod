@@ -41,7 +41,7 @@ defmodule Peridiod.Log do
     |> case do
       {:debug, log_string} -> Logger.debug(log_string)
       {:info, log_string} -> Logger.info(log_string)
-      {:warn, log_string} -> Logger.warn(log_string)
+      {:warn, log_string} -> Logger.warning(log_string)
       {:error, log_string} -> Logger.error(log_string)
     end
   end

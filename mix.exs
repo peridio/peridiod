@@ -5,7 +5,7 @@ defmodule Peridiod.MixProject do
     [
       app: :peridiod,
       version: "2.3.1",
-      elixir: "~> 1.0",
+      elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: [
@@ -23,7 +23,8 @@ defmodule Peridiod.MixProject do
 
   defp deps do
     [
-      {:extty, "~> 0.2"},
+      {:muontrap, "~> 1.3"},
+      {:circuits_uart, "~> 1.5"},
       {:castore, "~> 1.0"},
       {:jason, "~> 1.0"},
       {:fwup, "~> 1.0"},

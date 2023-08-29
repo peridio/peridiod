@@ -62,8 +62,7 @@ defmodule Peridiod.Socket do
       new_socket()
       |> assign(params: config.params)
       |> assign(remote_iex: config.remote_iex)
-      |> assign(iex_pid: nil)
-      |> assign(iex_timer: nil)
+      |> assign(getty_pid: nil)
       |> connect!(opts)
 
     Process.flag(:trap_exit, true)
@@ -135,10 +134,20 @@ defmodule Peridiod.Socket do
   # Device API messages
   #
   def handle_message(@device_topic, "reboot", _params, socket) do
-    Logger.warn("Reboot Request from Peridiod")
+    Logger.warning("Reboot Request from Peridiod")
     _ = push(socket, @device_topic, "rebooting", %{})
 
     System.cmd("reboot", [], stderr_to_stdout: true)
+    {:ok, socket}
+  end
+
+  def handle_message(
+        @console_topic,
+        "window_size",
+        %{"height" => _height, "width" => _width},
+        socket
+      ) do
+
     {:ok, socket}
   end
 
@@ -158,57 +167,35 @@ defmodule Peridiod.Socket do
   # Console API messages
   #
   def handle_message(@console_topic, "restart", _payload, socket) do
-    Logger.warn("[#{inspect(__MODULE__)}] Restarting IEx process from web request")
+    Logger.warning("[#{inspect(__MODULE__)}] Restarting IEx process from web request")
 
     _ = push(socket, @console_topic, "up", %{data: "\r*** Restarting IEx ***\r"})
 
     socket =
       socket
-      |> stop_iex()
-      |> start_iex()
+      |> stop_getty()
+      |> start_getty()
 
-    {:ok, set_iex_timer(socket)}
+    {:ok, socket}
   end
 
-  def handle_message(@console_topic, message, payload, %{assigns: %{iex_pid: nil}} = socket) do
-    handle_message(@console_topic, message, payload, start_iex(socket))
+  def handle_message(@console_topic, message, payload, %{assigns: %{getty_pid: nil}} = socket) do
+    stop_getty(socket)
+    handle_message(@console_topic, message, payload, start_getty(socket))
   end
 
   def handle_message(@console_topic, "dn", %{"data" => data}, socket) do
-    _ = ExTTY.send_text(socket.assigns.iex_pid, data)
-    {:ok, set_iex_timer(socket)}
-  end
-
-  def handle_message(
-        @console_topic,
-        "window_size",
-        %{"height" => height, "width" => width},
-        socket
-      ) do
-    _ = ExTTY.window_change(socket.assigns.iex_pid, width, height)
-    {:ok, set_iex_timer(socket)}
+    Peridiod.Getty.send_data(socket.assigns.getty_pid, data)
+    {:ok, socket}
   end
 
   @impl Slipstream
   def handle_info({:tty_data, data}, socket) do
     _ = push(socket, @console_topic, "up", %{data: data})
-    {:noreply, set_iex_timer(socket)}
-  end
-
-  def handle_info({:EXIT, iex_pid, reason}, %{assigns: %{iex_pid: iex_pid}} = socket) do
-    msg = "\r******* Remote IEx stopped: #{inspect(reason)} *******\r"
-    _ = push(socket, @console_topic, "up", %{data: msg})
-    Logger.warn(msg)
-
-    socket =
-      socket
-      |> start_iex()
-      |> set_iex_timer()
-
     {:noreply, socket}
   end
 
-  def handle_info(:iex_timeout, socket) do
+  def handle_info({:getty, _, :timeout}, socket) do
     msg = """
     \r
     ****************************************\r
@@ -220,11 +207,33 @@ defmodule Peridiod.Socket do
 
     _ = push(socket, @console_topic, "up", %{data: msg})
 
-    {:noreply, stop_iex(socket)}
+    {:noreply, stop_getty(socket)}
+  end
+
+  def handle_info({:getty, _, {:error, :eio}}, socket) do
+    msg = "\r******* Remote Console stopped: eio *******\r"
+    _ = push(socket, @console_topic, "up", %{data: msg})
+    Logger.warning(msg)
+
+    socket =
+      socket
+      |> stop_getty()
+      |> start_getty()
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:getty, _pid, data}, socket) do
+    _ = push(socket, @console_topic, "up", %{data: data})
+    {:noreply, socket}
+  end
+
+  def handle_info({:EXIT, _pid, :normal}, socket) do
+    {:noreply, socket}
   end
 
   def handle_info(msg, socket) do
-    Logger.warn("[#{inspect(__MODULE__)}] Unhandled handle_info: #{inspect(msg)}")
+    Logger.warning("[#{inspect(__MODULE__)}] Unhandled handle_info: #{inspect(msg)}")
     {:noreply, socket}
   end
 
@@ -271,33 +280,19 @@ defmodule Peridiod.Socket do
     end
   end
 
-  defp set_iex_timer(socket) do
-    timeout = Application.get_env(:peridiod, :remote_iex_timeout, 300) * 1000
-    old_timer = socket.assigns[:iex_timer]
+  defp start_getty(socket) do
+    Logger.debug("Start getty")
+    {:ok, getty_pid} = Peridiod.Getty.start_link([])
 
-    _ = if old_timer, do: Process.cancel_timer(old_timer)
-
-    assign(socket, iex_timer: Process.send_after(self(), :iex_timeout, timeout))
+    socket
+    |> assign(getty_pid: getty_pid)
   end
 
-  defp start_iex(socket) do
-    shell_opts = [[dot_iex_path: dot_iex_path()]]
-    {:ok, iex_pid} = ExTTY.start_link(handler: self(), type: :elixir, shell_opts: shell_opts)
-    # %{state | iex_pid: iex_pid}
-    assign(socket, iex_pid: iex_pid)
-  end
+  defp stop_getty(%{assigns: %{getty_pid: nil}} = socket), do: socket
+  defp stop_getty(%{assigns: %{getty_pid: getty_pid}} = socket) do
+    _ = if Process.alive?(getty_pid), do: Peridiod.Getty.stop(getty_pid)
 
-  defp dot_iex_path() do
-    [".iex.exs", "~/.iex.exs", "/etc/iex.exs"]
-    |> Enum.map(&Path.expand/1)
-    |> Enum.find("", &File.regular?/1)
-  end
-
-  defp stop_iex(%{assigns: %{iex_pid: nil}} = socket), do: socket
-
-  defp stop_iex(%{assigns: %{iex_pid: iex}} = socket) do
-    _ = Process.unlink(iex)
-    :ok = GenServer.stop(iex, 10_000)
-    assign(socket, iex_pid: nil)
+    socket
+    |> assign(getty_pid: nil)
   end
 end
