@@ -1,5 +1,10 @@
 # peridiod releases
 
+## v2.4.0
+
+* Enhancements
+  * Update remote console to present a full getty terminal instead of IEx.
+
 ## v2.3.1
 
 * Bug fixes
