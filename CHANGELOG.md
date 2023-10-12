@@ -1,5 +1,10 @@
 # peridiod releases
 
+## v2.4.1
+
+* Enhancements
+  * mix release no longer builds a tar into the release directory
+
 ## v2.4.0
 
 * Enhancements
