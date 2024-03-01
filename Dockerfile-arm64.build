@@ -1,0 +1,37 @@
+ARG ELIXIR_VERSION=1.16.1
+ARG ERLANG_VERSION=26.2.1
+ARG ALPINE_VERSION=3.18.4
+
+# Elixir build container
+FROM hexpm/elixir-arm64:${ELIXIR_VERSION}-erlang-${ERLANG_VERSION}-alpine-${ALPINE_VERSION} as builder
+
+ENV MIX_ENV=prod
+ENV FWUP_VERSION=1.10.1
+
+RUN apk --no-cache add make gcc musl-dev git
+RUN mix local.hex --force && mix local.rebar --force
+RUN mkdir /build
+ADD . /build
+WORKDIR /build
+
+RUN apk --no-cache add 'fwup~=1.10' \
+  --repository http://nl.alpinelinux.org/alpine/edge/community/
+RUN apk --no-cache add \
+  bash \
+  libcrypto1.1 \
+  openssl \
+  curl \
+  zip \
+  unzip
+
+RUN mix deps.clean --all && mix deps.get
+RUN mix release peridiod  --overwrite
+
+# Release Container
+FROM arm64v8/alpine:${ALPINE_VERSION} as release
+
+WORKDIR /app
+
+COPY --from=builder /build/_build/$MIX_ENV/rel/peridiod/ ./
+
+CMD ["/app/peridiod/start"]
