@@ -4,7 +4,7 @@ defmodule Peridiod.MixProject do
   def project do
     [
       app: :peridiod,
-      version: "2.4.1",
+      version: "2.4.2",
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),

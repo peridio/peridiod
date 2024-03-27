@@ -1,9 +1,14 @@
 # peridiod releases
 
+## v2.4.2
+
+* Bug fixes
+  * Filter out characters that are not UTF8 before serializing the console.
+
 ## v2.4.1
 
 * Enhancements
-  * mix release no longer builds a tar into the release directory
+  * mix release no longer builds a tar into the release directory.
 
 ## v2.4.0
 
