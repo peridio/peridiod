@@ -191,6 +191,7 @@ defmodule Peridiod.Socket do
 
   @impl Slipstream
   def handle_info({:tty_data, data}, socket) do
+    data = remove_unwanted_chars(data)
     _ = push(socket, @console_topic, "up", %{data: data})
     {:noreply, socket}
   end
@@ -224,6 +225,7 @@ defmodule Peridiod.Socket do
   end
 
   def handle_info({:getty, _pid, data}, socket) do
+    data = remove_unwanted_chars(data)
     _ = push(socket, @console_topic, "up", %{data: data})
     {:noreply, socket}
   end
@@ -295,4 +297,14 @@ defmodule Peridiod.Socket do
     socket
     |> assign(getty_pid: nil)
   end
+
+  defp remove_unwanted_chars(input) when is_binary(input) do
+    input
+    |> String.codepoints()
+    |> Enum.filter(&valid_codepoint?/1)
+    |> Enum.join()
+  end
+
+  defp valid_codepoint?(<<_::utf8>>), do: true
+  defp valid_codepoint?(_), do: false
 end
