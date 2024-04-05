@@ -98,7 +98,7 @@ defmodule Peridiod.Getty do
     {:stop, :normal, state}
   end
 
-  def start_getty(tty_l) do
+  defp start_getty(tty_l) do
     MuonTrap.Daemon.start_link("setsid", [
       "/sbin/agetty",
       "-o",
@@ -110,7 +110,7 @@ defmodule Peridiod.Getty do
     ])
   end
 
-  def start_pty(tty_l, tty_h) do
+  defp start_pty(tty_l, tty_h) do
     MuonTrap.Daemon.start_link("socat", [
       "-d",
       "-d",
@@ -119,7 +119,7 @@ defmodule Peridiod.Getty do
     ])
   end
 
-  def start_uart(tty_h) do
+  defp start_uart(tty_h) do
     {:ok, uart_pid} = Circuits.UART.start_link()
     Circuits.UART.open(uart_pid, tty_h, speed: 115_200, active: true)
     {:ok, uart_pid}

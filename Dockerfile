@@ -23,10 +23,8 @@ RUN apk --no-cache add wireguard-tools iptables ip6tables inotify-tools libstdc+
 RUN apk --no-cache add 'fwup~=1.10' \
   --repository http://nl.alpinelinux.org/alpine/edge/community/
 
-# Use iptables masquerade NAT rule
-ENV IPTABLES_MASQ=1
 ENV PERIDIO_CONFIG_FILE=/etc/peridiod/peridio.json
-ENV UBOOT_ENV_SIZE=0x20000
+ARG UBOOT_ENV_SIZE=0x20000
 
 RUN mkdir -p /etc/peridiod
 RUN mkdir -p /boot
