@@ -183,6 +183,9 @@ defmodule Peridiod.Configurator do
       "uboot-env" ->
         Configurator.UBootEnv.config(peridio_config.node.key_pair_config, config)
 
+      "env" ->
+        Configurator.Env.config(peridio_config.node.key_pair_config, config)
+
       type ->
         Logger.error("Unknown key pair type: #{type}")
     end

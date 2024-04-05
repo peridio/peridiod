@@ -80,6 +80,16 @@ U-Boot Environment
 }
 ```
 
+System Environment
+
+```json
+"key_pair_source": "env",
+"key_pair_config": {
+  "private_key": "PERIDIO_PRIVATE_KEY",
+  "certificate": "PERIDIO_CERTIFICATE"
+}
+```
+
 PKCS11 Identity using ATECC608B TrustAndGo
 
 ```json
