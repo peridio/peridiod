@@ -147,7 +147,6 @@ defmodule Peridiod.Socket do
         %{"height" => _height, "width" => _width},
         socket
       ) do
-
     {:ok, socket}
   end
 
@@ -291,6 +290,7 @@ defmodule Peridiod.Socket do
   end
 
   defp stop_getty(%{assigns: %{getty_pid: nil}} = socket), do: socket
+
   defp stop_getty(%{assigns: %{getty_pid: getty_pid}} = socket) do
     _ = if Process.alive?(getty_pid), do: Peridiod.Getty.stop(getty_pid)
 

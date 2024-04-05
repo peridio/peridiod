@@ -4,7 +4,8 @@ defmodule Peridiod.Getty do
   require Logger
 
   @tty_pair {"ttyPeridio0", "ttyPeridio1"}
-  @timeout 300_000 #5 minutes
+  # 5 minutes
+  @timeout 300_000
 
   def start_link(opts) do
     opts = Keyword.put_new(opts, :callback, self())
@@ -23,16 +24,18 @@ defmodule Peridiod.Getty do
   def init(opts) do
     send(self(), :start)
     timeout = opts[:timeout] || @timeout
-    {:ok, %{
-      status: :starting,
-      tty_pair: opts[:tty_pair] || @tty_pair,
-      getty_pid: nil,
-      pty_pid: nil,
-      uart_pid: nil,
-      queue: [],
-      callback: opts[:callback],
-      timeout: timeout
-    }}
+
+    {:ok,
+     %{
+       status: :starting,
+       tty_pair: opts[:tty_pair] || @tty_pair,
+       getty_pid: nil,
+       pty_pid: nil,
+       uart_pid: nil,
+       queue: [],
+       callback: opts[:callback],
+       timeout: timeout
+     }}
   end
 
   @impl true
@@ -53,6 +56,7 @@ defmodule Peridiod.Getty do
 
   def handle_info(:start, %{status: :starting, getty_pid: nil, tty_pair: {tty_l, tty_h}} = state) do
     file = "/dev/#{tty_l}"
+
     case File.exists?(file) do
       true ->
         {:ok, getty_pid} = start_getty(tty_l)
@@ -60,6 +64,7 @@ defmodule Peridiod.Getty do
         {:ok, uart_pid} = start_uart(tty_h)
         send(self(), :start)
         {:noreply, %{state | getty_pid: getty_pid, uart_pid: uart_pid}}
+
       false ->
         Process.send_after(self(), :start, 100)
         {:noreply, state}
@@ -76,7 +81,10 @@ defmodule Peridiod.Getty do
     {:noreply, state, state.timeout}
   end
 
-  def handle_info({:DOWN, _, _, getty_pid, _}, %{getty_pid: getty_pid, tty_pair: {tty_l, _}} = state) do
+  def handle_info(
+        {:DOWN, _, _, getty_pid, _},
+        %{getty_pid: getty_pid, tty_pair: {tty_l, _}} = state
+      ) do
     {:ok, getty_pid} = start_getty(tty_l)
     Process.monitor(getty_pid)
     {:noreply, %{state | getty_pid: getty_pid}}
@@ -90,7 +98,7 @@ defmodule Peridiod.Getty do
     {:stop, :normal, state}
   end
 
-  defp start_getty(tty_l) do
+  def start_getty(tty_l) do
     MuonTrap.Daemon.start_link("setsid", [
       "/sbin/agetty",
       "-o",
@@ -102,7 +110,7 @@ defmodule Peridiod.Getty do
     ])
   end
 
-  defp start_pty(tty_l, tty_h) do
+  def start_pty(tty_l, tty_h) do
     MuonTrap.Daemon.start_link("socat", [
       "-d",
       "-d",
@@ -111,7 +119,7 @@ defmodule Peridiod.Getty do
     ])
   end
 
-  defp start_uart(tty_h) do
+  def start_uart(tty_h) do
     {:ok, uart_pid} = Circuits.UART.start_link()
     Circuits.UART.open(uart_pid, tty_h, speed: 115_200, active: true)
     {:ok, uart_pid}
