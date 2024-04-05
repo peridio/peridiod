@@ -4,7 +4,7 @@ defmodule Peridiod.MixProject do
   def project do
     [
       app: :peridiod,
-      version: "2.4.2",
+      version: "2.5.0-dev",
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -24,6 +24,8 @@ defmodule Peridiod.MixProject do
   defp deps do
     [
       {:extty, "~> 0.2"},
+      {:peridio_rat, github: "peridio/peridio-rat", branch: "main"},
+      {:peridio_sdk, github: "peridio/peridio-elixir", branch: "main"},
       {:muontrap, "~> 1.3"},
       {:circuits_uart, "~> 1.5"},
       {:castore, "~> 1.0"},

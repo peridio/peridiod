@@ -170,6 +170,38 @@ defmodule Peridiod.Socket do
     end
   end
 
+  def handle_message(@device_topic, "tunnel_request", %{"tunnel_prn" => tunnel_prn}, socket) do
+    config = Peridiod.Configurator.get_config()
+    opts = Keyword.put([device_api_host: "https://#{config.device_api_host}"], :ssl, config.ssl)
+
+    interface =
+      Peridio.RAT.WireGuard.generate_key_pair()
+      |> Peridio.RAT.WireGuard.Interface.new()
+    case Peridiod.Tunnel.configure_request(opts, interface, tunnel_prn) do
+      {:ok, resp} ->
+        {:ok, expires_at, _} = DateTime.from_iso8601(resp.body["data"]["expires_at"])
+        IO.inspect resp.body
+        peer = %Peridio.RAT.WireGuard.Peer{
+          ip_address: resp.body["data"]["server_proxy_ip_address"],
+          endpoint: resp.body["data"]["server_tunnel_ip_address"],
+          port: resp.body["data"]["server_proxy_port"],
+          public_key: resp.body["data"]["server_public_key"],
+          persistent_keepalive: 25
+        }
+        ip_address =
+          resp.body["data"]["device_proxy_ip_address"]
+          |> String.split(".")
+          |> Enum.map(&String.to_integer/1)
+          |> List.to_tuple()
+          |> Peridio.RAT.Network.IP.new()
+        interface = Map.put(interface, :ip_address, ip_address)
+        Peridio.RAT.open_tunnel(interface, peer, [expires_at: expires_at])
+      error ->
+        Logger.error("Remote Tunnel Error #{inspect error}")
+    end
+    {:ok, socket}
+  end
+
   ##
   # Console API messages
   #
