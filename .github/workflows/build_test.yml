@@ -1,0 +1,41 @@
+name: Build and Test
+
+on:
+  pull_request:
+    branches:
+      - "**"
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: '1.16.2'
+        otp-version: '26.2.3'
+    - name: Restore dependencies cache
+      uses: actions/cache@v3
+      with:
+        path: deps
+        key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+        restore-keys: ${{ runner.os }}-mix-
+    - name: Get dependencies and compile
+      run: |
+        mix deps.get
+        mix compile --warnings-as-errors
+    - name: Verify formatting
+      run: mix format --check-formatted
+    - name: Audit dependencies
+      run: mix hex.audit
+    - name: Run tests
+      run: mix test
