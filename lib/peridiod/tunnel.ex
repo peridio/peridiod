@@ -6,12 +6,14 @@ defmodule Peridiod.Tunnel do
 
   def configure_request(config, interface, tunnel_prn) do
     adapter = {Tesla.Adapter.Mint, transport_opts: config[:ssl]}
-    client = PeridioSDK.Client.new([
-      device_api_host: config[:device_api_host],
-      adapter: adapter,
-      release_prn: "",
-      release_version: ""
-    ])
+
+    client =
+      PeridioSDK.Client.new(
+        device_api_host: config[:device_api_host],
+        adapter: adapter,
+        release_prn: "",
+        release_version: ""
+      )
 
     tunnel_opts = %{
       cidr_blocks: Network.available_cidrs(),
@@ -20,6 +22,7 @@ defmodule Peridiod.Tunnel do
       device_tunnel_port: 22,
       device_public_key: interface.public_key
     }
+
     PeridioSDK.DeviceAPI.Tunnels.configure(client, tunnel_prn, tunnel_opts)
   end
 
