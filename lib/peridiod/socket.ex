@@ -198,12 +198,15 @@ defmodule Peridiod.Socket do
           |> Peridio.RAT.Network.IP.new()
 
         interface = Map.put(interface, :ip_address, ip_address)
+        dport = 22
+        priv_dir = Application.app_dir(:peridiod) |> Path.join("priv")
+        args = [interface.id, dport] |> Enum.join(" ")
 
         hooks = """
-        PostUp = iptables -A INPUT -m state --state RELATED,ESTABLISHED -i #{interface.id} -j ACCEPT
-        PostUp = iptables -A INPUT -p tcp --dport 22 -i #{interface.id} -j ACCEPT
-        PostDown = iptables -D INPUT -m state --state RELATED,ESTABLISHED -i #{interface.id} -j ACCEPT
-        PostDown = iptables -D INPUT -p tcp --dport 22 -i #{interface.id} -j ACCEPT
+        PreUp = #{priv_dir}/pre-up.sh #{args}
+        PostUp = #{priv_dir}/post-up.sh #{args}
+        PreDown = #{priv_dir}/pre-down.sh #{args}
+        PostDown = #{priv_dir}/post-down.sh #{args}
         """
 
         Peridio.RAT.open_tunnel(interface, peer, expires_at: expires_at, hooks: hooks)
