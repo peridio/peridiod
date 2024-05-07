@@ -16,10 +16,10 @@ defmodule Peridiod.Tunnel do
       )
 
     tunnel_opts = %{
-      cidr_blocks: Network.available_cidrs(),
-      port_ranges: Network.available_ports(),
+      cidr_blocks: Network.available_cidrs(config[:ipv4_cidrs]),
+      port_ranges: Network.available_ports(config[:port_range]),
       device_proxy_port: interface.port,
-      device_tunnel_port: 22,
+      device_tunnel_port: config[:dport],
       device_public_key: interface.public_key
     }
 

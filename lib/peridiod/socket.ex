@@ -172,7 +172,14 @@ defmodule Peridiod.Socket do
 
   def handle_message(@device_topic, "tunnel_request", %{"tunnel_prn" => tunnel_prn}, socket) do
     config = Peridiod.Configurator.get_config()
-    opts = Keyword.put([device_api_host: "https://#{config.device_api_host}"], :ssl, config.ssl)
+    opts =
+      [
+        device_api_host: "https://#{config.device_api_host}",
+        ssl: config.ssl,
+        dport: 22,
+        ipv4_cidrs: config.remote_access_tunnels.ipv4_cidrs,
+        port_range: config.remote_access_tunnels.port_range
+      ]
 
     interface =
       Peridio.RAT.WireGuard.generate_key_pair()
@@ -181,13 +188,14 @@ defmodule Peridiod.Socket do
     case Peridiod.Tunnel.configure_request(opts, interface, tunnel_prn) do
       {:ok, resp} ->
         {:ok, expires_at, _} = DateTime.from_iso8601(resp.body["data"]["expires_at"])
-
+        IO.puts resp.body["data"]["expires_at"]
+        IO.inspect DateTime.utc_now()
         peer = %Peridio.RAT.WireGuard.Peer{
           ip_address: resp.body["data"]["server_proxy_ip_address"],
           endpoint: resp.body["data"]["server_tunnel_ip_address"],
           port: resp.body["data"]["server_proxy_port"],
           public_key: resp.body["data"]["server_public_key"],
-          persistent_keepalive: 25
+          persistent_keepalive: config.remote_access_tunnels.persistent_keepalive
         }
 
         ip_address =
@@ -198,15 +206,13 @@ defmodule Peridiod.Socket do
           |> Peridio.RAT.Network.IP.new()
 
         interface = Map.put(interface, :ip_address, ip_address)
-        dport = 22
-        priv_dir = Application.app_dir(:peridiod) |> Path.join("priv")
-        args = [interface.id, dport] |> Enum.join(" ")
+        args = [interface.id, opts[:dport]] |> Enum.join(" ")
 
         hooks = """
-        PreUp = #{priv_dir}/pre-up.sh #{args}
-        PostUp = #{priv_dir}/post-up.sh #{args}
-        PreDown = #{priv_dir}/pre-down.sh #{args}
-        PostDown = #{priv_dir}/post-down.sh #{args}
+        PreUp = #{config.remote_access_tunnels.hooks.pre_up} #{args}
+        PostUp = #{config.remote_access_tunnels.hooks.post_up} #{args}
+        PreDown = #{config.remote_access_tunnels.hooks.pre_down} #{args}
+        PostDown = #{config.remote_access_tunnels.hooks.post_down} #{args}
         """
 
         Peridio.RAT.open_tunnel(interface, peer, expires_at: expires_at, hooks: hooks)

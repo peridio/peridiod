@@ -25,6 +25,7 @@ defmodule Peridiod.Configurator do
               params: %{},
               remote_shell: false,
               remote_iex: false,
+              remote_access_tunnels: %{},
               socket: [],
               ssl: []
 
@@ -41,6 +42,7 @@ defmodule Peridiod.Configurator do
             params: map(),
             remote_iex: boolean,
             remote_shell: boolean,
+            remote_access_tunnels: Map.t(),
             socket: any(),
             ssl: [:ssl.tls_client_option()]
           }
@@ -142,6 +144,7 @@ defmodule Peridiod.Configurator do
       |> override_if_set(:fwup_extra_args, config_file["fwup"]["extra_args"])
       |> override_if_set(:remote_shell, config_file["remote_shell"])
       |> override_if_set(:remote_iex, config_file["remote_iex"])
+      |> override_if_set(:remote_access_tunnels, config_file["remote_access_tunnels"])
       |> override_if_set(:key_pair_source, config_file["node"]["key_pair_source"])
       |> override_if_set(:key_pair_config, config_file["node"]["key_pair_config"])
 
