@@ -14,10 +14,16 @@ defmodule Peridiod.Configurator do
     defstruct device_api_host: "device.cremini.peridio.com",
               device_api_port: 443,
               device_api_sni: "device.cremini.peridio.com",
+              device_api_verify: :verify_peer,
+              device_api_ca_certificate_path: nil,
+              key_pair_source: "env",
+              key_pair_config: %{"private_key" => nil, "certificate" => nil},
               fwup_public_keys: [],
               fwup_devpath: "/dev/mmcblk0",
               fwup_env: [],
+              fwup_extra_args: [],
               params: %{},
+              remote_shell: false,
               remote_iex: false,
               socket: [],
               ssl: []
@@ -26,11 +32,15 @@ defmodule Peridiod.Configurator do
             device_api_host: String.t(),
             device_api_port: String.t(),
             device_api_sni: charlist(),
+            device_api_verify: :verify_peer | :verify_none,
+            device_api_ca_certificate_path: Path.t(),
             fwup_public_keys: [binary()],
             fwup_devpath: Path.t(),
             fwup_env: [{String.t(), String.t()}],
+            fwup_extra_args: [String.t()],
             params: map(),
             remote_iex: boolean,
+            remote_shell: boolean,
             socket: any(),
             ssl: [:ssl.tls_client_option()]
           }
@@ -38,8 +48,8 @@ defmodule Peridiod.Configurator do
 
   @callback build(%Config{}) :: Config.t()
 
-  def start_link(_opts) do
-    GenServer.start_link(__MODULE__, nil, name: __MODULE__)
+  def start_link(%Config{} = config) do
+    GenServer.start_link(__MODULE__, config, name: __MODULE__)
   end
 
   def get_config() do
@@ -68,128 +78,111 @@ defmodule Peridiod.Configurator do
     |> Path.join("peridio/peridio-config.json")
   end
 
-  def init(nil) do
-    {:ok, build()}
+  def init(%Config{} = config) do
+    {:ok, build(config)}
   end
 
   def handle_call(:get_config, _from, config) do
     {:reply, config, config}
   end
 
-  @spec build :: Config.t()
-  defp build() do
-    resolve_config()
-    |> build_config(base_config())
+  @spec build(Config.t()) :: Config.t()
+  defp build(config) do
+    config
+    |> base_config()
+    |> build_config(resolve_config())
     |> add_socket_opts()
   end
 
-  defp atomize_config(config) do
-    %{
-      "device_api" => %{
-        "certificate_path" => cremini_device_api_certificate_path,
-        "url" => cremini_device_api_url,
-        "verify" => cremini_device_api_verify
-      },
-      "fwup" => %{
-        "devpath" => cremini_fwup_devpath,
-        "public_keys" => cremini_fwup_public_keys
-      },
-      "remote_shell" => cremini_remote_shell,
-      "node" => %{
-        "key_pair_source" => key_pair_source,
-        "key_pair_config" => key_pair_config
-      },
-      "version" => 1
-    } = config
-
-    %{
-      device_api: %{
-        certificate_path: cremini_device_api_certificate_path,
-        url: cremini_device_api_url,
-        verify: cremini_device_api_verify
-      },
-      fwup: %{
-        devpath: cremini_fwup_devpath,
-        public_keys: cremini_fwup_public_keys
-      },
-      remote_shell: cremini_remote_shell,
-      node: %{
-        key_pair_source: key_pair_source,
-        key_pair_config: key_pair_config
-      }
-    }
-  end
-
   defp resolve_config do
-    path =
-      System.fetch_env("PERIDIO_CONFIG_FILE")
-      |> case do
-        {:ok, path} -> path
-        :error -> default_path()
-      end
-
+    path = config_path()
     debug("using config path: #{path}")
 
-    path
-    |> File.read()
-    |> case do
-      {:ok, config_json} ->
-        config_json
-
+    with {:ok, file} <- File.read(path),
+         {:ok, config} <- Jason.decode(file) do
+      config
+    else
       {:error, e} ->
         error(%{message: "unable to read peridio config file", file_read_error: e})
-        System.stop(1)
-    end
-    |> Jason.decode()
-    |> case do
-      {:ok, config} ->
-        atomize_config(config)
-
-      {:error, e} ->
-        error(%{message: "unable to decode peridio config file", json_decode_error: e})
-        raise {:error, :decode_json}
+        %{}
     end
   end
 
-  defp build_config(peridio_config, base_config) do
-    verify =
-      case peridio_config.device_api.verify do
-        true -> :verify_peer
-        false -> :verify_none
+  defp config_path() do
+    System.get_env("PERIDIO_CONFIG_FILE", default_path())
+  end
+
+  defp build_config(%Config{} = config, config_file) do
+    {host, port} =
+      case config_file["device_api"]["url"] do
+        nil ->
+          {nil, nil}
+
+        url ->
+          parts = String.split(url, ":")
+          {Enum.at(parts, 0), Enum.at(parts, 1)}
       end
 
-    config = %{
-      base_config
-      | device_api_host: peridio_config.device_api.url,
-        device_api_sni: peridio_config.device_api.url,
-        fwup_devpath: peridio_config.fwup.devpath,
-        fwup_public_keys: peridio_config.fwup.public_keys,
-        socket: [url: "wss://#{peridio_config.device_api.url}:443/socket/websocket"],
-        remote_iex: peridio_config.remote_shell,
-        ssl: [
-          server_name_indication: to_charlist(peridio_config.device_api.url),
-          verify: verify,
-          cacertfile: peridio_config.device_api.certificate_path
-        ]
-    }
+    config =
+      config
+      |> Map.put(
+        :device_api_ca_certificate_path,
+        Application.app_dir(:peridiod, "priv/peridio-cert.pem")
+      )
+      |> override_if_set(
+        :device_api_ca_certificate_path,
+        config_file["device_api"]["certificate_path"]
+      )
+      |> override_if_set(:device_api_host, host)
+      |> override_if_set(:device_api_port, port)
+      |> override_if_set(:device_api_verify, config_file["device_api"]["verify"])
+      |> override_if_set(:fwup_devpath, config_file["fwup"]["devpath"])
+      |> override_if_set(:fwup_public_keys, config_file["fwup"]["public_keys"])
+      |> override_if_set(:fwup_env, config_file["fwup"]["env"])
+      |> override_if_set(:fwup_extra_args, config_file["fwup"]["extra_args"])
+      |> override_if_set(:remote_shell, config_file["remote_shell"])
+      |> override_if_set(:remote_iex, config_file["remote_iex"])
+      |> override_if_set(:key_pair_source, config_file["node"]["key_pair_source"])
+      |> override_if_set(:key_pair_config, config_file["node"]["key_pair_config"])
 
-    case peridio_config.node.key_pair_source do
+    verify =
+      case config.device_api_verify do
+        true -> :verify_peer
+        false -> :verify_none
+        value when is_atom(value) -> value
+      end
+
+    config =
+      config
+      |> Map.put(:socket,
+        url: "wss://#{config.device_api_host}:#{config.device_api_port}/socket/websocket"
+      )
+      |> Map.put(:ssl,
+        server_name_indication: to_charlist(config.device_api_host),
+        verify: verify,
+        cacertfile: config.device_api_ca_certificate_path
+      )
+
+    case config.key_pair_source do
       "file" ->
-        Configurator.File.config(peridio_config.node.key_pair_config, config)
+        Configurator.File.config(config.key_pair_config, config)
 
       "pkcs11" ->
-        Configurator.PKCS11.config(peridio_config.node.key_pair_config, config)
+        Configurator.PKCS11.config(config.key_pair_config, config)
 
       "uboot-env" ->
-        Configurator.UBootEnv.config(peridio_config.node.key_pair_config, config)
+        Configurator.UBootEnv.config(config.key_pair_config, config)
 
       "env" ->
-        Configurator.Env.config(peridio_config.node.key_pair_config, config)
+        Configurator.Env.config(config.key_pair_config, config)
 
       type ->
         Logger.error("Unknown key pair type: #{type}")
     end
   end
+
+  defp override_if_set(%Config{} = config, _key, value) when is_nil(value), do: config
+  defp override_if_set(%Config{} = config, key, value), do: Map.replace(config, key, value)
 
   defp add_socket_opts(config) do
     # PhoenixClient requires these SSL options be passed as
@@ -213,9 +206,7 @@ defmodule Peridiod.Configurator do
     %{config | socket: socket}
   end
 
-  defp base_config() do
-    base = struct(Config, Application.get_all_env(:peridiod))
-
+  defp base_config(base) do
     url = "wss://#{base.device_api_host}:#{base.device_api_port}/socket/websocket"
 
     socket = Keyword.put_new(base.socket, :url, url)

@@ -11,10 +11,11 @@ defmodule Peridiod.Application do
 
   def start(_type, _args) do
     application_config = Application.get_all_env(:peridiod)
+    configurator_config = struct(Configurator.Config, application_config)
 
     children = [
       {KV, application_config},
-      Configurator,
+      {Configurator, configurator_config},
       UpdateManager,
       Connection,
       Socket
