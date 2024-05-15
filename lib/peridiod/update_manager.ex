@@ -107,7 +107,8 @@ defmodule Peridiod.UpdateManager do
     fwup_config = %FwupConfig{
       fwup_public_keys: config.fwup_public_keys,
       fwup_devpath: config.fwup_devpath,
-      fwup_env: config.fwup_env,
+      fwup_env: FwupConfig.parse_fwup_env(config.fwup_env),
+      fwup_extra_args: config.fwup_extra_args,
       handle_fwup_message: &Client.handle_fwup_message/1,
       update_available: &Client.update_available/1
     }
@@ -260,7 +261,14 @@ defmodule Peridiod.UpdateManager do
 
   @spec fwup_args(FwupConfig.t()) :: [String.t()]
   defp fwup_args(%FwupConfig{} = config) do
-    args = ["--apply", "--no-unmount", "-d", config.fwup_devpath, "--task", config.fwup_task]
+    args = [
+      "--apply",
+      "--no-unmount",
+      "-d",
+      config.fwup_devpath,
+      "--task",
+      config.fwup_task
+    ] ++ config.fwup_extra_args
 
     Enum.reduce(config.fwup_public_keys, args, fn public_key, args ->
       args ++ ["--public-key", public_key]

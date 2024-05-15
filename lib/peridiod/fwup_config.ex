@@ -8,6 +8,7 @@ defmodule Peridiod.FwupConfig do
   defstruct fwup_public_keys: [],
             fwup_devpath: "/dev/mmcblk0",
             fwup_env: [],
+            fwup_extra_args: [],
             fwup_task: "upgrade",
             handle_fwup_message: nil,
             update_available: nil
@@ -37,9 +38,14 @@ defmodule Peridiod.FwupConfig do
           fwup_devpath: Path.t(),
           fwup_task: String.t(),
           fwup_env: [{String.t(), String.t()}],
+          fwup_extra_args: [String.t()],
           handle_fwup_message: handle_fwup_message_fun,
           update_available: update_available_fun
         }
+
+
+  def parse_fwup_env(%{} = fwup_env), do: Enum.to_list(fwup_env)
+  def parse_fwup_env([_] = fwup_env), do: fwup_env
 
   @doc "Raises an ArgumentError on invalid arguments"
   @spec validate!(t()) :: t()
