@@ -5,6 +5,7 @@ defmodule Peridiod.Socket do
   alias Peridiod.Client
   alias Peridiod.UpdateManager
   alias Peridiod.Configurator
+  alias Peridiod.RemoteConsole
 
   @rejoin_after Application.compile_env(:peridiod, :rejoin_after, 5_000)
 
@@ -62,7 +63,9 @@ defmodule Peridiod.Socket do
       new_socket()
       |> assign(params: config.params)
       |> assign(remote_iex: config.remote_iex)
-      |> assign(getty_pid: nil)
+      |> assign(remote_shell: config.remote_shell)
+      |> assign(remote_console_pid: nil)
+      |> assign(remote_console_timer: nil)
       |> connect!(opts)
 
     Process.flag(:trap_exit, true)
@@ -95,7 +98,8 @@ defmodule Peridiod.Socket do
   end
 
   def handle_join(@console_topic, _reply, socket) do
-    Logger.debug("[#{inspect(__MODULE__)}] Joined Console channel")
+    protocol = if socket.assigns.remote_iex, do: "IEx", else: "getty"
+    Logger.debug("[#{inspect(__MODULE__)}] Joined Console channel: #{protocol}")
     {:ok, socket}
   end
 
@@ -144,9 +148,12 @@ defmodule Peridiod.Socket do
   def handle_message(
         @console_topic,
         "window_size",
-        %{"height" => _height, "width" => _width},
+        %{"height" => height, "width" => width},
         socket
       ) do
+    if socket.assigns.remote_iex do
+      RemoteConsole.IEx.window_change(socket.assigns.remote_console_pid, width, height)
+    end
     {:ok, socket}
   end
 
@@ -166,36 +173,50 @@ defmodule Peridiod.Socket do
   # Console API messages
   #
   def handle_message(@console_topic, "restart", _payload, socket) do
-    Logger.warning("[#{inspect(__MODULE__)}] Restarting IEx process from web request")
-
-    _ = push(socket, @console_topic, "up", %{data: "\r*** Restarting IEx ***\r"})
+    protocol = if socket.assigns.remote_iex, do: "IEx", else: "getty"
+    Logger.warning("[#{inspect(__MODULE__)}] Restarting #{protocol} process from web request")
+    _ = push(socket, @console_topic, "up", %{data: "\r*** Restarting #{protocol} ***\r"})
 
     socket =
       socket
-      |> stop_getty()
-      |> start_getty()
+      |> stop_remote_console()
+      |> start_remote_console()
 
     {:ok, socket}
   end
 
-  def handle_message(@console_topic, message, payload, %{assigns: %{getty_pid: nil}} = socket) do
-    stop_getty(socket)
-    handle_message(@console_topic, message, payload, start_getty(socket))
+  def handle_message(
+        @console_topic,
+        message,
+        payload,
+        %{assigns: %{remote_console_pid: nil}} = socket
+      ) do
+    stop_remote_console(socket)
+    handle_message(@console_topic, message, payload, start_remote_console(socket))
   end
 
-  def handle_message(@console_topic, "dn", %{"data" => data}, socket) do
-    Peridiod.Getty.send_data(socket.assigns.getty_pid, data)
+  def handle_message(
+        @console_topic,
+        "dn",
+        %{"data" => data},
+        %{assigns: %{remote_shell: true}} = socket
+      ) do
+    RemoteConsole.Getty.send_data(socket.assigns.remote_console_pid, data)
+    {:ok, socket}
+  end
+
+  def handle_message(
+        @console_topic,
+        "dn",
+        %{"data" => data},
+        %{assigns: %{remote_iex: true}} = socket
+      ) do
+    RemoteConsole.IEx.send_data(socket.assigns.remote_console_pid, data)
     {:ok, socket}
   end
 
   @impl Slipstream
-  def handle_info({:tty_data, data}, socket) do
-    data = remove_unwanted_chars(data)
-    _ = push(socket, @console_topic, "up", %{data: data})
-    {:noreply, socket}
-  end
-
-  def handle_info({:getty, _, :timeout}, socket) do
+  def handle_info({:remote_console, _, :timeout}, socket) do
     msg = """
     \r
     ****************************************\r
@@ -207,23 +228,23 @@ defmodule Peridiod.Socket do
 
     _ = push(socket, @console_topic, "up", %{data: msg})
 
-    {:noreply, stop_getty(socket)}
+    {:noreply, stop_remote_console(socket)}
   end
 
-  def handle_info({:getty, _, {:error, :eio}}, socket) do
-    msg = "\r******* Remote Console stopped: eio *******\r"
+  def handle_info({:remote_console, _, {:error, error}}, socket) do
+    msg = "\r******* Remote Console stopped: #{inspect(error)} *******\r"
     _ = push(socket, @console_topic, "up", %{data: msg})
     Logger.warning(msg)
 
     socket =
       socket
-      |> stop_getty()
-      |> start_getty()
+      |> stop_remote_console()
+      |> start_remote_console()
 
     {:noreply, socket}
   end
 
-  def handle_info({:getty, _pid, data}, socket) do
+  def handle_info({:remote_console, _pid, data}, socket) do
     data = remove_unwanted_chars(data)
     _ = push(socket, @console_topic, "up", %{data: data})
     {:noreply, socket}
@@ -274,28 +295,41 @@ defmodule Peridiod.Socket do
   defp handle_join_reply(_), do: :noop
 
   defp maybe_join_console(socket) do
-    if socket.assigns.remote_iex do
+    if socket.assigns.remote_iex || socket.assigns.remote_shell do
       join(socket, @console_topic, socket.assigns.params)
     else
       socket
     end
   end
 
-  defp start_getty(socket) do
-    Logger.debug("Start getty")
-    {:ok, getty_pid} = Peridiod.Getty.start_link([])
-
-    socket
-    |> assign(getty_pid: getty_pid)
+  defp start_remote_console(%{assigns: %{remote_iex: true}} = socket) do
+    Logger.info("Remote Console: Start IEx")
+    {:ok, iex_pid} = RemoteConsole.IEx.start_link([])
+    assign(socket, remote_console_pid: iex_pid)
   end
 
-  defp stop_getty(%{assigns: %{getty_pid: nil}} = socket), do: socket
+  defp start_remote_console(%{assigns: %{remote_shell: true}} = socket) do
+    Logger.debug("Remote Console: Start getty")
+    {:ok, getty_pid} = RemoteConsole.Getty.start_link([])
+    assign(socket, remote_console_pid: getty_pid)
+  end
 
-  defp stop_getty(%{assigns: %{getty_pid: getty_pid}} = socket) do
-    _ = if Process.alive?(getty_pid), do: Peridiod.Getty.stop(getty_pid)
+  defp stop_remote_console(%{assigns: %{remote_console_pid: nil}} = socket), do: socket
+
+  defp stop_remote_console(%{assigns: %{remote_iex: true, remote_console_pid: iex_pid}} = socket) do
+    _ = if Process.alive?(iex_pid), do: RemoteConsole.IEx.stop(iex_pid)
 
     socket
-    |> assign(getty_pid: nil)
+    |> assign(remote_console_pid: nil)
+  end
+
+  defp stop_remote_console(
+         %{assigns: %{remote_shell: true, remote_console_pid: getty_pid}} = socket
+       ) do
+    _ = if Process.alive?(getty_pid), do: RemoteConsole.Getty.stop(getty_pid)
+
+    socket
+    |> assign(remote_console_pid: nil)
   end
 
   defp remove_unwanted_chars(input) when is_binary(input) do

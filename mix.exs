@@ -23,6 +23,7 @@ defmodule Peridiod.MixProject do
 
   defp deps do
     [
+      {:extty, "~> 0.2"},
       {:muontrap, "~> 1.3"},
       {:circuits_uart, "~> 1.5"},
       {:castore, "~> 1.0"},

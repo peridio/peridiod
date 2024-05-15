@@ -1,4 +1,4 @@
-defmodule Peridiod.Getty do
+defmodule Peridiod.RemoteConsole.Getty do
   use GenServer
 
   require Logger
@@ -18,6 +18,10 @@ defmodule Peridiod.Getty do
 
   def send_data(pid, data) do
     GenServer.call(pid, {:send_data, data})
+  end
+
+  def window_change(_width, _height) do
+    :ok
   end
 
   @impl true
@@ -77,7 +81,7 @@ defmodule Peridiod.Getty do
   end
 
   def handle_info({:circuits_uart, _pid, data}, state) do
-    send(state.callback, {:getty, self(), data})
+    send(state.callback, {:remote_console, self(), data})
     {:noreply, state, state.timeout}
   end
 
@@ -94,7 +98,7 @@ defmodule Peridiod.Getty do
     GenServer.stop(state.getty_pid)
     GenServer.stop(state.uart_pid)
     GenServer.stop(state.pty_pid)
-    send(state.callback, {:getty, self(), :timeout})
+    send(state.callback, {:remote_console, self(), :timeout})
     {:stop, :normal, state}
   end
 
