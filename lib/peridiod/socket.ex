@@ -154,6 +154,7 @@ defmodule Peridiod.Socket do
     if socket.assigns.remote_iex do
       RemoteConsole.IEx.window_change(socket.assigns.remote_console_pid, width, height)
     end
+
     {:ok, socket}
   end
 

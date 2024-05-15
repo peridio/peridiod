@@ -15,7 +15,7 @@ Peridiod is configured via a json formatted file on the filesystem. The location
   * `extra_args`: A list of extra arguments to pass to the fwup command used for applying fwup archives. Helpful when needing to use the --unsafe flag in fwup.
   * `env`: A json object of `"ENV_VAR": "value"` pairs to decorate the environment which fwup is executed from.
 * `remote_shell`: Enable or disable the remote getty feature.
-* `remote_iex`: Enable or disable the remote IEx feature. Useful if you are deploying a Nerves distribution.
+* `remote_iex`: Enable or disable the remote IEx feature. Useful if you are deploying a Nerves distribution. Enabling this takes precedence over `remote_shell`
 * `node`: Node configuration settings
   * `key_pair_source`: Options are `file`, `uboot-env`, `pkcs11`. This determines the source of the identity key information.
   * `key_pair_config`: Different depending on the `key_pair_source`
@@ -126,7 +126,7 @@ config :peridiod,
 
 ## Running with Docker
 
-You can debug using docker by generating an SSL certificta eand private key pair that is trusted by Peridio Cloud and pass it into the container.
+You can debug using docker by generating an SSL certificate and private key pair that is trusted by Peridio Cloud and pass it into the container.
 
 Building the container:
 
