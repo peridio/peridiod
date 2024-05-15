@@ -43,9 +43,8 @@ defmodule Peridiod.FwupConfig do
           update_available: update_available_fun
         }
 
-
   def parse_fwup_env(%{} = fwup_env), do: Enum.to_list(fwup_env)
-  def parse_fwup_env([_] = fwup_env), do: fwup_env
+  def parse_fwup_env(fwup_env) when is_list(fwup_env), do: fwup_env
 
   @doc "Raises an ArgumentError on invalid arguments"
   @spec validate!(t()) :: t()
