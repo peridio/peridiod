@@ -1,13 +1,16 @@
-FROM elixir:1.16.2-alpine AS build
+FROM --platform=linux/amd64 hexpm/elixir:1.16.2-erlang-26.2.5-ubuntu-noble-20240429 AS build
 
 ARG MIX_ENV=prod
+ARG UBOOT_ENV_SIZE=0x20000
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apk add --no-cache --update-cache \
-      git \
-      make
+RUN apt-get update \
+    && apt-get install -y \
+    git make build-essential
 
 RUN mix archive.install github hexpm/hex branch latest --force
 RUN /usr/local/bin/mix local.rebar --force
+
 
 RUN mkdir -p /opt/app
 ADD . /opt/app/

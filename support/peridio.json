@@ -1,20 +1,19 @@
 {
-    "version": 1,
-    "device_api": {
-      "certificate_path": "/etc/peridiod/peridio-cert.pem",
-      "url": "device.cremini.peridio.com",
-      "verify": true
-    },
-    "fwup": {
-      "devpath": "/dev/null",
-      "public_keys": []
-    },
-    "remote_shell": true,
-    "node": {
-      "key_pair_source": "env",
-      "key_pair_config": {
-        "private_key": "PERIDIO_PRIVATE_KEY",
-        "certificate": "PERIDIO_CERTIFICATE"
-      }
+  "version": 1,
+  "fwup": {
+    "devpath": "/etc/peridiod/peridiod.img",
+    "extra_args": ["--unsafe"],
+    "env": {
+      "PERIDIO_EXECUTE": "touch /tmp/peridio-upgrade"
+    }
+  },
+  "remote_iex": false,
+  "remote_shell": true,
+  "node": {
+    "key_pair_source": "env",
+    "key_pair_config": {
+      "private_key": "PERIDIO_PRIVATE_KEY",
+      "certificate": "PERIDIO_CERTIFICATE"
     }
   }
+}
