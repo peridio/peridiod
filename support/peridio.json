@@ -9,6 +9,14 @@
   },
   "remote_iex": false,
   "remote_shell": true,
+  "remote_access_tunnels": {
+    "enabled": true,
+    "service_ports": [22],
+    "hooks": {
+      "pre_up": "/etc/peridiod/hooks/pre-up.sh",
+      "pre_down": "/etc/peridiod/hooks/pre-down.sh"
+    }
+  },
   "node": {
     "key_pair_source": "env",
     "key_pair_config": {

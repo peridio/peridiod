@@ -55,7 +55,17 @@ FROM ubuntu:noble as app
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get -y install locales socat libconfuse-dev libarchive-dev && apt-get clean
+RUN apt-get update \
+    && apt-get -y install \
+    locales \
+    socat \
+    libconfuse-dev \
+    libarchive-dev \
+    iproute2  \
+    iptables \
+    wireguard \
+    openssh-server \
+    && apt-get clean
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen
 ENV LANG en_US.UTF-8
@@ -67,7 +77,7 @@ RUN echo "peridio:peridio" | chpasswd
 
 ENV PERIDIO_CONFIG_FILE=/etc/peridiod/peridio.json
 
-RUN mkdir -p /etc/peridiod
+RUN mkdir -p /etc/peridiod/hooks
 RUN mkdir -p /boot
 RUN echo "echo \"Reboot Requested\"" > /usr/bin/reboot && chmod +x /usr/bin/reboot
 
@@ -77,6 +87,8 @@ COPY --from=build /opt/app/support/peridio.json /etc/peridiod/peridio.json
 COPY --from=build /opt/app/support/uboot.env /etc/peridiod/uboot.env
 COPY --from=build /opt/app/support/fw_env.config /etc/fw_env.config
 COPY --from=build /opt/app/support/peridiod.img /etc/peridiod/peridiod.img
+COPY --from=build /opt/app/support/pre-up.sh /etc/peridiod/hooks/pre-up.sh
+COPY --from=build /opt/app/support/pre-down.sh /etc/peridiod/hooks/pre-down.sh
 COPY --from=build /opt/fwup/src/fwup /usr/bin/fwup
 
 WORKDIR /opt/peridiod
