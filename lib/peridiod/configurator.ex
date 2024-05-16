@@ -27,7 +27,8 @@ defmodule Peridiod.Configurator do
               remote_iex: false,
               remote_access_tunnels: %{},
               socket: [],
-              ssl: []
+              ssl: [],
+              sdk_client: nil
 
     @type t() :: %__MODULE__{
             device_api_host: String.t(),
@@ -42,9 +43,10 @@ defmodule Peridiod.Configurator do
             params: map(),
             remote_iex: boolean,
             remote_shell: boolean,
-            remote_access_tunnels: Map.t(),
+            remote_access_tunnels: map(),
             socket: any(),
-            ssl: [:ssl.tls_client_option()]
+            ssl: [:ssl.tls_client_option()],
+            sdk_client: %{}
           }
   end
 
@@ -131,6 +133,13 @@ defmodule Peridiod.Configurator do
         :device_api_ca_certificate_path,
         Application.app_dir(:peridiod, "priv/peridio-cert.pem")
       )
+      |> Map.put(
+        :remote_access_tunnels,
+        rat_merge_config(
+          config.remote_access_tunnels,
+          Map.get(config_file, "remote_access_tunnels", %{})
+        )
+      )
       |> override_if_set(
         :device_api_ca_certificate_path,
         config_file["device_api"]["certificate_path"]
@@ -144,7 +153,6 @@ defmodule Peridiod.Configurator do
       |> override_if_set(:fwup_extra_args, config_file["fwup"]["extra_args"])
       |> override_if_set(:remote_shell, config_file["remote_shell"])
       |> override_if_set(:remote_iex, config_file["remote_iex"])
-      |> override_if_set(:remote_access_tunnels, config_file["remote_access_tunnels"])
       |> override_if_set(:key_pair_source, config_file["node"]["key_pair_source"])
       |> override_if_set(:key_pair_config, config_file["node"]["key_pair_config"])
 
@@ -166,26 +174,91 @@ defmodule Peridiod.Configurator do
         cacertfile: config.device_api_ca_certificate_path
       )
 
-    case config.key_pair_source do
-      "file" ->
-        Configurator.File.config(config.key_pair_config, config)
+    config =
+      case config.key_pair_source do
+        "file" ->
+          Configurator.File.config(config.key_pair_config, config)
 
-      "pkcs11" ->
-        Configurator.PKCS11.config(config.key_pair_config, config)
+        "pkcs11" ->
+          Configurator.PKCS11.config(config.key_pair_config, config)
 
-      "uboot-env" ->
-        Configurator.UBootEnv.config(config.key_pair_config, config)
+        "uboot-env" ->
+          Configurator.UBootEnv.config(config.key_pair_config, config)
 
-      "env" ->
-        Configurator.Env.config(config.key_pair_config, config)
+        "env" ->
+          Configurator.Env.config(config.key_pair_config, config)
 
-      type ->
-        Logger.error("Unknown key pair type: #{type}")
-    end
+        type ->
+          error("Unknown key pair type: #{type}")
+      end
+    adapter = {Tesla.Adapter.Mint, transport_opts: config.ssl}
+    sdk_client =
+      PeridioSDK.Client.new(
+        device_api_host: "https://#{config.device_api_host}",
+        adapter: adapter,
+        release_prn: "",
+        release_version: ""
+      )
+
+    Map.put(config, :sdk_client, sdk_client)
   end
 
-  defp override_if_set(%Config{} = config, _key, value) when is_nil(value), do: config
-  defp override_if_set(%Config{} = config, key, value), do: Map.replace(config, key, value)
+  defp override_if_set(%{} = config, _key, value) when is_nil(value), do: config
+  defp override_if_set(%{} = config, key, value), do: Map.replace(config, key, value)
+
+  def rat_merge_config(rat_config, rat_config_file) do
+    hooks_config = Map.get(rat_config, :hooks, %{})
+
+    hooks =
+      rat_default_hooks()
+      |> Map.merge(hooks_config)
+      |> override_if_set(:pre_up, rat_config_file["hooks"]["pre_up"])
+      |> override_if_set(:post_up, rat_config_file["hooks"]["post_up"])
+      |> override_if_set(:pre_down, rat_config_file["hooks"]["pre_down"])
+      |> override_if_set(:post_down, rat_config_file["hooks"]["post_down"])
+
+    %{
+      enabled: rat_config_file["enabled"] || rat_config[:enabled] || false,
+      port_range: rat_config_file["port_range"] || rat_config[:port_range] |> encode_port_range(),
+      ipv4_cidrs: rat_config_file["ipv4_cidrs"] || rat_config[:ipv4_cidrs] |> encode_ipv4_cidrs(),
+      service_ports: rat_config_file["service_ports"] || rat_config[:service_ports] || [],
+      persistent_keepalive:
+        rat_config_file["persistent_keepalive"] || rat_config[:persistent_keepalive] || 25,
+      hooks: hooks
+    }
+  end
+
+  def rat_default_hooks() do
+    priv_dir = Application.app_dir(:peridiod, "priv")
+
+    %{
+      pre_up: "#{priv_dir}/pre-up.sh",
+      post_up: "#{priv_dir}/post-up.sh",
+      pre_down: "#{priv_dir}/pre-down.sh",
+      post_down: "#{priv_dir}/post-down.sh"
+    }
+  end
+
+  def encode_port_range(nil), do: Peridio.RAT.Network.default_port_ranges()
+
+  def encode_port_range(range) do
+    [r_start, r_end] = String.split(range, "-") |> Enum.map(&String.to_integer/1)
+    Range.new(r_start, r_end)
+  end
+
+  def encode_ipv4_cidrs(nil), do: Peridio.RAT.Network.default_ip_address_cidrs()
+
+  def encode_ipv4_cidrs([_ | _] = cidrs) do
+    Enum.map(cidrs, &Peridio.RAT.Network.CIDR.from_string!/1)
+  end
+
+  def deep_merge(map1, map2) when is_map(map1) and is_map(map2) do
+    Map.merge(map1, map2, fn _key, val1, val2 ->
+      deep_merge(val1, val2)
+    end)
+  end
+
+  def deep_merge(_val1, val2), do: val2
 
   defp add_socket_opts(config) do
     # PhoenixClient requires these SSL options be passed as

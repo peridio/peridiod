@@ -62,8 +62,11 @@ defmodule Peridiod.Socket do
     socket =
       new_socket()
       |> assign(params: config.params)
+      |> assign(device_api_host: config.device_api_host)
+      |> assign(sdk_client: config.sdk_client)
       |> assign(remote_iex: config.remote_iex)
       |> assign(remote_shell: config.remote_shell)
+      |> assign(remote_access_tunnels: config.remote_access_tunnels)
       |> assign(remote_console_pid: nil)
       |> assign(remote_console_timer: nil)
       |> connect!(opts)
@@ -170,57 +173,47 @@ defmodule Peridiod.Socket do
     end
   end
 
-  def handle_message(@device_topic, "tunnel_request", %{"tunnel_prn" => tunnel_prn}, socket) do
-    config = Peridiod.Configurator.get_config()
-    opts =
-      [
-        device_api_host: "https://#{config.device_api_host}",
-        ssl: config.ssl,
-        dport: 22,
-        ipv4_cidrs: config.remote_access_tunnels.ipv4_cidrs,
-        port_range: config.remote_access_tunnels.port_range
-      ]
+  def handle_message(
+        @device_topic,
+        "tunnel_request",
+        %{"tunnel_prn" => tunnel_prn} = payload,
+        %{assigns: %{remote_access_tunnels: %{enabled: false}}} = socket
+      ) do
+    Logger.warning("Remote Access Tunnel requested but not enabled on the device: #{inspect(payload)}")
+    Peridiod.Tunnel.close_request(socket.assigns.sdk_client, tunnel_prn, "feature_not_enabled")
+    {:ok, socket}
+  end
 
-    interface =
-      Peridio.RAT.WireGuard.generate_key_pair()
-      |> Peridio.RAT.WireGuard.Interface.new()
-
-    case Peridiod.Tunnel.configure_request(opts, interface, tunnel_prn) do
-      {:ok, resp} ->
-        {:ok, expires_at, _} = DateTime.from_iso8601(resp.body["data"]["expires_at"])
-        IO.puts resp.body["data"]["expires_at"]
-        IO.inspect DateTime.utc_now()
-        peer = %Peridio.RAT.WireGuard.Peer{
-          ip_address: resp.body["data"]["server_proxy_ip_address"],
-          endpoint: resp.body["data"]["server_tunnel_ip_address"],
-          port: resp.body["data"]["server_proxy_port"],
-          public_key: resp.body["data"]["server_public_key"],
-          persistent_keepalive: config.remote_access_tunnels.persistent_keepalive
-        }
-
-        ip_address =
-          resp.body["data"]["device_proxy_ip_address"]
-          |> String.split(".")
-          |> Enum.map(&String.to_integer/1)
-          |> List.to_tuple()
-          |> Peridio.RAT.Network.IP.new()
-
-        interface = Map.put(interface, :ip_address, ip_address)
-        args = [interface.id, opts[:dport]] |> Enum.join(" ")
-
-        hooks = """
-        PreUp = #{config.remote_access_tunnels.hooks.pre_up} #{args}
-        PostUp = #{config.remote_access_tunnels.hooks.post_up} #{args}
-        PreDown = #{config.remote_access_tunnels.hooks.pre_down} #{args}
-        PostDown = #{config.remote_access_tunnels.hooks.post_down} #{args}
-        """
-
-        Peridio.RAT.open_tunnel(interface, peer, expires_at: expires_at, hooks: hooks)
-
-      error ->
-        Logger.error("Remote Tunnel Error #{inspect(error)}")
+  def handle_message(
+        @device_topic,
+        "tunnel_request",
+        %{"tunnel_prn" => tunnel_prn} = request,
+        socket
+      ) do
+    dport = request["device_tunnel_port"] || 22
+    service_ports = socket.assigns.remote_access_tunnels.service_ports
+    if dport in service_ports do
+      Peridiod.Tunnel.create(socket.assigns.sdk_client, tunnel_prn, dport, socket.assigns.remote_access_tunnels)
+    else
+      Logger.warning("Remote Access Tunnel requested for port #{dport} but not enabled in service port list: #{inspect(service_ports)}")
+      Peridiod.Tunnel.close_request(socket.assigns.sdk_client, tunnel_prn, "dport_not_allowed")
     end
 
+
+    {:ok, socket}
+  end
+
+  def handle_message(
+        @device_topic,
+        "tunnel_close",
+        _request,
+        %{assigns: %{remote_access_tunnels: %{enabled: false}}} = socket
+      ) do
+    {:ok, socket}
+  end
+
+  def handle_message(@device_topic, "tunnel_close", %{"tunnel_prn" => tunnel_prn}, socket) do
+    Peridio.RAT.close_tunnel(tunnel_prn)
     {:ok, socket}
   end
 
