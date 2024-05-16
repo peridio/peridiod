@@ -140,6 +140,8 @@ Running the container:
 podman run -it --rm --env PERIDIO_CERTIFICATE="$(cat /path/to/end-entity-certificate.pem)" --env PERIDIO_PRIVATE_KEY="$(cat /path/to/end-entity-private-key.pem)" --cap-add=NET_ADMIN peridio/peridiod:latest
 ```
 
+The `--cap-add=NET_ADMIN` is required for testing remote access tunnels. This is required because peridiod will create new wireguard network interfaces and needs to execute commands with iptables. If this flag is omitted, the feature will not function properly.
+
 The container will be built using the `peridio.json` configuration file in the support directory. For testing you can modify this as you please. It is configured by default to allow testing for the remote shell and even firmware updates using deployments. You can create firmware to test for deployments using the following:
 
 ```bash

@@ -179,7 +179,10 @@ defmodule Peridiod.Socket do
         %{"tunnel_prn" => tunnel_prn} = payload,
         %{assigns: %{remote_access_tunnels: %{enabled: false}}} = socket
       ) do
-    Logger.warning("Remote Access Tunnel requested but not enabled on the device: #{inspect(payload)}")
+    Logger.warning(
+      "Remote Access Tunnel requested but not enabled on the device: #{inspect(payload)}"
+    )
+
     Peridiod.Tunnel.close_request(socket.assigns.sdk_client, tunnel_prn, "feature_not_enabled")
     {:ok, socket}
   end
@@ -192,13 +195,21 @@ defmodule Peridiod.Socket do
       ) do
     dport = request["device_tunnel_port"] || 22
     service_ports = socket.assigns.remote_access_tunnels.service_ports
+
     if dport in service_ports do
-      Peridiod.Tunnel.create(socket.assigns.sdk_client, tunnel_prn, dport, socket.assigns.remote_access_tunnels)
+      Peridiod.Tunnel.create(
+        socket.assigns.sdk_client,
+        tunnel_prn,
+        dport,
+        socket.assigns.remote_access_tunnels
+      )
     else
-      Logger.warning("Remote Access Tunnel requested for port #{dport} but not enabled in service port list: #{inspect(service_ports)}")
+      Logger.warning(
+        "Remote Access Tunnel requested for port #{dport} but not enabled in service port list: #{inspect(service_ports)}"
+      )
+
       Peridiod.Tunnel.close_request(socket.assigns.sdk_client, tunnel_prn, "dport_not_allowed")
     end
-
 
     {:ok, socket}
   end

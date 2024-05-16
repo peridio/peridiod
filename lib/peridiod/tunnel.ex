@@ -66,7 +66,10 @@ defmodule Peridiod.Tunnel do
   end
 
   def close_request(client, tunnel_prn, reason) do
-    PeridioSDK.DeviceAPI.Tunnels.update(client, tunnel_prn, %{state: "closed", close_reason: reason})
+    PeridioSDK.DeviceAPI.Tunnels.update(client, tunnel_prn, %{
+      state: "closed",
+      close_reason: reason
+    })
   end
 
   defimpl Jason.Encoder, for: Range do

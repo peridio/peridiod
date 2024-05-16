@@ -191,7 +191,9 @@ defmodule Peridiod.Configurator do
         type ->
           error("Unknown key pair type: #{type}")
       end
+
     adapter = {Tesla.Adapter.Mint, transport_opts: config.ssl}
+
     sdk_client =
       PeridioSDK.Client.new(
         device_api_host: "https://#{config.device_api_host}",
