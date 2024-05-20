@@ -221,8 +221,10 @@ defmodule Peridiod.Configurator do
 
     %{
       enabled: rat_config_file["enabled"] || rat_config[:enabled] || false,
-      port_range: rat_config_file["port_range"] || rat_config[:port_range] |> encode_port_range(),
-      ipv4_cidrs: rat_config_file["ipv4_cidrs"] || rat_config[:ipv4_cidrs] |> encode_ipv4_cidrs(),
+      port_range:
+        (rat_config_file["port_range"] || rat_config[:port_range]) |> encode_port_range(),
+      ipv4_cidrs:
+        (rat_config_file["ipv4_cidrs"] || rat_config[:ipv4_cidrs]) |> encode_ipv4_cidrs(),
       service_ports: rat_config_file["service_ports"] || rat_config[:service_ports] || [],
       persistent_keepalive:
         rat_config_file["persistent_keepalive"] || rat_config[:persistent_keepalive] || 25,
