@@ -190,7 +190,7 @@ defmodule Peridiod.Socket do
   def handle_message(
         @device_topic,
         "tunnel_request",
-        %{"tunnel_prn" => tunnel_prn, "device_tunnel_port" => dport} = request,
+        %{"tunnel_prn" => tunnel_prn, "device_tunnel_port" => dport},
         socket
       ) do
     service_ports = socket.assigns.remote_access_tunnels.service_ports
