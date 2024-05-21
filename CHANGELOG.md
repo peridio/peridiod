@@ -1,5 +1,17 @@
 # peridiod releases
 
+## v2.5.0
+
+* Enhancements
+  * Add support for choosing between IEx and getty remote shell
+    * `remote_iex: true | false`: Enable / disable the remote console using IEx shell. Useful for Nerves based applications. Setting this to true will take precedence over `remote_shell`.
+    * `remote_shell: true | false`. Enable / disable the remote console using a terminal Getty. Useful for all other embedded linux based systems. Requires `socat` to be available on the target.
+  * Add support for Remote Access Tunnels. Using this feature will require a Peridio Cloud account with the feature enabled. Contact support@peridio.com for more information.
+  * Added support for configuring `peridiod` as an elixir dependency. This is useful if you are consuming `peridiod` as a dependency in a Nerves based application.
+  * Configuration will default to reasonable default values if they are unspecified.
+  * Added config key `fwup_env: {"KEY": "value", "KEY2": "value2"}`. These key value pairs will be exported into the environment that `fwup` is applied in. This is useful if you need to pass extra arguments passed through the environment.
+  * Added config key `fwup_extra_args: ["--unsafe"]`. Useful if you need to pass extra args to `fwup` such as the `--unsafe` flag.
+
 ## v2.4.2
 
 * Bug fixes
