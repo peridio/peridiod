@@ -1,5 +1,10 @@
 # peridiod releases
 
+## v2.5.1
+
+* Bug fixes
+  * Device was unable to call tunnel update api properly.
+
 ## v2.5.0
 
 * Enhancements
