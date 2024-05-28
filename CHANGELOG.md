@@ -1,5 +1,10 @@
 # peridiod releases
 
+## v2.5.2
+
+* Enhancement
+  * Update `key_pair_source` modules `env` and `uboot` to try to decode base64 values
+
 ## v2.5.1
 
 * Bug fixes
