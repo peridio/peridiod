@@ -1,9 +1,11 @@
 defmodule Peridiod.Configurator.UBootEnv do
   require Logger
 
+  import Peridiod.Utils, only: [try_base64_decode: 1]
+
   def config(%{"private_key" => key, "certificate" => cert}, base_config) do
-    key_pem = Peridiod.KV.get(key)
-    cert_pem = Peridiod.KV.get(cert)
+    key_pem = Peridiod.KV.get(key) |> try_base64_decode()
+    cert_pem = Peridiod.KV.get(cert) |> try_base64_decode()
 
     ssl_opts =
       base_config.ssl

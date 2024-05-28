@@ -1,9 +1,11 @@
 defmodule Peridiod.Configurator.Env do
   require Logger
 
+  import Peridiod.Utils, only: [try_base64_decode: 1]
+
   def config(%{"private_key" => key, "certificate" => cert}, base_config) do
-    key_pem = System.fetch_env!(key)
-    cert_pem = System.fetch_env!(cert)
+    key_pem = System.fetch_env!(key) |> try_base64_decode()
+    cert_pem = System.fetch_env!(cert) |> try_base64_decode()
 
     ssl_opts =
       base_config.ssl
