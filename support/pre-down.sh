@@ -30,7 +30,7 @@ echo "Current counter value: $COUNTER"
 if [ "$COUNTER" -le 0 ]; then
   case $DPORT in
     22)
-      service ssh stop
+      killall sshd
       ;;
     *)
       ;;

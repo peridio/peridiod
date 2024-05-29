@@ -22,7 +22,7 @@ COUNTER=$(cat "$COUNTER_FILE")
 if [ "$COUNTER" -le 0 ]; then
   case $DPORT in
     22)
-      service ssh start
+      exec /usr/sbin/sshd
       ;;
     *)
       ;;

@@ -1,28 +1,28 @@
-FROM hexpm/elixir:1.16.2-erlang-26.2.5-ubuntu-noble-20240429 AS build
+FROM elixir:1.16.2-alpine AS build
 
 ARG MIX_ENV=prod
 ARG UBOOT_ENV_SIZE=0x20000
-ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update \
-    && apt-get install -y \
-    git make build-essential \
+RUN apk add --no-cache \
+    linux-headers \
+    build-base \
+    gcc \
+    automake \
     u-boot-tools \
     libsodium-dev \
-    autotools-dev \
     autoconf \
     libtool \
-    pkg-config \
     libarchive-dev \
-    libconfuse-dev \
-    zlib1g-dev \
+    confuse-dev \
     xdelta3 \
     dosfstools \
     help2man \
     curl \
     mtools \
     unzip \
-    zip
+    zip \
+    make \
+    git
 
 RUN mix archive.install github hexpm/hex branch latest --force
 RUN /usr/local/bin/mix local.rebar --force
@@ -51,28 +51,23 @@ RUN fwup -a -t complete -i support/peridiod.fw -d support/peridiod.img
 RUN mix deps.get --only $MIX_ENV
 RUN mix release --overwrite
 
-FROM ubuntu:noble as app
+FROM alpine:3.20 as app
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update \
-    && apt-get -y install \
-    locales \
+RUN apk add --no-cache \
+    agetty \
+    confuse \
+    libarchive \
+    libstdc++ \
+    libgcc \
     socat \
-    libconfuse-dev \
-    libarchive-dev \
     iproute2  \
     iptables \
-    wireguard \
-    openssh-server \
-    && apt-get clean
-RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
-    locale-gen
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
+    wireguard-tools-wg-quick \
+    openssh-server
 
-RUN useradd -ms /bin/bash peridio
+RUN ssh-keygen -A
+RUN addgroup "peridio"
+RUN adduser --disabled-password --ingroup "peridio" "peridio"
 RUN echo "peridio:peridio" | chpasswd
 
 ENV PERIDIO_CONFIG_FILE=/etc/peridiod/peridio.json

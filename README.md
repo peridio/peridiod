@@ -124,20 +124,20 @@ config :peridiod,
   remote_iex: true,
 ```
 
-## Running with Docker
+## Running with a container orchestrator
 
-You can debug using docker by generating an SSL certificate and private key pair that is trusted by Peridio Cloud and pass it into the container.
+You can debug using {podman | docker} by generating an SSL certificate and private key pair that is trusted by Peridio Cloud and pass it into the container.
 
 Building the container:
 
 ```bash
-docker build --tag peridio/peridiod .
+podman build --tag peridio/peridiod .
 ```
 
 Running the container:
 
 ```bash
-podman run -it --rm --env PERIDIO_CERTIFICATE="$(cat /path/to/end-entity-certificate.pem)" --env PERIDIO_PRIVATE_KEY="$(cat /path/to/end-entity-private-key.pem)" --cap-add=NET_ADMIN peridio/peridiod:latest
+podman run -it --rm --env PERIDIO_CERTIFICATE="$(base64 -w 0 device-certificate.pem)" --env PERIDIO_PRIVATE_KEY="$(base64 -w 0 device-private-key.pem)" --cap-add=NET_ADMIN peridio/peridiod:latest
 ```
 
 The `--cap-add=NET_ADMIN` is required for testing remote access tunnels. This is required because peridiod will create new wireguard network interfaces and needs to execute commands with iptables. If this flag is omitted, the feature will not function properly.
@@ -148,8 +148,8 @@ The container will be built using the `peridio.json` configuration file in the s
 PERIDIO_META_PRODUCT=peridiod \
 PERIDIO_META_DESCRIPTION=peridiod-dev \
 PERIDIO_META_VERSION=1.0.1 \
-PERIDIO_META_PLATFORM=docker \
-PERIDIO_META_ARCHITECTURE=docker \
+PERIDIO_META_PLATFORM=container \
+PERIDIO_META_ARCHITECTURE=aarch64 \
 PERIDIO_META_AUTHOR=peridio \
 fwup -c -f support/fwup.conf -o support/peridiod.fw
 ```
