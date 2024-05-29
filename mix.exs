@@ -26,7 +26,7 @@ defmodule Peridiod.MixProject do
       {:extty, "~> 0.2"},
       {:peridio_rat, github: "peridio/peridio-rat", branch: "main"},
       {:peridio_sdk, github: "peridio/peridio-elixir", branch: "main"},
-      {:muontrap, "~> 1.3"},
+      {:erlexec, github: "peridio/erlexec"},
       {:circuits_uart, "~> 1.5"},
       {:castore, "~> 1.0"},
       {:jason, "~> 1.0"},

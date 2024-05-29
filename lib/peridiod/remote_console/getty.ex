@@ -53,9 +53,9 @@ defmodule Peridiod.RemoteConsole.Getty do
 
   @impl true
   def handle_info(:start, %{status: :starting, pty_pid: nil, tty_pair: {tty_l, tty_h}} = state) do
-    {:ok, pid} = start_pty(tty_l, tty_h)
+    {:ok, pty_pid, sys_pid} = start_pty(tty_l, tty_h)
     send(self(), :start)
-    {:noreply, %{state | pty_pid: pid}}
+    {:noreply, %{state | pty_pid: {pty_pid, sys_pid}}}
   end
 
   def handle_info(:start, %{status: :starting, getty_pid: nil, tty_pair: {tty_l, tty_h}} = state) do
@@ -63,11 +63,10 @@ defmodule Peridiod.RemoteConsole.Getty do
 
     case File.exists?(file) do
       true ->
-        {:ok, getty_pid} = start_getty(tty_l)
-        Process.monitor(getty_pid)
+        {:ok, getty_pid, sys_pid} = start_getty(tty_l)
         {:ok, uart_pid} = start_uart(tty_h)
         send(self(), :start)
-        {:noreply, %{state | getty_pid: getty_pid, uart_pid: uart_pid}}
+        {:noreply, %{state | getty_pid: {getty_pid, sys_pid}, uart_pid: uart_pid}}
 
       false ->
         Process.send_after(self(), :start, 100)
@@ -87,40 +86,32 @@ defmodule Peridiod.RemoteConsole.Getty do
 
   def handle_info(
         {:DOWN, _, _, getty_pid, _},
-        %{getty_pid: getty_pid, tty_pair: {tty_l, _}} = state
+        %{getty_pid: {getty_pid, _}, tty_pair: {tty_l, _}} = state
       ) do
-    {:ok, getty_pid} = start_getty(tty_l)
-    Process.monitor(getty_pid)
-    {:noreply, %{state | getty_pid: getty_pid}}
+    {:ok, getty_pid, sys_pid} = start_getty(tty_l)
+    {:noreply, %{state | getty_pid: {getty_pid, sys_pid}}}
   end
 
-  def handle_info(:timeout, state) do
-    GenServer.stop(state.getty_pid)
+  def handle_info(:timeout, %{getty_pid: {_, getty_pid}, pty_pid: {_, pty_pid}} = state) do
+    :exec.stop(getty_pid)
     GenServer.stop(state.uart_pid)
-    GenServer.stop(state.pty_pid)
+    :exec.stop(pty_pid)
     send(state.callback, {:remote_console, self(), :timeout})
     {:stop, :normal, state}
   end
 
-  defp start_getty(tty_l) do
-    MuonTrap.Daemon.start_link("setsid", [
-      "/sbin/agetty",
-      "-o",
-      "-p -- \\u",
-      "--keep-baud",
-      "115200",
-      tty_l,
-      System.get_env("TERM", "linux")
-    ])
+  def start_getty(tty_l) do
+    :exec.run(
+      ~c"setsid /sbin/agetty -o '-p -- \\u' --keep-baud 115200 #{tty_l} #{System.get_env("TERM", "linux")}",
+      [:monitor]
+    )
   end
 
-  defp start_pty(tty_l, tty_h) do
-    MuonTrap.Daemon.start_link("socat", [
-      "-d",
-      "-d",
-      "PTY,raw,echo=0,link=/dev/#{tty_l}",
-      "PTY,raw,echo=0,link=/dev/#{tty_h}"
-    ])
+  def start_pty(tty_l, tty_h) do
+    :exec.run(
+      ~c"socat -d -d PTY,raw,echo=0,link=/dev/#{tty_l} PTY,raw,echo=0,link=/dev/#{tty_h}",
+      [:monitor]
+    )
   end
 
   defp start_uart(tty_h) do
