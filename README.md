@@ -131,13 +131,21 @@ You can debug using {podman | docker} by generating an SSL certificate and priva
 Building the container:
 
 ```bash
-podman build --tag peridio/peridiod .
+podman build --tag peridio/peridiod --build-arg PERIDIO_META_ARCHITECTURE=$(uname -m) --build-arg PERIDIO_META_VERSION=$(cat VERSION | tr -d '\n') .
 ```
 
 Running the container:
 
+You can pass the device certificate and private key directly:
+
 ```bash
 podman run -it --rm --env PERIDIO_CERTIFICATE="$(base64 -w 0 device-certificate.pem)" --env PERIDIO_PRIVATE_KEY="$(base64 -w 0 device-private-key.pem)" --cap-add=NET_ADMIN peridio/peridiod:latest
+```
+
+You can pass a signing certificate and private key to generate a device identity and JITP:
+
+```bash
+podman run -it --rm --env PERIDIO_SIGNING_CERTIFICATE="$(base64 -w 0 signing-certificate.pem)" --env PERIDIO_SIGNING_PRIVATE_KEY="$(base64 -w 0 signing-private-key.pem)" --cap-add=NET_ADMIN peridio/peridiod:latest
 ```
 
 The `--cap-add=NET_ADMIN` is required for testing remote access tunnels. This is required because peridiod will create new wireguard network interfaces and needs to execute commands with iptables. If this flag is omitted, the feature will not function properly.
@@ -146,10 +154,10 @@ The container will be built using the `peridio.json` configuration file in the s
 
 ```bash
 PERIDIO_META_PRODUCT=peridiod \
-PERIDIO_META_DESCRIPTION=peridiod-dev \
+PERIDIO_META_DESCRIPTION=peridiod \
 PERIDIO_META_VERSION=1.0.1 \
 PERIDIO_META_PLATFORM=container \
-PERIDIO_META_ARCHITECTURE=aarch64 \
+PERIDIO_META_ARCHITECTURE=$(uname -m) \
 PERIDIO_META_AUTHOR=peridio \
 fwup -c -f support/fwup.conf -o support/peridiod.fw
 ```

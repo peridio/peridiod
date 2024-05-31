@@ -1,0 +1,21 @@
+version: '3.9'
+
+services:
+  device:
+    image: peridio/peridiod:latest
+    cap_add:
+      - NET_ADMIN
+    deploy:
+        replicas: 1
+        restart_policy:
+          condition: on-failure
+    environment:
+      - PERIDIO_SIGNING_CERTIFICATE
+      - PERIDIO_SIGNING_PRIVATE_KEY
+      - PERIDIO_DEVICE_ID
+      - PERIDIO_VALID_DAYS
+    networks:
+      - devicenet
+
+networks:
+  devicenet:

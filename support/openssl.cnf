@@ -1,0 +1,47 @@
+#
+# ca
+#
+
+[ ca ]
+default_ca=default_ca
+
+[ default_ca ]
+database=database.txt
+default_days=0
+default_md=SHA256
+email_in_dn=no
+new_certs_dir=certificates
+policy=default_policy
+rand_serial=yes
+unique_subject=no
+x509_extensions=root_certificate_authority_extensions
+
+[ default_policy ]
+countryName            = optional
+stateOrProvinceName    = optional
+organizationName       = optional
+organizationalUnitName = optional
+commonName             = supplied
+
+#
+# extensions
+#
+
+[ root_certificate_authority_extensions ]
+basicConstraints=critical,CA:TRUE,pathlen:1
+extendedKeyUsage=serverAuth,clientAuth
+keyUsage=critical,digitalSignature,keyCertSign,cRLSign
+subjectKeyIdentifier=hash
+
+[ intermediate_certificate_authority_extensions ]
+authorityKeyIdentifier=keyid:always
+basicConstraints=critical,CA:TRUE,pathlen:0
+extendedKeyUsage=serverAuth,clientAuth
+keyUsage=critical,digitalSignature,keyCertSign,cRLSign
+subjectKeyIdentifier=hash
+
+[ end_entity_certificate_extensions ]
+authorityKeyIdentifier=keyid:always
+extendedKeyUsage=clientAuth
+keyUsage=critical,digitalSignature
+subjectKeyIdentifier=hash

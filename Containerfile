@@ -2,6 +2,12 @@ FROM elixir:1.16.2-alpine AS build
 
 ARG MIX_ENV=prod
 ARG UBOOT_ENV_SIZE=0x20000
+ARG PERIDIO_META_PRODUCT=peridiod
+ARG PERIDIO_META_DESCRIPTION=peridiod
+ARG PERIDIO_META_VERSION
+ARG PERIDIO_META_PLATFORM=alpine
+ARG PERIDIO_META_ARCHITECTURE
+ARG PERIDIO_META_AUTHOR=peridio
 
 RUN apk add --no-cache \
     linux-headers \
@@ -40,12 +46,12 @@ WORKDIR /opt/app
 
 RUN echo "/etc/peridiod/uboot.env 0x0000 ${UBOOT_ENV_SIZE}" > /opt/app/support/fw_env.config
 RUN mkenvimage -s ${UBOOT_ENV_SIZE} -o /opt/app/support/uboot.env /opt/app/support/uEnv.txt
-RUN PERIDIO_META_PRODUCT=peridiod \
-    PERIDIO_META_DESCRIPTION=peridiod-dev \
-    PERIDIO_META_VERSION=1.0.0 \
-    PERIDIO_META_PLATFORM=docker \
-    PERIDIO_META_ARCHITECTURE=docker \
-    PERIDIO_META_AUTHOR=peridio \
+RUN PERIDIO_META_PRODUCT=${PERIDIO_META_PRODUCT} \
+    PERIDIO_META_DESCRIPTION=${PERIDIO_META_DESCRIPTION} \
+    PERIDIO_META_VERSION=${PERIDIO_META_VERSION} \
+    PERIDIO_META_PLATFORM=${PERIDIO_META_PLATFORM} \
+    PERIDIO_META_ARCHITECTURE=${PERIDIO_META_ARCHITECTURE} \
+    PERIDIO_META_AUTHOR=${PERIDIO_META_AUTHOR} \
     fwup -c -f support/fwup.conf -o support/peridiod.fw
 RUN fwup -a -t complete -i support/peridiod.fw -d support/peridiod.img
 RUN mix deps.get --only $MIX_ENV
@@ -62,8 +68,11 @@ RUN apk add --no-cache \
     socat \
     iproute2  \
     iptables \
+    uuidgen \
+    openssl \
     wireguard-tools-wg-quick \
-    openssh-server
+    openssh-server \
+    coreutils
 
 RUN ssh-keygen -A
 RUN addgroup "peridio"
@@ -87,4 +96,11 @@ COPY --from=build /opt/app/support/pre-down.sh /etc/peridiod/hooks/pre-down.sh
 COPY --from=build /opt/fwup/src/fwup /usr/bin/fwup
 
 WORKDIR /opt/peridiod
+
+COPY --from=build /opt/app/support/entrypoint.sh entrypoint.sh
+COPY --from=build /opt/app/support/openssl.cnf openssl.cnf
+RUN chmod +x entrypoint.sh
+
+ENTRYPOINT ["/opt/peridiod/entrypoint.sh"]
+
 CMD ["/opt/peridiod/bin/peridiod", "start_iex"]
