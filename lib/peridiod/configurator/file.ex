@@ -1,6 +1,15 @@
 defmodule Peridiod.Configurator.File do
   require Logger
 
+  def config(%{"certificate_path" => nil, "private_key_path" => nil}, base_config) do
+    Logger.error("""
+    Unable to set identity using file paths.
+    Variables are unset. Check your peridiod configuration.
+    """)
+
+    base_config
+  end
+
   def config(%{"certificate_path" => cert_path, "private_key_path" => key_path}, base_config) do
     ssl_opts =
       base_config.ssl

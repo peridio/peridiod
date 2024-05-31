@@ -107,7 +107,7 @@ defmodule Peridiod.Configurator do
       config
     else
       {:error, e} ->
-        error(%{message: "unable to read peridio config file", file_read_error: e})
+        warn(%{message: "unable to read peridio config file", file_read_error: e})
         %{}
     end
   end

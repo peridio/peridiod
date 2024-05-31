@@ -15,6 +15,14 @@ defmodule Peridiod.Configurator.UBootEnv do
     %{base_config | ssl: ssl_opts}
   end
 
+  def config(_, base_config) do
+    Logger.error(
+      "key_pair_source uboot-env requires private_key and certificate to be passed as key_pair_options"
+    )
+
+    base_config
+  end
+
   defp cert_pem_to_der(cert_pem) do
     case X509.Certificate.from_pem(cert_pem) do
       {:ok, cert_erl} ->

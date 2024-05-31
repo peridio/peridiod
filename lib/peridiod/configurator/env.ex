@@ -3,10 +3,40 @@ defmodule Peridiod.Configurator.Env do
 
   import Peridiod.Utils, only: [try_base64_decode: 1]
 
-  def config(%{"private_key" => key, "certificate" => cert}, base_config) do
-    key_pem = System.fetch_env!(key) |> try_base64_decode()
-    cert_pem = System.fetch_env!(cert) |> try_base64_decode()
+  def config(%{"private_key" => nil, "certificate" => nil}, base_config) do
+    Logger.error("""
+    Unable to set identity using Environmenmt variables.
+    Variables are unset. Check your peridiod configuration.
+    """)
 
+    base_config
+  end
+
+  def config(%{"private_key" => key, "certificate" => cert}, base_config) do
+    with {:ok, key} <- System.fetch_env(key),
+         {:ok, cert} <- System.fetch_env(cert) do
+      key_pem = try_base64_decode(key)
+      cert_pem = try_base64_decode(cert)
+      set_ssl_opts(cert_pem, key_pem, base_config)
+    else
+      _e ->
+        Logger.error("""
+        Unset error fetching the key / certificate from the environment")
+          key:  #{key}
+          cert: #{cert}
+        """)
+    end
+  end
+
+  def config(_, base_config) do
+    Logger.error(
+      "key_pair_source env requires private_key and certificate to be passed as key_pair_options"
+    )
+
+    base_config
+  end
+
+  defp set_ssl_opts(cert_pem, key_pem, base_config) do
     ssl_opts =
       base_config.ssl
       |> Keyword.put(:cert, cert_pem_to_der(cert_pem))
