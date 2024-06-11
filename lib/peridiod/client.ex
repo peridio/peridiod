@@ -39,7 +39,7 @@ defmodule Peridiod.Client do
   require Logger
 
   @typedoc "Update that comes over a socket."
-  @type update_data :: PeridiodCommon.Message.UpdateInfo.t()
+  @type update_data :: Peridiod.Distribution.t()
 
   @typedoc "Supported responses from `update_available/1`"
   @type update_response :: :apply | :ignore | {:reschedule, pos_integer()}
@@ -121,10 +121,10 @@ defmodule Peridiod.Client do
     # TODO: nasty side effects here. Consider moving somewhere else
     case data do
       {:progress, percent} ->
-        Peridiod.send_update_progress(percent)
+        Peridiod.send_distribution_progress(percent)
 
       {:error, _, message} ->
-        Peridiod.send_update_status("fwup error #{message}")
+        Peridiod.send_distribution_status("fwup error #{message}")
 
       {:ok, 0, _message} ->
         initiate_reboot()
