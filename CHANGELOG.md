@@ -1,5 +1,11 @@
 # peridiod releases
 
+## v2.5.3
+
+* Bug fixes
+  * Add additional safety around app start so errors can be presented
+  * Fix remote_shell to support Alpine Linux
+
 ## v2.5.2
 
 * Enhancement
