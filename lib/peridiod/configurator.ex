@@ -17,7 +17,7 @@ defmodule Peridiod.Configurator do
               device_api_verify: :verify_peer,
               device_api_ca_certificate_path: nil,
               key_pair_source: "env",
-              key_pair_config: %{"private_key" => nil, "certificate" => nil},
+              key_pair_config: nil,
               fwup_public_keys: [],
               fwup_devpath: "/dev/mmcblk0",
               fwup_env: [],
@@ -26,6 +26,10 @@ defmodule Peridiod.Configurator do
               remote_shell: false,
               remote_iex: false,
               remote_access_tunnels: %{},
+              release_poll_interval: 300_000,
+              release_prn: nil,
+              release_version: nil,
+              releases_enabled: false,
               socket: [],
               ssl: [],
               sdk_client: nil
@@ -44,6 +48,10 @@ defmodule Peridiod.Configurator do
             remote_iex: boolean,
             remote_shell: boolean,
             remote_access_tunnels: map(),
+            release_poll_interval: non_neg_integer(),
+            release_prn: String.t(),
+            release_version: String.t(),
+            releases_enabled: boolean,
             socket: any(),
             ssl: [:ssl.tls_client_option()],
             sdk_client: %{}
@@ -198,8 +206,8 @@ defmodule Peridiod.Configurator do
       PeridioSDK.Client.new(
         device_api_host: "https://#{config.device_api_host}",
         adapter: adapter,
-        release_prn: "",
-        release_version: ""
+        release_prn: config.release_prn ||  Peridiod.KV.get("peridio_release_prn"),
+        release_version: config.release_version ||  Peridiod.KV.get("peridio_release_version")
       )
 
     Map.put(config, :sdk_client, sdk_client)

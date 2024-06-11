@@ -3,7 +3,7 @@ defmodule Peridiod.Socket do
   require Logger
 
   alias Peridiod.Client
-  alias Peridiod.UpdateManager
+  alias Peridiod.DistributionManager
   alias Peridiod.Configurator
   alias Peridiod.RemoteConsole
 
@@ -78,7 +78,7 @@ defmodule Peridiod.Socket do
 
   @impl Slipstream
   def handle_connect(socket) do
-    currently_downloading_uuid = UpdateManager.currently_downloading_uuid()
+    currently_downloading_uuid = DistributionManager.currently_downloading_uuid()
 
     device_join_params =
       socket.assigns.params
@@ -162,9 +162,9 @@ defmodule Peridiod.Socket do
   end
 
   def handle_message(@device_topic, "update", update, socket) do
-    case Peridiod.Message.UpdateInfo.parse(update) do
-      {:ok, %Peridiod.Message.UpdateInfo{} = info} ->
-        _ = UpdateManager.apply_update(info)
+    case Peridiod.Message.DistributionInfo.parse(update) do
+      {:ok, %Peridiod.Message.DistributionInfo{} = info} ->
+        _ = DistributionManager.apply_update(info)
         {:ok, socket}
 
       error ->
@@ -340,9 +340,9 @@ defmodule Peridiod.Socket do
   end
 
   defp handle_join_reply(%{"firmware_url" => url} = update) when is_binary(url) do
-    case Peridiod.Message.UpdateInfo.parse(update) do
-      {:ok, %Peridiod.Message.UpdateInfo{} = info} ->
-        UpdateManager.apply_update(info)
+    case Peridiod.Message.DistributionInfo.parse(update) do
+      {:ok, %Peridiod.Message.DistributionInfo{} = info} ->
+        DistributionManager.apply_update(info)
 
       error ->
         Logger.error("Error parsing update data: #{inspect(update)} error: #{inspect(error)}")

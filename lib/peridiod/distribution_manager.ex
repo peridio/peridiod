@@ -1,4 +1,4 @@
-defmodule Peridiod.UpdateManager do
+defmodule Peridiod.DistributionManager do
   @moduledoc """
   GenServer responsible for brokering messages between:
     * an external controlling process
@@ -9,16 +9,17 @@ defmodule Peridiod.UpdateManager do
   """
   use GenServer
 
-  alias Peridiod.{Downloader, FwupConfig, Configurator, Client}
-  alias Peridiod.Message.UpdateInfo
+  alias Peridiod.{Downloader, Configurator, Client}
+  alias Peridiod.Artifact.Adapter.Fwup
+  alias Peridiod.Message.DistributionInfo
 
   require Logger
 
   defmodule State do
     @moduledoc """
-    Structure for the state of the `UpdateManager` server.
+    Structure for the state of the `DistributionManager` server.
     Contains types that describe status and different states the
-    `UpdateManager` can be in
+    `DistributionManager` can be in
     """
 
     @type status ::
@@ -32,8 +33,8 @@ defmodule Peridiod.UpdateManager do
             update_reschedule_timer: nil | :timer.tref(),
             download: nil | GenServer.server(),
             fwup: nil | GenServer.server(),
-            fwup_config: FwupConfig.t(),
-            update_info: nil | UpdateInfo.t()
+            fwup_config: Fwup.Config.t(),
+            distribution_info: nil | DistributionInfo.t()
           }
 
     defstruct status: :idle,
@@ -41,16 +42,16 @@ defmodule Peridiod.UpdateManager do
               fwup: nil,
               download: nil,
               fwup_config: nil,
-              update_info: nil
+              distribution_info: nil
   end
 
   @doc """
   Must be called when an update payload is dispatched from
   Peridio. the map must contain a `"firmware_url"` key.
   """
-  @spec apply_update(GenServer.server(), UpdateInfo.t()) :: State.status()
-  def apply_update(manager \\ __MODULE__, %UpdateInfo{} = update_info) do
-    GenServer.call(manager, {:apply_update, update_info})
+  @spec apply_update(GenServer.server(), DistributionInfo.t()) :: State.status()
+  def apply_update(manager \\ __MODULE__, %DistributionInfo{} = distribution_info) do
+    GenServer.call(manager, {:apply_update, distribution_info})
   end
 
   @doc """
@@ -104,31 +105,31 @@ defmodule Peridiod.UpdateManager do
   def init(nil) do
     config = Configurator.get_config()
 
-    fwup_config = %FwupConfig{
+    fwup_config = %Fwup.Config{
       fwup_public_keys: config.fwup_public_keys,
       fwup_devpath: config.fwup_devpath,
-      fwup_env: FwupConfig.parse_fwup_env(config.fwup_env),
+      fwup_env: Fwup.Config.parse_fwup_env(config.fwup_env),
       fwup_extra_args: config.fwup_extra_args,
       handle_fwup_message: &Client.handle_fwup_message/1,
       update_available: &Client.update_available/1
     }
 
-    fwup_config = FwupConfig.validate!(fwup_config)
+    fwup_config = Fwup.Config.validate!(fwup_config)
     {:ok, %State{fwup_config: fwup_config}}
   end
 
   @impl GenServer
-  def handle_call({:apply_update, %UpdateInfo{} = update}, _from, %State{} = state) do
-    state = maybe_update_firmware(update, state)
+  def handle_call({:apply_update, %DistributionInfo{} = distribution_info}, _from, %State{} = state) do
+    state = maybe_update_firmware(distribution_info, state)
     {:reply, state.status, state}
   end
 
-  def handle_call(:currently_downloading_uuid, _from, %State{update_info: nil} = state) do
+  def handle_call(:currently_downloading_uuid, _from, %State{distribution_info: nil} = state) do
     {:reply, nil, state}
   end
 
   def handle_call(:currently_downloading_uuid, _from, %State{} = state) do
-    {:reply, state.update_info.firmware_meta.uuid, state}
+    {:reply, state.distribution_info.firmware_meta.uuid, state}
   end
 
   def handle_call(:status, _from, %State{} = state) do
@@ -161,7 +162,7 @@ defmodule Peridiod.UpdateManager do
     case message do
       {:ok, 0, _message} ->
         Logger.info("[Peridiod] FWUP Finished")
-        {:noreply, %State{state | fwup: nil, update_info: nil, status: :idle}}
+        {:noreply, %State{state | fwup: nil, distribution_info: nil, status: :idle}}
 
       {:progress, percent} ->
         {:noreply, %State{state | status: {:updating, percent}}}
@@ -191,9 +192,9 @@ defmodule Peridiod.UpdateManager do
     {:noreply, state}
   end
 
-  @spec maybe_update_firmware(UpdateInfo.t(), State.t()) :: State.t()
+  @spec maybe_update_firmware(DistributionInfo.t(), State.t()) :: State.t()
   defp maybe_update_firmware(
-         %UpdateInfo{} = _update_info,
+         %DistributionInfo{} = _distribution_info,
          %State{status: {:updating, _percent}} = state
        ) do
     # Received an update message from Peridio, but we're already in progress.
@@ -205,7 +206,7 @@ defmodule Peridiod.UpdateManager do
     state
   end
 
-  defp maybe_update_firmware(%UpdateInfo{} = update_info, %State{} = state) do
+  defp maybe_update_firmware(%DistributionInfo{} = distribution_info, %State{} = state) do
     # Cancel an existing timer if it exists.
     # This prevents rescheduled updates`
     # from compounding.
@@ -215,15 +216,15 @@ defmodule Peridiod.UpdateManager do
     # This will allow application developers
     # to control exactly when an update is applied.
     # note: update_available is a behaviour function
-    case state.fwup_config.update_available.(update_info) do
+    case state.fwup_config.update_available.(distribution_info) do
       :apply ->
-        start_fwup_stream(update_info, state)
+        start_fwup_stream(distribution_info, state)
 
       :ignore ->
         state
 
       {:reschedule, ms} ->
-        timer = Process.send_after(self(), {:update_reschedule, update_info}, ms)
+        timer = Process.send_after(self(), {:update_reschedule, distribution_info}, ms)
         Logger.info("[Peridiod] rescheduling firmware update in #{ms} milliseconds")
         %{state | status: :update_rescheduled, update_reschedule_timer: timer}
     end
@@ -239,28 +240,28 @@ defmodule Peridiod.UpdateManager do
     %{state | update_reschedule_timer: nil}
   end
 
-  @spec start_fwup_stream(UpdateInfo.t(), State.t()) :: State.t()
-  defp start_fwup_stream(%UpdateInfo{} = update_info, state) do
+  @spec start_fwup_stream(DistributionInfo.t(), State.t()) :: State.t()
+  defp start_fwup_stream(%DistributionInfo{} = distribution_info, state) do
     pid = self()
     fun = &send(pid, {:download, &1})
-    {:ok, download} = Downloader.start_download(update_info.firmware_url, fun)
+    {:ok, download} = Downloader.start_download(distribution_info.firmware_url, fun)
 
     {:ok, fwup} =
       Fwup.stream(pid, fwup_args(state.fwup_config), fwup_env: state.fwup_config.fwup_env)
 
-    Logger.info("[Peridiod] Downloading firmware: #{update_info.firmware_url}")
+    Logger.info("[Peridiod] Downloading firmware: #{distribution_info.firmware_url}")
 
     %State{
       state
       | status: {:updating, 0},
         download: download,
         fwup: fwup,
-        update_info: update_info
+        distribution_info: distribution_info
     }
   end
 
-  @spec fwup_args(FwupConfig.t()) :: [String.t()]
-  defp fwup_args(%FwupConfig{} = config) do
+  @spec fwup_args(Fwup.Config.t()) :: [String.t()]
+  defp fwup_args(%Fwup.Config{} = config) do
     args =
       [
         "--apply",

@@ -23,8 +23,8 @@ defmodule Peridiod do
   @doc """
   Current status of the update manager
   """
-  @spec status :: Peridiod.UpdateManager.State.status()
-  defdelegate status(), to: Peridiod.UpdateManager
+  @spec status :: Peridiod.DistributionManager.State.status()
+  defdelegate status(), to: Peridiod.DistributionManager
 
   @doc """
   Restart the socket and device channel

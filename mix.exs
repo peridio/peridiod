@@ -32,7 +32,6 @@ defmodule Peridiod.MixProject do
       {:circuits_uart, "~> 1.5"},
       {:castore, "~> 1.0"},
       {:jason, "~> 1.0"},
-      {:fwup, "~> 1.0"},
       {:hackney, "~> 1.10"},
       {:uboot_env, "~> 1.0"},
       {:slipstream, "~> 1.0 or ~> 0.8"},

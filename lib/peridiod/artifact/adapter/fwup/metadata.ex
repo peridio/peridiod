@@ -1,4 +1,4 @@
-defmodule Peridiod.Message.FirmwareMetadata do
+defmodule Peridiod.Artifact.Adapter.Fwup.Metadata do
   @moduledoc """
   Structure containing metadata about a firmware.
   """

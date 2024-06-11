@@ -2,11 +2,12 @@ defmodule Peridiod.Application do
   use Application
 
   alias Peridiod.{
+    KV,
     Configurator,
     Connection,
     Socket,
-    UpdateManager,
-    KV
+    DistributionManager,
+    ReleaseManager
   }
 
   def start(_type, _args) do
@@ -16,7 +17,8 @@ defmodule Peridiod.Application do
     children = [
       {KV, application_config},
       {Configurator, configurator_config},
-      UpdateManager,
+      DistributionManager,
+      ReleaseManager,
       Connection,
       Socket
     ]

@@ -1,9 +1,9 @@
-defmodule Peridiod.FwupConfig do
+defmodule Peridiod.Artifact.Adapter.Fwup.Config do
   @moduledoc """
   Config structure responsible for handling callbacks from FWUP,
   applying a fwupdate, and storing fwup task configuration
   """
-  alias Peridiod.Message.UpdateInfo
+  alias Peridiod.Message.DistributionInfo
 
   defstruct fwup_public_keys: [],
             fwup_devpath: "/dev/mmcblk0",
@@ -28,10 +28,10 @@ defmodule Peridiod.FwupConfig do
   @type handle_fwup_message_fun() :: (fwup_message -> any)
 
   @typedoc """
-  Called when an update has been dispatched via `Peridiod.UpdateManager.apply_update/2`
+  Called when an update has been dispatched via `Peridiod.DistributionManager.apply_update/2`
   """
   @type update_available_fun() ::
-          (UpdateInfo.t() -> :ignore | {:reschedule, timeout()} | :apply)
+          (DistributionInfo.t() -> :ignore | {:reschedule, timeout()} | :apply)
 
   @type t :: %__MODULE__{
           fwup_public_keys: [String.t()],

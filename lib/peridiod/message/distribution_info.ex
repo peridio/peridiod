@@ -1,7 +1,7 @@
-defmodule Peridiod.Message.UpdateInfo do
+defmodule Peridiod.Message.DistributionInfo do
   @moduledoc false
 
-  alias Peridiod.Message.FirmwareMetadata
+  alias Peridiod.Artifact.Adapter.Fwup
 
   defstruct [:firmware_url, :firmware_meta]
 
@@ -13,13 +13,13 @@ defmodule Peridiod.Message.UpdateInfo do
   """
   @type t() :: %__MODULE__{
           firmware_url: URI.t(),
-          firmware_meta: FirmwareMetadata.t()
+          firmware_meta: Fwup.Metadata.t()
         }
 
   @doc "Parse an update message from Peridio"
   @spec parse(map()) :: {:ok, t()} | {:error, :invalid_params}
   def parse(%{"firmware_meta" => %{} = meta, "firmware_url" => url}) do
-    with {:ok, firmware_meta} <- FirmwareMetadata.parse(meta) do
+    with {:ok, firmware_meta} <- Fwup.Metadata.parse(meta) do
       {:ok,
        %__MODULE__{
          firmware_url: URI.parse(url),
