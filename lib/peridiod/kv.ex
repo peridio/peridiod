@@ -118,11 +118,11 @@ defmodule Peridiod.KV do
   It is possible to write a collection of values at once, in order to
   minimize number of writes:
 
-      iex> :ok = Peridiod.KV.put(%{"one_key" => "one_val", "two_key" => "two_val"})
+      iex> :ok = Peridiod.KV.put_map(%{"one_key" => "one_val", "two_key" => "two_val"})
       iex> Peridiod.KV.get("one_key")
       "one_val"
 
-  Lastly, `put_active/1` and `put_active/2` allow you to write firmware metadata to the
+  Lastly, `put_active/3` and `put_active_map/2` allow you to write firmware metadata to the
   currently active firmware slot without specifying the slot prefix yourself:
 
       iex> :ok = Peridiod.KV.put_active("peridio_misc", "Peridio is awesome")
@@ -155,72 +155,89 @@ defmodule Peridiod.KV do
   * `:kv_backend` - a KV backend of the form `{module, options}` or just `module`
   """
   @spec start_link(keyword()) :: GenServer.on_start()
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(opts, genserver_opts \\ [name: __MODULE__]) do
+    GenServer.start_link(__MODULE__, opts, genserver_opts)
   end
 
   @doc """
   Get the key for only the active firmware slot
   """
   @spec get_active(String.t()) :: String.t() | nil
-  def get_active(key) when is_binary(key) do
-    GenServer.call(__MODULE__, {:get_active, key})
+  def get_active(pid_or_name \\ __MODULE__, key) when is_binary(key) do
+    GenServer.call(pid_or_name, {:get_active, key})
   end
 
   @doc """
   Get the key regardless of firmware slot
   """
   @spec get(String.t()) :: String.t() | nil
-  def get(key) when is_binary(key) do
-    GenServer.call(__MODULE__, {:get, key})
+  def get(pid_or_name \\ __MODULE__, key) when is_binary(key) do
+    GenServer.call(pid_or_name, {:get, key})
+  end
+
+  @doc """
+  Get and update a key in a single transaction
+  """
+  @spec get_and_update(pid(), String.t(), (String.t() | :pop -> map())) :: String.t() | nil
+  def get_and_update(pid_or_name \\ __MODULE__, key, fun) do
+    GenServer.call(pid_or_name, {:get_and_update, key, fun})
   end
 
   @doc """
   Get all key value pairs for only the active firmware slot
   """
-  @spec get_all_active() :: string_map()
-  def get_all_active() do
-    GenServer.call(__MODULE__, :get_all_active)
+  @spec get_all_active(pid()) :: string_map()
+  def get_all_active(pid_or_name \\ __MODULE__) do
+    GenServer.call(pid_or_name, :get_all_active)
   end
 
   @doc """
   Get all keys regardless of firmware slot
   """
-  @spec get_all() :: string_map()
-  def get_all() do
-    GenServer.call(__MODULE__, :get_all)
+  @spec get_all(pid()) :: string_map()
+  def get_all(pid_or_name \\ __MODULE__) do
+    GenServer.call(pid_or_name, :get_all)
+  end
+
+  @doc """
+  Get and update all keys in a single transaction
+  """
+  @spec get_all_and_update(pid(), (String.t() | :pop -> map())) :: String.t() | nil
+  def get_all_and_update(pid_or_name \\ __MODULE__, fun) do
+    GenServer.call(pid_or_name, {:get_all_and_update, fun})
   end
 
   @doc """
   Write a key-value pair to the firmware metadata
   """
-  @spec put(String.t(), String.t()) :: :ok
-  def put(key, value) when is_binary(key) and is_binary(value) do
-    GenServer.call(__MODULE__, {:put, %{key => value}})
+  @spec put(pid(), String.t(), String.t()) :: :ok
+  def put(pid_or_name \\ __MODULE__, key, value) when is_binary(key) and is_binary(value) do
+    GenServer.call(pid_or_name, {:put, %{key => value}})
   end
 
   @doc """
   Write a collection of key-value pairs to the firmware metadata
   """
-  @spec put(string_map()) :: :ok
-  def put(kv) when is_map(kv) do
-    GenServer.call(__MODULE__, {:put, kv})
+  @spec put_map(pid(), string_map()) :: :ok
+  def put_map(pid_or_name \\ __MODULE__, kv) when is_map(kv) do
+    GenServer.call(pid_or_name, {:put, kv})
   end
 
   @doc """
   Write a key-value pair to the active firmware slot
   """
-  @spec put_active(String.t(), String.t()) :: :ok
-  def put_active(key, value) when is_binary(key) and is_binary(value) do
-    GenServer.call(__MODULE__, {:put_active, %{key => value}})
+  @spec put_active(pid(), String.t(), String.t()) :: :ok
+  def put_active(pid_or_name \\ __MODULE__, key, value)
+      when is_binary(key) and is_binary(value) do
+    GenServer.call(pid_or_name, {:put_active, %{key => value}})
   end
 
   @doc """
   Write a collection of key-value pairs to the active firmware slot
   """
-  @spec put_active(string_map()) :: :ok
-  def put_active(kv) when is_map(kv) do
-    GenServer.call(__MODULE__, {:put_active, kv})
+  @spec put_active_map(pid(), string_map()) :: :ok
+  def put_active_map(pid_or_name \\ __MODULE__, kv) when is_map(kv) do
+    GenServer.call(pid_or_name, {:put_active, kv})
   end
 
   @impl GenServer
@@ -237,6 +254,21 @@ defmodule Peridiod.KV do
     {:reply, Map.get(s.contents, key), s}
   end
 
+  def handle_call({:get_and_update, key, fun}, _from, s) do
+    current = Map.get(s.contents, key)
+
+    {reply, s} =
+      case fun.(current) do
+        :pop ->
+          {:ok, Map.delete(current, key)}
+
+        value ->
+          do_put(%{key => value}, s)
+      end
+
+    {:reply, {reply, s}, s}
+  end
+
   def handle_call(:get_all_active, _from, s) do
     active = active(s) <> "."
     reply = filter_trim_active(s, active)
@@ -245,6 +277,12 @@ defmodule Peridiod.KV do
 
   def handle_call(:get_all, _from, s) do
     {:reply, s.contents, s}
+  end
+
+  def handle_call({:get_all_and_update, fun}, _from, s) do
+    kv = fun.(s.contents)
+    {reply, s} = do_put(kv, s)
+    {:reply, {reply, s}, s}
   end
 
   def handle_call({:put, kv}, _from, s) do

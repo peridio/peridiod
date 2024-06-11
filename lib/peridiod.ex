@@ -1,5 +1,12 @@
 defmodule Peridiod do
   alias Peridiod.Socket
+  alias Peridiod.Distribution
+
+  @env Mix.env()
+
+  def env() do
+    @env
+  end
 
   @doc """
   Checks if the device is connected to the Peridio device channel.
@@ -23,8 +30,8 @@ defmodule Peridiod do
   @doc """
   Current status of the update manager
   """
-  @spec status :: Peridiod.UpdateManager.State.status()
-  defdelegate status(), to: Peridiod.UpdateManager
+  @spec status :: Distribution.Server.State.status()
+  defdelegate status(), to: Distribution.Server
 
   @doc """
   Restart the socket and device channel
@@ -35,12 +42,12 @@ defmodule Peridiod do
   @doc """
   Send update progress percentage for display in web
   """
-  @spec send_update_progress(non_neg_integer()) :: :ok
-  defdelegate send_update_progress(progress), to: Socket
+  @spec send_distribution_progress(non_neg_integer()) :: :ok
+  defdelegate send_distribution_progress(progress), to: Socket
 
   @doc """
   Send an update status to web
   """
-  @spec send_update_status(String.t() | atom()) :: :ok
-  defdelegate send_update_status(status), to: Socket
+  @spec send_distribution_status(String.t() | atom()) :: :ok
+  defdelegate send_distribution_status(status), to: Socket
 end

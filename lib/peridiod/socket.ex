@@ -3,11 +3,13 @@ defmodule Peridiod.Socket do
   require Logger
 
   alias Peridiod.Client
-  alias Peridiod.UpdateManager
-  alias Peridiod.Configurator
+  alias Peridiod.Distribution
   alias Peridiod.RemoteConsole
+  alias Peridiod.Binary.Installer.Fwup
 
   @rejoin_after Application.compile_env(:peridiod, :rejoin_after, 5_000)
+  @device_api_version "1.0.0"
+  @console_version "1.0.0"
 
   defmodule State do
     @type t :: %__MODULE__{
@@ -28,30 +30,39 @@ defmodule Peridiod.Socket do
   @console_topic "console"
   @device_topic "device"
 
-  def start_link(_opts) do
-    GenServer.start_link(__MODULE__, nil, name: __MODULE__)
+  def start_link(config) do
+    GenServer.start_link(__MODULE__, config, name: __MODULE__)
   end
 
   def reconnect() do
-    GenServer.cast(__MODULE__, :reconnect)
+    try_cast(__MODULE__, :reconnect)
   end
 
-  def send_update_progress(progress) do
-    GenServer.cast(__MODULE__, {:send_update_progress, progress})
+  def send_binary_progress(binary_progress_map) do
+    try_cast(__MODULE__, {:send_binary_progress, binary_progress_map})
   end
 
-  def send_update_status(status) do
-    GenServer.cast(__MODULE__, {:send_update_status, status})
+  def send_distribution_progress(progress) do
+    try_cast(__MODULE__, {:send_distribution_progress, progress})
+  end
+
+  def send_distribution_status(status) do
+    try_cast(__MODULE__, {:send_distribution_status, status})
   end
 
   def check_connection(type) do
     GenServer.call(__MODULE__, {:check_connection, type})
   end
 
-  @impl Slipstream
-  def init(nil) do
-    config = Configurator.get_config()
+  def try_cast(pid_or_name, message) do
+    case GenServer.whereis(pid_or_name) do
+      nil -> :ok
+      pid -> GenServer.cast(pid, message)
+    end
+  end
 
+  @impl Slipstream
+  def init(config) do
     opts = [
       mint_opts: [protocols: [:http1], transport_opts: config.ssl],
       uri: config.socket[:url],
@@ -59,11 +70,29 @@ defmodule Peridiod.Socket do
       reconnect_after_msec: config.socket[:reconnect_after_msec]
     ]
 
+    peridio_uuid =
+      Peridiod.KV.get_active("peridio_uuid") || Peridiod.KV.get_active("nerves_fw_uuid")
+
+    params =
+      Peridiod.KV.get_all_active()
+      |> Map.put("nerves_fw_uuid", peridio_uuid)
+      |> Map.put("fwup_version", Fwup.version())
+      |> Map.put("device_api_version", @device_api_version)
+      |> Map.put("console_version", @console_version)
+
+    current_release_prn = Peridiod.KV.get("peridio_rel_current")
+    current_release_version = Peridiod.KV.get("peridio_vsn_current")
+
+    sdk_client =
+      config.sdk_client
+      |> Map.put(:release_prn, current_release_prn)
+      |> Map.put(:release_version, current_release_version)
+
     socket =
       new_socket()
-      |> assign(params: config.params)
+      |> assign(params: params)
       |> assign(device_api_host: config.device_api_host)
-      |> assign(sdk_client: config.sdk_client)
+      |> assign(sdk_client: sdk_client)
       |> assign(remote_iex: config.remote_iex)
       |> assign(remote_shell: config.remote_shell)
       |> assign(remote_access_tunnels: config.remote_access_tunnels)
@@ -78,7 +107,7 @@ defmodule Peridiod.Socket do
 
   @impl Slipstream
   def handle_connect(socket) do
-    currently_downloading_uuid = UpdateManager.currently_downloading_uuid()
+    currently_downloading_uuid = Distribution.Server.currently_downloading_uuid()
 
     device_join_params =
       socket.assigns.params
@@ -126,12 +155,29 @@ defmodule Peridiod.Socket do
     {:noreply, disconnect(socket)}
   end
 
-  def handle_cast({:send_update_progress, progress}, socket) do
+  def handle_cast({:send_binary_progress, binary_progress_map}, socket)
+      when is_map(binary_progress_map) and map_size(binary_progress_map) == 0 do
+    {:noreply, socket}
+  end
+
+  def handle_cast({:send_binary_progress, binary_progress_map}, socket) do
+    _ =
+      push(socket, @device_topic, "binary_progress", %{
+        id: UUID.uuid4(),
+        published_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+        type: "binary_progress",
+        binaries: binary_progress_map
+      })
+
+    {:noreply, socket}
+  end
+
+  def handle_cast({:send_distribution_progress, progress}, socket) do
     _ = push(socket, @device_topic, "fwup_progress", %{value: progress})
     {:noreply, socket}
   end
 
-  def handle_cast({:send_update_status, status}, socket) do
+  def handle_cast({:send_distribution_status, status}, socket) do
     _ = push(socket, @device_topic, "status_update", %{status: status})
     {:noreply, socket}
   end
@@ -162,9 +208,9 @@ defmodule Peridiod.Socket do
   end
 
   def handle_message(@device_topic, "update", update, socket) do
-    case Peridiod.Message.UpdateInfo.parse(update) do
-      {:ok, %Peridiod.Message.UpdateInfo{} = info} ->
-        _ = UpdateManager.apply_update(info)
+    case Peridiod.Distribution.parse(update) do
+      {:ok, %Peridiod.Distribution{} = info} ->
+        _ = Distribution.Server.apply_update(info)
         {:ok, socket}
 
       error ->
@@ -360,9 +406,9 @@ defmodule Peridiod.Socket do
   end
 
   defp handle_join_reply(%{"firmware_url" => url} = update) when is_binary(url) do
-    case Peridiod.Message.UpdateInfo.parse(update) do
-      {:ok, %Peridiod.Message.UpdateInfo{} = info} ->
-        UpdateManager.apply_update(info)
+    case Peridiod.Distribution.parse(update) do
+      {:ok, %Peridiod.Distribution{} = info} ->
+        Distribution.Server.apply_update(info)
 
       error ->
         Logger.error("Error parsing update data: #{inspect(update)} error: #{inspect(error)}")

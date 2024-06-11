@@ -1,6 +1,5 @@
-peridiod.fw
-peridiod.img
-peridiod-signed.fw
+*.fw
+*.img
 database.txt*
 certificates/
 *.pem

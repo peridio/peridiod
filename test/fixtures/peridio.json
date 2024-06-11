@@ -13,9 +13,8 @@
     "node": {
       "key_pair_source": "file",
       "key_pair_config": {
-        "private_key_path": "test/fixtures/device-private-key.pem",
-        "certificate_path": "test/fixtures/device-certificate.pem"
+        "private_key_path": "test/fixtures/device/device-private-key.pem",
+        "certificate_path": "test/fixtures/device/device-certificate.pem"
       }
     }
   }
-  

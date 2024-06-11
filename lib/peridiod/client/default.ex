@@ -37,7 +37,9 @@ defmodule Peridiod.Client.Default do
   @impl Peridiod.Client
   def reboot() do
     # this function must reboot the system
-    Logger.warning("[Peridiod] Rebooting System")
-    System.cmd("reboot", [], stderr_to_stdout: true)
+    if Peridiod.env() != :test do
+      Logger.warning("[Peridiod] Rebooting System")
+      System.cmd("reboot", [], stderr_to_stdout: true)
+    end
   end
 end
