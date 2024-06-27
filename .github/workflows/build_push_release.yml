@@ -1,0 +1,137 @@
+name: Build and Push Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create_release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set Env
+      run: |
+        VERSION=$(echo "${GITHUB_REF#refs/*/}" | sed 's/^v//')
+        echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+        echo "RELEASE_VERSION=${VERSION}" >> $GITHUB_ENV
+
+    - name: Create GitHub Release
+      id: create_release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if gh release view $RELEASE_TAG &>/dev/null; then
+          echo "Release $RELEASE_TAG exists. skipping"
+        else
+          echo "Release $RELEASE_TAG does not exists. creating..."
+          RELEASE_NOTES=$(sed -e "/^## ${RELEASE_TAG}/,/^## / ! d" CHANGELOG.md | tail -n +2 | head -n -1)
+          gh release create $RELEASE_TAG \
+            --generate-notes \
+            --title $RELEASE_TAG \
+            --notes "$RELEASE_NOTES"
+        fi
+
+  create_release_artifacts:
+    permissions:
+      contents: write
+    runs-on: "${{ matrix.os }}"
+    needs: create_release
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest-4-cores-arm64
+            target: arm64
+          - os: ubuntu-latest
+            target: amd64
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set Env
+      run: |
+        VERSION=$(echo "${GITHUB_REF#refs/*/}" | sed 's/^v//')
+        echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+        echo "RELEASE_VERSION=${VERSION}" >> $GITHUB_ENV
+
+    - name: Build release artifacts
+      run: |
+        docker build --output type=local,dest=docker_output/ -f release/Containerfile-build.${{ matrix.target }} .
+
+    - name: Upload Release Asset
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        mv ./docker_output/${{ matrix.target }}/peridiod-${RELEASE_VERSION}.tar.gz ./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}.tar.gz
+        gh release upload $RELEASE_TAG ./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}.tar.gz --clobber
+
+    - name: Load docker hub credentials
+      id: op-load-docker-hub-credentials
+      uses: 1password/load-secrets-action@v1
+      with:
+        export-env: false
+      env:
+        OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        DOCKER_HUB_USERNAME: op://ci-cd/docker-hub-machine/username
+        DOCKER_HUB_PASSWORD: op://ci-cd/docker-hub-machine/password
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ steps.op-load-docker-hub-credentials.outputs.DOCKER_HUB_USERNAME }}
+        password: ${{ steps.op-load-docker-hub-credentials.outputs.DOCKER_HUB_PASSWORD }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./release/Containerfile-release
+        push: true
+        tags: |
+          peridio/peridiod:${{ env.RELEASE_TAG }}-${{ matrix.target }}
+
+  push_container_images:
+    runs-on: ubuntu-latest
+    needs: create_release_artifacts
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set Env
+      run: |
+        echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+
+    - name: Load docker hub credentials
+      id: op-load-docker-hub-credentials
+      uses: 1password/load-secrets-action@v1
+      with:
+        export-env: false
+      env:
+        OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        DOCKER_HUB_USERNAME: op://ci-cd/docker-hub-machine/username
+        DOCKER_HUB_PASSWORD: op://ci-cd/docker-hub-machine/password
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ steps.op-load-docker-hub-credentials.outputs.DOCKER_HUB_USERNAME }}
+        password: ${{ steps.op-load-docker-hub-credentials.outputs.DOCKER_HUB_PASSWORD }}
+
+    - name: Create and Push Manifest
+      run: |
+        docker manifest create peridio/peridiod:${{ env.RELEASE_TAG }} \
+          --amend peridio/peridiod:${{ env.RELEASE_TAG }}-arm64 \
+          --amend peridio/peridiod:${{ env.RELEASE_TAG }}-amd64
+        docker manifest create peridio/peridiod:latest \
+          --amend peridio/peridiod:${{ env.RELEASE_TAG }}-arm64 \
+          --amend peridio/peridiod:${{ env.RELEASE_TAG }}-amd64
+        docker manifest push peridio/peridiod:${{ env.RELEASE_TAG }}
+        docker manifest push peridio/peridiod:latest

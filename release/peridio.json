@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "fwup": {
+    "devpath": "/dev/null"
+  },
+  "remote_shell": true,
+  "remote_access_tunnels": {
+    "enabled": true,
+    "service_ports": [22]
+  },
+  "node": {
+    "key_pair_source": "env",
+    "key_pair_config": {
+      "private_key": "PERIDIO_PRIVATE_KEY",
+      "certificate": "PERIDIO_CERTIFICATE"
+    }
+  }
+}

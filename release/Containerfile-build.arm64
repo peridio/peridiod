@@ -1,4 +1,4 @@
-FROM --platform=linux/arm64/v8 hexpm/elixir:1.16.2-erlang-26.2.5-ubuntu-noble-20240429 AS build
+FROM --platform=linux/arm64/v8 hexpm/elixir:1.16.3-erlang-26.2.5.1-ubuntu-noble-20240605 AS build
 
 ARG MIX_ENV=prod
 ARG UBOOT_ENV_SIZE=0x20000

@@ -1,4 +1,4 @@
-FROM elixir:1.16.2-alpine AS build
+FROM elixir:1.16.3-alpine AS build
 
 ARG MIX_ENV=prod
 ARG UBOOT_ENV_SIZE=0x20000
