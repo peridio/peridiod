@@ -215,6 +215,26 @@ defmodule Peridiod.Socket do
 
   def handle_message(
         @device_topic,
+        "tunnel_extend",
+        _request,
+        %{assigns: %{remote_access_tunnels: %{enabled: false}}} = socket
+      ) do
+    {:ok, socket}
+  end
+
+  def handle_message(
+        @device_topic,
+        "tunnel_extend",
+        %{"tunnel_prn" => tunnel_prn, "expires_at" => expires_at},
+        socket
+      ) do
+    {:ok, expires_at, _offset} = DateTime.from_iso8601(expires_at)
+    Peridio.RAT.extend_tunnel(tunnel_prn, expires_at)
+    {:ok, socket}
+  end
+
+  def handle_message(
+        @device_topic,
         "tunnel_close",
         _request,
         %{assigns: %{remote_access_tunnels: %{enabled: false}}} = socket
