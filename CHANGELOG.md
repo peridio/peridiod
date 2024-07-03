@@ -1,5 +1,13 @@
 # peridiod releases
 
+## v2.5.4
+
+* Enhancement
+  * Add support for extending tunnels
+* Bug fixes
+  * Account for reserved tunnel IPs to prevent a race condition between
+    wireguard and subsequent calls to `Peridio.RAT.Network.available_cidrs`
+
 ## v2.5.3
 
 * Bug fixes
