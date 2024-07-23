@@ -23,8 +23,8 @@ defmodule Peridiod.Release.Server do
   alias Peridiod.{Binary, SigningKey, Socket, Release}
   alias Peridiod.Binary.{Installer, CacheDownloader}
 
-  @update_poll_interval 300_000
-  @progress_message_interval 100
+  @update_poll_interval 30 * 60 * 1000
+  @progress_message_interval 1500
 
   @doc false
   @spec start_link(any(), any()) :: GenServer.on_start()
