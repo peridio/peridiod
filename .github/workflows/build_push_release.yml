@@ -162,9 +162,6 @@ jobs:
         docker manifest create peridio/peridiod:${{ env.RELEASE_TAG }} \
           --amend peridio/peridiod:${{ env.RELEASE_TAG }}-arm64 \
           --amend peridio/peridiod:${{ env.RELEASE_TAG }}-amd64
-        docker manifest create peridio/peridiod:latest \
-          --amend peridio/peridiod:${{ env.RELEASE_TAG }}-arm64 \
-          --amend peridio/peridiod:${{ env.RELEASE_TAG }}-amd64
         docker manifest push peridio/peridiod:${{ env.RELEASE_TAG }}
 
         if [[ "${{ env.RELEASE_TAG }}" != *-* ]]; then
