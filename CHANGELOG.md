@@ -1,5 +1,92 @@
 # peridiod releases
 
+## v3.0.0-rc.0
+
+**This is a major update and this release should be thoroughly tested.**
+
+Add support for Peridio Cloud Releases
+
+Peridio Releases allow you greater flexibility in how you manage the content installed on your device.
+
+### Config
+
+New `peridiod` config keys introduced:
+
+* `release_poll_enabled`: true | false
+* `release_poll_interval`: the interval in ms to automatically check for updates
+* `cache_dir`: a writable path where `peridiod` can store release metadata
+* `targets`: A list of string target names for peridiod to install as part of a release update
+* `trusted_signing_keys`: A list of base64 encoded ed25519 public signing key strings
+
+### Installers
+
+Peridiod now has a concept of "Installers", initially supported installer types are `file` and `fwup`. When using releases, you will have to use the `custom_metadata` of a binary, artifact version, or artifact to instruct peridiod how to install the binary content. Here is an example of what custom metadata for installers would look like:
+
+fwup
+
+```json
+{
+  "installer": "fwup",
+  "installer_opts": {
+    "devpath": "/dev/mmcblk0",
+    "extra_args": [],
+    "env": {}
+  },
+  "reboot_required": true
+}
+```
+
+file
+
+```json
+{
+  "installer": "file",
+  "installer_opts": {
+    "name": "my_file.txt",
+    "path": "/opt/my_app",
+  },
+  "reboot_required": false
+}
+```
+
+The custom metadata will need to configured on a Binary, Artifact Version, or Artifact record. You can add this custom metadata to these records using Peridio CLI v0.22.0 or later.
+
+### U-Boot Environment additions
+
+peridiod releases will track and expose release metadata in the uboot environment under the following new keys
+
+* `peridiod_rel_current`: the PRN of the current installed release
+* `peridiod_rel_previous`: the PRN of the previous installed release
+* `peridiod_rel_progress`: the PRN of the release in progress
+* `peridiod_vsn_current`: the semantic version of the current installed release
+* `peridiod_vsn_previous`: the semantic version of the previous installed release
+* `peridiod_vsn_progress`: the semantic version of the release in progress
+* `peridiod_bin_current`: an concatenated key / value paired encoded string of `<binary_id><custom_metadata_sha256_hash>` internally used to diff installed binaries from release to release
+
+### Preparing a release
+
+Peridiod will track installed binaries from release to release by updating the `peridio_bin_current` value in the u-boot-env. When burning in a device firmware for the first time, you can pre-compute this field value with information about the supplied binaries by constructing a concatenated string according to the field specifications. This will prevent peridiod from installing binaries unnecessarily on first boot.
+
+### Release Install
+
+The release server will check for an update from Peridio Cloud a the designated interval. When an update is available, the release server will immediately cache the release metadata to the cache_dir and begin processing the release. Currently, the release server is configured to install an update once it is available. This behavior will change before public release and instead be routed through the update client module. The release server will apply an update in the following order:
+
+* Validate artifact signatures' public key values have been signed by a public key in `trusted_signing_keys`
+* Filter the Binaries by uninstalled with a target listed in the `targets` list
+* Install Binaries
+  * Initialize a Download with an Installer
+  * Begin Download (Download Started Event)
+  * Download chunks (Download Progress Events)
+  * Finish Download (Download Finished Event)
+  * Validate hash (during stream)
+  * Installer applied (Binary Applied)
+  * Update Binary status to complete
+* Update Release status to complete
+
+When peridiod installs a release, it will accumulate `reboot_required` and trigger a reboot once all binaries have finished the installation process if any `reboot_required` is true.
+
+See the [Peridio Docs](https://docs.peridio.com/) for more information on configuring Releases for your organization.
+
 ## v2.5.4
 
 * Enhancement
