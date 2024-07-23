@@ -156,7 +156,7 @@ defmodule Peridiod.Release do
   def filter_binaries_by_targets(%__MODULE__{binaries: binaries}, []), do: binaries
 
   def filter_binaries_by_targets(%__MODULE__{binaries: binaries}, targets) do
-    Enum.filter(binaries, &(&1.target in targets))
+    Enum.filter(binaries, &(&1.target in [nil, "" | targets]))
   end
 
   def kv_progress(kv_pid \\ KV, %__MODULE__{} = release_metadata) do
