@@ -244,9 +244,16 @@ defmodule Peridiod.Binary.Installer do
   end
 
   defp installer_progress({:noreply, state}) do
+    download_percent =
+      case state.source do
+        :cache -> 1.0
+        :download -> state.install_percent
+      end
+
     try_send(
       state.callback,
-      {Installer, state.binary_metadata.prn, {:progress, state.install_percent}}
+      {Installer, state.binary_metadata.prn,
+       {:progress, {download_percent, state.install_percent}}}
     )
 
     {:noreply, state}

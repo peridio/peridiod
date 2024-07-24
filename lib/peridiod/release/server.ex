@@ -279,23 +279,22 @@ defmodule Peridiod.Release.Server do
 
     Logger.error("Error downloading to cache: #{inspect(error)}")
 
-    progress_message =
-      state.progress_message
-      |> Map.delete(binary_metadata.prn)
-
     state = %{
       state
-      | processing_binaries: Map.delete(state.processing_binaries, binary_metadata.prn),
-        progress_message: progress_message
+      | processing_binaries: Map.delete(state.processing_binaries, binary_metadata.prn)
     }
 
     {:noreply, state}
   end
 
-  def handle_info({Installer, binary_prn, {:progress, install_percent}}, state) do
+  def handle_info(
+        {Installer, binary_prn, {:progress, {download_percent, install_percent}}},
+        state
+      ) do
     binary_progress =
       state.progress_message
-      |> Map.get(binary_prn, %{download_percent: 1.0, install_percent: 0.0})
+      |> Map.get(binary_prn, %{download_percent: 0.0, install_percent: 0.0})
+      |> Map.put(:download_percent, download_percent)
       |> Map.put(:install_percent, install_percent)
 
     progress_message = Map.put(state.progress_message, binary_prn, binary_progress)
@@ -311,8 +310,7 @@ defmodule Peridiod.Release.Server do
     )
 
     progress_message =
-      state.progress_message
-      |> Map.delete(binary_prn)
+      Map.put(state.progress_message, binary_prn, %{download_percent: 1.0, install_percent: 1.0})
 
     state = %{
       state
