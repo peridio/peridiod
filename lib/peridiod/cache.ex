@@ -1,8 +1,6 @@
 defmodule Peridiod.Cache do
   use GenServer
 
-  alias Peridiod.{Binary, Signature}
-
   @hash_algorithm :sha256
   @stream_chunk_size 4096
 
@@ -34,8 +32,8 @@ defmodule Peridiod.Cache do
     GenServer.call(pid_or_name, {:write_stream_update, file, data})
   end
 
-  def write_stream_finish(pid_or_name \\ __MODULE__, file, signature) do
-    GenServer.call(pid_or_name, {:write_stream_finish, file, signature})
+  def write_stream_finish(pid_or_name \\ __MODULE__, file, signature, public_key) do
+    GenServer.call(pid_or_name, {:write_stream_finish, file, signature, public_key})
   end
 
   def ln_s(pid_or_name \\ __MODULE__, target, link) do
@@ -113,14 +111,13 @@ defmodule Peridiod.Cache do
     {:reply, reply, state}
   end
 
-  def handle_call({:write_stream_finish, file, %Signature{} = signature}, _from, state) do
+  def handle_call({:write_stream_finish, file, signature, public_key}, _from, state) do
     file_path = Path.join([state.path, file])
     file_sig_path = file_path <> ".sig"
 
     reply =
       with hash <- hash(file_path, state.hash_algorithm),
-           true <-
-             Binary.valid_signature?(hash, signature.signature, signature.signing_key.public_der),
+           true <- :crypto.verify(:eddsa, :sha256, hash, signature, [public_key, :ed25519]),
            signature <- sign(hash, state.hash_algorithm, state.private_key),
            :ok <- File.write(file_sig_path, signature) do
         :ok

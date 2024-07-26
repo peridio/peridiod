@@ -87,7 +87,13 @@ defmodule Peridiod.Binary.CacheDownloader do
     signature = List.first(state.binary_metadata.signatures)
 
     with true <- state.binary_metadata.hash == hash,
-         :ok <- Cache.write_stream_finish(state.cache_pid, file, signature) do
+         :ok <-
+           Cache.write_stream_finish(
+             state.cache_pid,
+             file,
+             signature.signature,
+             signature.signing_key.public_der
+           ) do
       Binary.stamp_cached(state.cache_pid, state.binary_metadata)
       send(state.callback, {:download_cache, state.binary_metadata, :complete})
     else
