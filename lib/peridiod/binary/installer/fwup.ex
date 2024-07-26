@@ -5,6 +5,7 @@ defmodule Peridiod.Binary.Installer.Fwup do
 
   use Peridiod.Binary.Installer.Behaviour
 
+  alias PeridiodPersistence.KV
   alias __MODULE__
 
   def install_init(
@@ -14,8 +15,8 @@ defmodule Peridiod.Binary.Installer.Fwup do
         config
       ) do
     devpath =
-      opts["devpath"] || config.fwup_devpath || Peridiod.KV.get("peridio_disk_devpath") ||
-        Peridiod.KV.get("nerves_fw_devpath")
+      opts["devpath"] || config.fwup_devpath || KV.get("peridio_disk_devpath") ||
+        KV.get("nerves_fw_devpath")
 
     env = opts["env"] || config.fwup_env
     extra_args = opts["extra_args"] || config.fwup_extra_args

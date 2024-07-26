@@ -2,8 +2,8 @@ import Config
 
 config :logger, level: :warning
 
-config :peridiod,
-  kv_backend: Peridiod.KVBackend.UBootEnv
+config :peridiod_persistence,
+  kv_backend: PeridiodPersistence.KVBackend.UBootEnv
 
 config :erlexec,
   user: "root",

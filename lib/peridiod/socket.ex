@@ -2,10 +2,9 @@ defmodule Peridiod.Socket do
   use Slipstream
   require Logger
 
-  alias Peridiod.Client
-  alias Peridiod.Distribution
-  alias Peridiod.RemoteConsole
+  alias Peridiod.{Client, Distribution, RemoteConsole}
   alias Peridiod.Binary.Installer.Fwup
+  alias PeridiodPersistence.KV
 
   @rejoin_after Application.compile_env(:peridiod, :rejoin_after, 5_000)
   @device_api_version "1.0.0"
@@ -71,17 +70,17 @@ defmodule Peridiod.Socket do
     ]
 
     peridio_uuid =
-      Peridiod.KV.get_active("peridio_uuid") || Peridiod.KV.get_active("nerves_fw_uuid")
+      KV.get_active("peridio_uuid") || KV.get_active("nerves_fw_uuid")
 
     params =
-      Peridiod.KV.get_all_active()
+      KV.get_all_active()
       |> Map.put("nerves_fw_uuid", peridio_uuid)
       |> Map.put("fwup_version", Fwup.version())
       |> Map.put("device_api_version", @device_api_version)
       |> Map.put("console_version", @console_version)
 
-    current_release_prn = Peridiod.KV.get("peridio_rel_current")
-    current_release_version = Peridiod.KV.get("peridio_vsn_current")
+    current_release_prn = KV.get("peridio_rel_current")
+    current_release_version = KV.get("peridio_vsn_current")
 
     sdk_client =
       config.sdk_client

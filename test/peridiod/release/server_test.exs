@@ -74,6 +74,7 @@ defmodule Peridiod.Release.ServerTest do
 
   describe "release" do
     setup :start_cache
+    setup :start_kv
     setup :load_release_metadata_from_manifest
     setup :start_release_server
 
@@ -190,6 +191,7 @@ defmodule Peridiod.Release.ServerTest do
 
   describe "release install cache" do
     setup :start_cache
+    setup :start_kv
     setup :load_release_metadata_from_manifest
     setup :start_release_server
     setup :cache_binary
@@ -217,6 +219,7 @@ defmodule Peridiod.Release.ServerTest do
 
   describe "release install" do
     setup :start_cache
+    setup :start_kv
     setup :load_release_metadata_from_manifest
     setup :start_release_server
 

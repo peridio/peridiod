@@ -2,7 +2,6 @@ defmodule Peridiod.Application do
   use Application
 
   alias Peridiod.{
-    KV,
     Cache,
     Connection,
     Socket,
@@ -16,7 +15,6 @@ defmodule Peridiod.Application do
     config = struct(Peridiod.Config, application_config) |> Peridiod.Config.new()
 
     children = [
-      {KV, application_config},
       {Cache, config},
       Binary.Installer.Supervisor,
       Binary.Downloader.Supervisor,
