@@ -1,5 +1,6 @@
 defmodule Peridiod.Release do
-  alias Peridiod.{KV, Binary, Cache, Release}
+  alias Peridiod.{Binary, Cache, Release}
+  alias PeridiodPersistence.KV
 
   import Peridiod.Utils, only: [stamp_utc_now: 0]
 

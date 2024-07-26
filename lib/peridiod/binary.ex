@@ -1,5 +1,6 @@
 defmodule Peridiod.Binary do
   alias Peridiod.{Binary, Cache, Signature}
+  alias PeridiodPersistence.KV
   import Peridiod.Utils, only: [stamp_utc_now: 0]
 
   @cache_dir "binary"
@@ -215,13 +216,13 @@ defmodule Peridiod.Binary do
     end)
   end
 
-  def get_all_kv_installed(kv_pid \\ Peridiod.KV, store) when store in @kv_bin_stores do
-    Peridiod.KV.get(kv_pid, @kv_bin_installed <> to_string(store))
+  def get_all_kv_installed(kv_pid \\ KV, store) when store in @kv_bin_stores do
+    KV.get(kv_pid, @kv_bin_installed <> to_string(store))
     |> parse_kv_installed()
   end
 
   def put_kv_installed(
-        kv_pid \\ Peridiod.KV,
+        kv_pid \\ KV,
         %Binary{
           prn: prn,
           custom_metadata_hash: custom_metadata_hash
@@ -235,7 +236,7 @@ defmodule Peridiod.Binary do
       |> id_to_bin()
       |> Base.encode16(case: :lower)
 
-    Peridiod.KV.get_and_update(kv_pid, @kv_bin_installed <> to_string(store), fn installed ->
+    KV.get_and_update(kv_pid, @kv_bin_installed <> to_string(store), fn installed ->
       installed
       |> parse_kv_installed()
       |> Map.put(id, Base.encode16(custom_metadata_hash, case: :lower))
@@ -243,7 +244,7 @@ defmodule Peridiod.Binary do
     end)
   end
 
-  def pop_kv_installed(kv_pid \\ Peridiod.KV, %Binary{prn: prn}, store)
+  def pop_kv_installed(kv_pid \\ KV, %Binary{prn: prn}, store)
       when store in @kv_bin_stores do
     id =
       prn
@@ -251,7 +252,7 @@ defmodule Peridiod.Binary do
       |> id_to_bin()
       |> Base.encode16(case: :lower)
 
-    Peridiod.KV.get_and_update(kv_pid, @kv_bin_installed <> to_string(store), fn installed ->
+    KV.get_and_update(kv_pid, @kv_bin_installed <> to_string(store), fn installed ->
       installed
       |> parse_kv_installed()
       |> Map.delete(id)

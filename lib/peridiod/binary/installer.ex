@@ -3,7 +3,8 @@ defmodule Peridiod.Binary.Installer do
 
   require Logger
 
-  alias Peridiod.{Binary, Cache, KV}
+  alias PeridiodPersistence.KV
+  alias Peridiod.{Binary, Cache}
   alias Peridiod.Binary.{Installer, Downloader}
 
   defmodule State do

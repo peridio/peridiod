@@ -8,6 +8,7 @@ defmodule Peridiod.Binary.InstallerTest do
 
   describe "fwup" do
     setup :start_cache
+    setup :start_kv
     setup :setup_fwup
 
     test "install task upgrade", %{binary_metadata: binary_metadata, opts: opts} = context do

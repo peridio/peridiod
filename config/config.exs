@@ -1,13 +1,14 @@
 import Config
 
-config :peridiod,
-  client: Peridiod.Client.Default,
-  config_mod: Peridiod.Config,
+config :peridiod_persistence,
   kv_backend:
-    {Peridiod.KVBackend.InMemory,
+    {PeridiodPersistence.KVBackend.InMemory,
      contents: %{
        "peridio_disk_devpath" => "/dev/mmcblk1"
      }}
+
+config :peridiod,
+  client: Peridiod.Client.Default
 
 config :peridio_rat, wireguard_client: Peridio.RAT.WireGuard.Default
 

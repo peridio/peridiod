@@ -9,10 +9,9 @@ defmodule Peridiod.Distribution.Server do
   """
   use GenServer
 
-  alias Peridiod.Client
-  alias Peridiod.Binary.Installer.Fwup
-  alias Peridiod.Distribution
-  alias Peridiod.Binary.{Downloader, Downloader.Supervisor}
+  alias Peridiod.{Client, Distribution}
+  alias Peridiod.Binary.{Downloader, Downloader.Supervisor, Installer.Fwup}
+  alias PeridiodPersistence.KV
 
   require Logger
 
@@ -107,8 +106,8 @@ defmodule Peridiod.Distribution.Server do
   @impl GenServer
   def init(config) do
     fwup_devpath =
-      config.fwup_devpath || Peridiod.KV.get("peridio_disk_devpath") ||
-        Peridiod.KV.get("nerves_fw_devpath")
+      config.fwup_devpath || KV.get("peridio_disk_devpath") ||
+        KV.get("nerves_fw_devpath")
 
     fwup_config = %Fwup.Config{
       fwup_public_keys: config.fwup_public_keys,

@@ -1,7 +1,8 @@
 defmodule Peridiod.Config do
   use Peridiod.Log
 
-  alias Peridiod.{Backoff, Cache, KV, SigningKey}
+  alias PeridiodPersistence.KV
+  alias Peridiod.{Backoff, Cache, SigningKey}
   alias __MODULE__
 
   require Logger
