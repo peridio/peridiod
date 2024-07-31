@@ -30,10 +30,18 @@ jobs:
         else
           echo "Release $RELEASE_TAG does not exists. creating..."
           RELEASE_NOTES=$(sed -e "/^## ${RELEASE_TAG}/,/^## / ! d" CHANGELOG.md | tail -n +2 | head -n -1)
-          gh release create $RELEASE_TAG \
-            --generate-notes \
-            --title $RELEASE_TAG \
-            --notes "$RELEASE_NOTES"
+          if [[ ${{ contains(github.ref_name, '-rc') }} == 'true' || ${{ contains(github.ref_name, '-beta') }} == 'true' || ${{ contains(github.ref_name, '-alpha') }} == 'true' ]]; then
+            gh release create $RELEASE_TAG \
+              --generate-notes \
+              --title $RELEASE_TAG \
+              --notes "$RELEASE_NOTES" \
+              --prerelease
+          else
+            gh release create $RELEASE_TAG \
+              --generate-notes \
+              --title $RELEASE_TAG \
+              --notes "$RELEASE_NOTES"
+          fi
         fi
 
   create_release_artifacts:
@@ -70,7 +78,15 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         mv ./docker_output/${{ matrix.target }}/peridiod-${RELEASE_VERSION}.tar.gz ./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}.tar.gz
+        echo "peridiod_artifact_name=peridiod-${{ matrix.target }}.tar.gz" >> $GITHUB_ENV
+        echo "peridiod_artifact_path=./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}.tar.gz" >> $GITHUB_ENV
         gh release upload $RELEASE_TAG ./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}.tar.gz --clobber
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ env.peridiod_artifact_name }}
+        path: ${{ env.peridiod_artifact_path }}
 
     - name: Load docker hub credentials
       id: op-load-docker-hub-credentials
