@@ -75,9 +75,14 @@ defmodule Peridiod.Socket do
     params =
       KV.get_all_active()
       |> Map.put("nerves_fw_uuid", peridio_uuid)
-      |> Map.put("fwup_version", Fwup.version())
       |> Map.put("device_api_version", @device_api_version)
       |> Map.put("console_version", @console_version)
+
+    params =
+      case Fwup.installed?() do
+        true -> Map.put(params, "fwup_version", Fwup.version())
+        false -> params
+      end
 
     current_release_prn = KV.get("peridio_rel_current")
     current_release_version = KV.get("peridio_vsn_current")

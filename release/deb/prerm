@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+
+# Stop and disable the systemd service
+if [ "$1" = "remove" ]; then
+    systemctl stop peridiod.service
+    systemctl disable peridiod.service
+fi

@@ -13,4 +13,14 @@ log_level =
     _ -> :error
   end
 
+kv_backend =
+  case System.get_env("PERIDIOD_KV_BACKEND") do
+    "filesystem" -> PeridiodPersistence.KVBackend.Filesystem
+    "ubootenv" -> PeridiodPersistence.KVBackend.UBootEnv
+    _ -> PeridiodPersistence.KVBackend.UBootEnv
+  end
+
+config :peridiod_persistence,
+  kv_backend: kv_backend
+
 config :logger, level: log_level

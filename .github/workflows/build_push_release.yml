@@ -150,4 +150,79 @@ jobs:
           --amend peridio/peridiod:${{ env.RELEASE_TAG }}-arm64 \
           --amend peridio/peridiod:${{ env.RELEASE_TAG }}-amd64
         docker manifest push peridio/peridiod:${{ env.RELEASE_TAG }}
-        docker manifest push peridio/peridiod:latest
+
+        if [[ "${{ env.RELEASE_TAG }}" != *-* ]]; then
+          docker manifest create peridio/peridiod:latest \
+            --amend peridio/peridiod:${{ env.RELEASE_TAG }}-arm64 \
+            --amend peridio/peridiod:${{ env.RELEASE_TAG }}-amd64
+          docker manifest push peridio/peridiod:latest
+        else
+          echo "Skipping latest tag update for pre-release tag ${{ env.RELEASE_TAG }}"
+        fi
+
+  create_release_debs:
+    runs-on: "${{ matrix.os }}"
+    needs: create_release_artifacts
+
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest-4-cores-arm64
+            target: arm64
+          - os: ubuntu-latest
+            target: amd64
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set Env
+      run: |
+        echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+
+    - name: Cache Debian packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/deb
+        key: ${{ runner.os }}-deb-cache
+        restore-keys: |
+          ${{ runner.os }}-deb-cache
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y dpkg-dev debhelper fakeroot
+
+    - name: Download build artifact
+      uses: actions/download-artifact@v3
+      with:
+        with:
+        name: peridiod-${{ matrix.target }}.tar.gz
+        path: .
+
+    - name: Build DEB package
+      run: |
+        source release/package-info.sh
+        PERIDIOD_ARCH=${{ matrix.target }}
+        PERIDIOD_VERSION=$(echo "${GITHUB_REF#refs/*/}" | sed 's/^v//')
+        PERIDIOD_DEB_PACKAGE_DIR=$(pwd)/package/peridiod_${PERIDIOD_VERSION}_${PERIDIOD_ARCH}
+        PERIDIOD_RELEASE_NOTES=$(sed -e "/^## ${RELEASE_TAG}/,/^## / ! d" CHANGELOG.md | tail -n +2 | head -n -1)
+
+        export PERIDIOD_RELEASE_NOTES
+        export PERIDIOD_VERSION
+        export PERIDIOD_ARCH
+
+        release/build-deb.sh peridiod-${PERIDIOD_VERSION}-${{ matrix.target }}.tar.gz $PERIDIOD_DEB_PACKAGE_DIR
+
+        mv "${PERIDIOD_DEB_PACKAGE_DIR}.deb" .
+        echo "PERIDIOD_DEB_PACKAGE=peridiod_${PERIDIOD_VERSION}_${PERIDIOD_ARCH}.deb" >> $GITHUB_ENV
+
+    - name: Upload Release Asset
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release upload $RELEASE_TAG $PERIDIOD_DEB_PACKAGE --clobber
