@@ -7,7 +7,7 @@ defmodule Peridiod.Config do
 
   require Logger
 
-  defstruct cache_dir: "/tmp",
+  defstruct cache_dir: "/var/peridiod",
             cache_private_key: nil,
             cache_public_key: nil,
             cache_pid: Cache,

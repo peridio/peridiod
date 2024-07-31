@@ -126,6 +126,10 @@ defmodule Peridiod.Binary.Installer.Fwup do
   defdelegate send_chunk(pid, chunk),
     to: Fwup.Stream
 
+  def installed?() do
+    is_binary(System.find_executable("fwup"))
+  end
+
   def version do
     {version_string, 0} = System.cmd("fwup", ["--version"])
     String.trim(version_string)

@@ -1,0 +1,5 @@
+peridiod ($PERIDIOD_VERSION) ; urgency=medium
+
+$PERIDIOD_RELEASE_NOTES
+
+ -- $PERIDIOD_MAINTAINER  $(date -R)
