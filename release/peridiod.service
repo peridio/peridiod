@@ -1,0 +1,11 @@
+[Unit]
+Description=Peridio Daemon
+[Service]
+Restart=on-failure
+RestartSec=5s
+
+ExecStart=/opt/peridiod/bin/peridiod start
+User=root
+
+[Install]
+WantedBy=multi-user.target

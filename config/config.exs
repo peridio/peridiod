@@ -1,12 +1,5 @@
 import Config
 
-config :peridiod_persistence,
-  kv_backend:
-    {PeridiodPersistence.KVBackend.InMemory,
-     contents: %{
-       "peridio_disk_devpath" => "/dev/mmcblk1"
-     }}
-
 config :peridiod,
   client: Peridiod.Client.Default
 
