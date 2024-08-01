@@ -1,0 +1,51 @@
+FROM fedora:34 AS build
+
+ARG MIX_ENV=prod
+ARG ERLANG_VERSION=27.0.1
+ARG ELIXIR_VERSION=1.17.2-otp-27
+
+RUN dnf groupinstall -y 'Development Tools' && \
+  dnf install -y \
+  gcc-c++ \
+  autoconf \
+  gcc \
+  glibc-devel \
+  make \
+  ncurses-devel \
+  openssl-devel \
+  git \
+  unzip
+
+SHELL ["/bin/bash", "-lc"]
+
+RUN git clone https://github.com/asdf-vm/asdf.git $HOME/.asdf --branch v0.14.0
+
+RUN chmod +x $HOME/.asdf/asdf.sh
+RUN chmod +x $HOME/.asdf/completions/asdf.bash
+
+RUN echo '. $HOME/.asdf/asdf.sh' >> /root/.bashrc
+RUN echo '. $HOME/.asdf/asdf.sh' >> /root/.zshrc
+
+
+RUN asdf plugin add erlang
+RUN asdf plugin add elixir
+
+RUN asdf install erlang ${ERLANG_VERSION} && \
+  asdf global erlang ${ERLANG_VERSION}
+
+RUN asdf install elixir ${ELIXIR_VERSION} && \
+  asdf global elixir ${ELIXIR_VERSION}
+
+RUN mix archive.install github hexpm/hex branch latest --force
+RUN mix local.rebar --force
+
+RUN mkdir -p /opt/peridiod
+ADD . /opt/peridiod/
+
+WORKDIR /opt/peridiod
+
+RUN mix deps.get --only $MIX_ENV
+RUN mix release --overwrite
+
+FROM scratch
+COPY --from=build /opt/peridiod/_build/prod/peridiod-*.tar.gz .

@@ -1,9 +1,11 @@
 [Unit]
 Description=Peridio Daemon
+
 [Service]
 Restart=on-failure
 RestartSec=5s
 
+EnvironmentFile=/etc/peridiod/peridiod.env
 ExecStart=/opt/peridiod/bin/peridiod start
 User=root
 

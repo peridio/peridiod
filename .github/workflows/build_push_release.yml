@@ -21,7 +21,6 @@ jobs:
         echo "RELEASE_VERSION=${VERSION}" >> $GITHUB_ENV
 
     - name: Create GitHub Release
-      id: create_release
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -44,7 +43,7 @@ jobs:
           fi
         fi
 
-  create_release_artifacts:
+  create_static:
     permissions:
       contents: write
     runs-on: "${{ matrix.os }}"
@@ -71,22 +70,39 @@ jobs:
 
     - name: Build release artifacts
       run: |
-        docker build --output type=local,dest=docker_output/ -f release/Containerfile-build.${{ matrix.target }} .
+        docker build --platform linux/${{ matrix.target }} --output type=local,dest=docker_output/ -f release/Containerfile-build-static .
 
     - name: Upload Release Asset
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        mv ./docker_output/${{ matrix.target }}/peridiod-${RELEASE_VERSION}.tar.gz ./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}.tar.gz
-        echo "peridiod_artifact_name=peridiod-${{ matrix.target }}.tar.gz" >> $GITHUB_ENV
-        echo "peridiod_artifact_path=./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}.tar.gz" >> $GITHUB_ENV
-        gh release upload $RELEASE_TAG ./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}.tar.gz --clobber
+        mv ./docker_output/peridiod-${RELEASE_VERSION}.tar.gz ./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}-static.tar.gz
+        gh release upload $RELEASE_TAG ./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}-static.tar.gz --clobber
 
-    - name: Upload build artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.peridiod_artifact_name }}
-        path: ${{ env.peridiod_artifact_path }}
+  create_container_images:
+    permissions:
+      contents: write
+    runs-on: "${{ matrix.os }}"
+    needs: create_release
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest-4-cores-arm64
+            target: arm64
+          - os: ubuntu-latest
+            target: amd64
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set Env
+      run: |
+        VERSION=$(echo "${GITHUB_REF#refs/*/}" | sed 's/^v//')
+        echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+        echo "RELEASE_VERSION=${VERSION}" >> $GITHUB_ENV
 
     - name: Load docker hub credentials
       id: op-load-docker-hub-credentials
@@ -113,9 +129,9 @@ jobs:
         tags: |
           peridio/peridiod:${{ env.RELEASE_TAG }}-${{ matrix.target }}
 
-  push_container_images:
+  create_container_manifest:
     runs-on: ubuntu-latest
-    needs: create_release_artifacts
+    needs: create_container_images
 
     steps:
     - name: Checkout repository
@@ -160,9 +176,9 @@ jobs:
           echo "Skipping latest tag update for pre-release tag ${{ env.RELEASE_TAG }}"
         fi
 
-  create_release_debs:
+  create_debs:
     runs-on: "${{ matrix.os }}"
-    needs: create_release_artifacts
+    needs: create_release
 
     permissions:
       contents: write
@@ -173,8 +189,16 @@ jobs:
         include:
           - os: ubuntu-latest-4-cores-arm64
             target: arm64
+            distro: jammy
+          - os: ubuntu-latest-4-cores-arm64
+            target: arm64
+            distro: noble
           - os: ubuntu-latest
             target: amd64
+            distro: jammy
+          - os: ubuntu-latest
+            target: amd64
+            distro: noble
 
     steps:
     - name: Checkout repository
@@ -197,32 +221,101 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y dpkg-dev debhelper fakeroot
 
-    - name: Download build artifact
-      uses: actions/download-artifact@v3
-      with:
-        with:
-        name: peridiod-${{ matrix.target }}.tar.gz
-        path: .
+    - name: Build release artifacts
+      run: |
+        docker build --platform linux/${{ matrix.target }} --output type=local,dest=docker_output/ -f release/Containerfile-build-${{ matrix.distro }} .
 
     - name: Build DEB package
       run: |
         source release/package-info.sh
         PERIDIOD_ARCH=${{ matrix.target }}
         PERIDIOD_VERSION=$(echo "${GITHUB_REF#refs/*/}" | sed 's/^v//')
-        PERIDIOD_DEB_PACKAGE_DIR=$(pwd)/package/peridiod_${PERIDIOD_VERSION}_${PERIDIOD_ARCH}
+        PERIDIOD_PACKAGE_DIR=$(pwd)/package/peridiod_${PERIDIOD_VERSION}_${PERIDIOD_ARCH}
         PERIDIOD_RELEASE_NOTES=$(sed -e "/^## ${RELEASE_TAG}/,/^## / ! d" CHANGELOG.md | tail -n +2 | head -n -1)
 
         export PERIDIOD_RELEASE_NOTES
         export PERIDIOD_VERSION
         export PERIDIOD_ARCH
 
-        release/build-deb.sh peridiod-${PERIDIOD_VERSION}-${{ matrix.target }}.tar.gz $PERIDIOD_DEB_PACKAGE_DIR
-
-        mv "${PERIDIOD_DEB_PACKAGE_DIR}.deb" .
-        echo "PERIDIOD_DEB_PACKAGE=peridiod_${PERIDIOD_VERSION}_${PERIDIOD_ARCH}.deb" >> $GITHUB_ENV
+        release/build-deb.sh ./docker_output/peridiod-${PERIDIOD_VERSION}.tar.gz $PERIDIOD_PACKAGE_DIR
+        mv "${PERIDIOD_PACKAGE_DIR}.deb" ./peridiod_${PERIDIOD_VERSION}_${PERIDIOD_ARCH}.${{ matrix.distro }}.deb
+        echo "PERIDIOD_PACKAGE=peridiod_${PERIDIOD_VERSION}_${PERIDIOD_ARCH}.${{ matrix.distro }}.deb" >> $GITHUB_ENV
 
     - name: Upload Release Asset
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release upload $RELEASE_TAG $PERIDIOD_DEB_PACKAGE --clobber
+        gh release upload $RELEASE_TAG $PERIDIOD_PACKAGE --clobber
+
+  create_rpms:
+    runs-on: "${{ matrix.os }}"
+    needs: create_release
+
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest-4-cores-arm64
+            target: arm64
+            distro: rhel9
+          - os: ubuntu-latest
+            target: amd64
+            distro: rhel9
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set Env
+      run: |
+        echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y dpkg-dev debhelper fakeroot
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y dpkg-dev debhelper fakeroot
+
+    - name: Build release artifacts
+      run: |
+        docker build --platform linux/${{ matrix.target }} --output type=local,dest=docker_output/ -f release/Containerfile-build-${{ matrix.distro }} .
+
+    - name: Build RPM package
+      run: |
+        source release/package-info.sh
+        PERIDIOD_ARCH=${{ matrix.target }}
+        if [ "$PERIDIOD_ARCH" == "arm64" ]; then
+          PERIDIOD_ARCH_RPM="aarch64"
+        elif [ "$PERIDIOD_ARCH" == "amd64" ]; then
+          PERIDIOD_ARCH_RPM="x86_64"
+        else
+          PERIDIOD_ARCH_RPM="$ARCH"
+        fi
+        PERIDIOD_VERSION=$(echo "${GITHUB_REF#refs/*/}" | sed 's/^v//')
+        PERIDIOD_VERSION_RPM=${PERIDIOD_VERSION//-/_}
+        PERIDIOD_PACKAGE_DIR=$(pwd)/package/peridiod_${PERIDIOD_VERSION}_${PERIDIOD_ARCH}
+        PERIDIOD_RELEASE_NOTES=$(sed -e "/^## ${RELEASE_TAG}/,/^## / ! d" CHANGELOG.md | tail -n +2 | head -n -1)
+
+        export PERIDIOD_RELEASE_NOTES
+        export PERIDIOD_VERSION
+        export PERIDIOD_VERSION_RPM
+        export PERIDIOD_ARCH
+        export PERIDIOD_ARCH_RPM
+
+        release/build-rpm.sh ./docker_output/peridiod-${PERIDIOD_VERSION}.tar.gz $PERIDIOD_PACKAGE_DIR
+
+        mv "${PERIDIOD_PACKAGE_DIR}/RPMS/$PERIDIOD_ARCH_RPM/peridiod-${PERIDIOD_VERSION_RPM}-1.${PERIDIOD_ARCH_RPM}.rpm" peridiod-${PERIDIOD_VERSION_RPM}-1.${PERIDIOD_ARCH_RPM}.${{ matrix.distro }}.rpm
+        echo "PERIDIOD_PACKAGE=peridiod-${PERIDIOD_VERSION_RPM}-1.${PERIDIOD_ARCH_RPM}.${{ matrix.distro }}.rpm" >> $GITHUB_ENV
+
+    - name: Upload Release Asset
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release upload $RELEASE_TAG $PERIDIOD_PACKAGE --clobber

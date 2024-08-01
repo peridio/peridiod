@@ -1,7 +1,7 @@
 import Config
 
 shell =
-  System.find_executable("bash") || System.find_executable("zsh") || System.find_execurtable("sh")
+  System.find_executable("bash") || System.find_executable("zsh") || System.find_executable("sh")
 
 System.put_env("SHELL", shell)
 
@@ -14,7 +14,7 @@ log_level =
   end
 
 kv_backend =
-  case System.get_env("PERIDIOD_KV_BACKEND") do
+  case System.get_env("PERIDIO_KV_BACKEND") do
     "filesystem" -> PeridiodPersistence.KVBackend.Filesystem
     "ubootenv" -> PeridiodPersistence.KVBackend.UBootEnv
     _ -> PeridiodPersistence.KVBackend.UBootEnv

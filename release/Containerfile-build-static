@@ -1,0 +1,94 @@
+FROM fedora:40 AS build
+
+ARG MIX_ENV=prod
+ARG OPENSSL_VERSION=1.1.1v
+ARG ERLANG_VERSION=27.0.1
+ARG ELIXIR_VERSION=1.17.2
+
+RUN dnf groupinstall -y 'Development Tools' && \
+    dnf install -y \
+    glibc-static \
+    glibc-locale-source \
+    glibc-langpack-en \
+    libstdc++-devel \
+    libstdc++-static \
+    gcc-c++ \
+    wget \
+    perl
+
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
+
+RUN localedef -i en_US -f UTF-8 en_US.UTF-8
+
+RUN wget https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz && \
+  tar zxvf openssl-${OPENSSL_VERSION}.tar.gz
+
+RUN cd openssl-${OPENSSL_VERSION} && \
+  ./config \
+  no-shared \
+  no-pinshared \
+  --prefix=/opt/openssl && \
+    make && make install
+
+RUN wget https://ftp.gnu.org/pub/gnu/ncurses/ncurses-6.4.tar.gz && \
+  tar -xzvf ncurses-6.4.tar.gz
+
+RUN cd ncurses-6.4 && \
+  ./configure \
+  --prefix=/opt/ncurses \
+  --enable-static \
+  --disable-shared \
+  --with-normal \
+  --with-cxx-binding \
+  --with-cxx-shared && \
+  make && make install
+
+RUN wget https://github.com/erlang/otp/archive/refs/tags/OTP-${ERLANG_VERSION}.tar.gz && \
+  tar zxvf OTP-${ERLANG_VERSION}.tar.gz
+
+RUN cd otp-OTP-${ERLANG_VERSION} && \
+  CFLAGS="-O2 -Wno-error -I/opt/ncurses/include" \
+  CXXFLAGS="$CFLAGS -static" \
+  LDFLAGS="-L/usr/lib64 -static -L/opt/ncurses/lib" \
+  LIBS="/opt/openssl/lib/libcrypto.a" \
+  ./configure \
+  --without-debugger \
+  --without-dialyzer \
+  --without-jinterface \
+  --without-megaco \
+  --without-observer \
+  --without-odbc \
+  --without-typer \
+  --without-wx \
+  --without-et \
+  --without-javac \
+  --enable-static \
+  --enable-static-nifs \
+  --enable-static-drivers \
+  --disable-dynamic-ssl-lib \
+  --with-crypto \
+  --with-ssl-incl=/opt/openssl \
+  --with-ssl=/opt/openssl && \
+    make && make install
+
+RUN wget https://github.com/elixir-lang/elixir/archive/refs/tags/v${ELIXIR_VERSION}.tar.gz -O elixir-v${ELIXIR_VERSION}.tar.gz && \
+  tar zxvf elixir-v${ELIXIR_VERSION}.tar.gz
+
+RUN cd elixir-${ELIXIR_VERSION} && \
+  make clean compile && make install
+
+RUN mix archive.install github hexpm/hex branch latest --force
+RUN /usr/local/bin/mix local.rebar --force
+
+RUN mkdir -p /opt/peridiod
+ADD . /opt/peridiod/
+
+WORKDIR /opt/peridiod
+
+RUN mix deps.get --only $MIX_ENV
+RUN CFLAGS="-static" CXXFLAGS="-static" LDFLAGS="-static" mix release --overwrite
+
+FROM scratch AS app
+COPY --from=build /opt/peridiod/_build/prod/peridiod-*.tar.gz .
