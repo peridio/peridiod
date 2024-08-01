@@ -1,0 +1,41 @@
+Name:           peridiod
+Version:        $PERIDIOD_VERSION_RPM
+Release:        1%{?dist}
+Summary:        $PERIDIOD_DESCRIPTION
+
+License:        $PERIDIOD_LICENSE
+URL:            $PERIDIOD_HOMEPAGE
+Source0:        %{name}-%{version}.tar.gz
+
+BuildArch:      $PERIDIOD_ARCH_RPM
+Requires:       glibc
+Requires:       openssl
+Requires:       zlib
+
+%description
+$PERIDIOD_DESCRIPTION
+
+%prep
+%setup -q
+
+%build
+# No build required for precompiled sources
+
+%install
+mkdir -p %{buildroot}/usr/lib/systemd/system
+mkdir -p %{buildroot}/usr/lib/peridiod
+mkdir -p %{buildroot}/etc/peridiod
+
+cp -r peridiod/* %{buildroot}/usr/lib/peridiod
+cp peridiod.service %{buildroot}/usr/lib/systemd/system
+cp peridiod.env %{buildroot}/etc/peridiod
+cp peridio.json %{buildroot}/etc/peridiod
+
+%files
+/usr/lib/peridiod/*
+/usr/lib/systemd/system/peridiod.service
+/etc/peridiod/peridio.json
+/etc/peridiod/peridiod.env
+
+%changelog
+$PERIDIOD_CHANGELOG
