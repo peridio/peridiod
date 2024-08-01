@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "cache_dir": "/var/peridiod",
+  "remote_shell": false,
+  "release_poll_enabled": true,
+  "targets": ["portable"],
+  "trusted_signing_keys": [],
+  "remote_access_tunnels": {
+    "enabled": false,
+    "service_ports": [22]
+  },
+
+  "node": {
+    "key_pair_source": "file",
+    "key_pair_config": {
+      "private_key_path": "/etc/peridiod/device-certificate.pem",
+      "certificate_path": "/etc/peridiod/device-private-key.pem"
+    }
+  }
+}

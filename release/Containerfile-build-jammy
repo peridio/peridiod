@@ -1,7 +1,6 @@
-FROM --platform=linux/amd64 hexpm/elixir:1.16.3-erlang-26.2.5.1-ubuntu-noble-20240605 AS build
+FROM hexpm/elixir:1.17.2-erlang-27.0.1-ubuntu-jammy-20240530 AS build
 
 ARG MIX_ENV=prod
-ARG UBOOT_ENV_SIZE=0x20000
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
@@ -9,7 +8,7 @@ RUN apt-get update \
     git make build-essential
 
 RUN mix archive.install github hexpm/hex branch latest --force
-RUN /usr/local/bin/mix local.rebar --force
+RUN mix local.rebar --force
 
 
 RUN mkdir -p /opt/app
@@ -21,4 +20,4 @@ RUN mix deps.get --only $MIX_ENV
 RUN mix release --overwrite
 
 FROM scratch AS app
-COPY --from=build /opt/app/_build/prod/peridiod-*.tar.gz ./amd64/
+COPY --from=build /opt/app/_build/prod/peridiod-*.tar.gz .
