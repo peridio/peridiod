@@ -19,8 +19,12 @@ kv_backend =
       path = System.get_env("PERIDIO_KV_BACKEND_FILESYSTEM_PATH", "/var/peridiod")
       file = System.get_env("PERIDIO_KV_BACKEND_FILESYSTEM_FILE", "peridiod-state")
       {PeridiodPersistence.KVBackend.Filesystem, path: path, file: file}
-    "ubootenv" -> PeridiodPersistence.KVBackend.UBootEnv
-    _ -> PeridiodPersistence.KVBackend.UBootEnv
+
+    "ubootenv" ->
+      PeridiodPersistence.KVBackend.UBootEnv
+
+    _ ->
+      PeridiodPersistence.KVBackend.UBootEnv
   end
 
 config :peridiod_persistence,
