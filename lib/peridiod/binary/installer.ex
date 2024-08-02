@@ -278,6 +278,12 @@ defmodule Peridiod.Binary.Installer do
   defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "file"}}}),
     do: Installer.File
 
+  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "deb"}}}),
+    do: Installer.Deb
+
+  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "rpm"}}}),
+    do: Installer.Rpm
+
   defp do_install_from_cache(state) do
     cache_file = Binary.cache_file(state.binary_metadata)
     send(self(), {:cache_install, :start})
