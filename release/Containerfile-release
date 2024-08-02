@@ -1,4 +1,4 @@
-FROM elixir:1.16.3-alpine AS build
+FROM elixir:1.17.2-alpine AS build
 
 ARG MIX_ENV=prod
 
@@ -40,7 +40,7 @@ WORKDIR /opt/app
 RUN mix deps.get --only $MIX_ENV
 RUN mix release --overwrite
 
-FROM alpine:3.20 as app
+FROM alpine:3.20
 
 RUN apk add --no-cache \
     agetty \
