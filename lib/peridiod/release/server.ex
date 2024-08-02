@@ -388,8 +388,16 @@ defmodule Peridiod.Release.Server do
     # Logger.debug("Release Manager: update #{inspect(body)}")
     {:ok, release_metadata} = Release.metadata_from_manifest(body)
     Release.metadata_to_cache(state.cache_pid, release_metadata)
-    {:ok, state} = do_install_release(release_metadata, self(), state)
-    {:updating, %{state | progress_release: release_metadata}}
+
+    case do_install_release(release_metadata, self(), state) do
+      {:ok, state} ->
+        Logger.info("Release Manager: Installing Update")
+        {:updating, %{state | progress_release: release_metadata}}
+
+      {{:error, error}, state} ->
+        Logger.error("Release Manager: Error #{inspect(error)}")
+        {:no_update, state}
+    end
   end
 
   defp update_response({:ok, %{status: 200, body: %{"status" => "no_update"}}}, state) do
@@ -398,7 +406,7 @@ defmodule Peridiod.Release.Server do
   end
 
   defp update_response({:error, %{reason: reason}}, state) do
-    Logger.error("Release Manager: error checking for update #{inspect reason}")
+    Logger.error("Release Manager: error checking for update #{inspect(reason)}")
     {:no_update, state}
   end
 
@@ -525,7 +533,7 @@ defmodule Peridiod.Release.Server do
   end
 
   defp finish_release(%{installing_release: {release_metadata, [], callback}} = state) do
-    Logger.debug("Release Install complete")
+    Logger.info("Release Manager: Install complete")
     Release.stamp_installed(state.cache_pid, release_metadata)
     Release.kv_advance(state.kv_pid)
 
