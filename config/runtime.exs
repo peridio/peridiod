@@ -15,7 +15,10 @@ log_level =
 
 kv_backend =
   case System.get_env("PERIDIO_KV_BACKEND") do
-    "filesystem" -> PeridiodPersistence.KVBackend.Filesystem
+    "filesystem" ->
+      path = System.get_env("PERIDIO_KV_BACKEND_FILESYSTEM_PATH", "/var/peridiod")
+      file = System.get_env("PERIDIO_KV_BACKEND_FILESYSTEM_FILE", "peridiod-state")
+      {PeridiodPersistence.KVBackend.Filesystem, path: path, file: file}
     "ubootenv" -> PeridiodPersistence.KVBackend.UBootEnv
     _ -> PeridiodPersistence.KVBackend.UBootEnv
   end
