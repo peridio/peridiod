@@ -15,6 +15,7 @@ defmodule Peridiod.MixProject do
       releases: [
         peridiod: [
           applications: [peridiod: :permanent],
+          include_executables_for: [:unix],
           steps: [:assemble, :tar],
           include_erts: System.get_env("MIX_TARGET_INCLUDE_ERTS") || true
         ]
