@@ -80,8 +80,8 @@ defmodule Peridiod.Release.Server do
     poll_interval = config.release_poll_interval || @update_poll_interval
     progress_message_interval = @progress_message_interval
 
-    current_release_prn = KV.get("peridio_rel_current")
-    current_release_version = KV.get("peridio_vsn_current")
+    current_release_prn = KV.get("peridio_rel_current") || ""
+    current_release_version = KV.get("peridio_vsn_current") || ""
     progress_release_prn = KV.get("peridio_rel_progress")
 
     current_release = load_release_metadata_from_cache(current_release_prn, cache_pid)
@@ -394,6 +394,11 @@ defmodule Peridiod.Release.Server do
 
   defp update_response({:ok, %{status: 200, body: %{"status" => "no_update"}}}, state) do
     Logger.debug("Release Manager: no update")
+    {:no_update, state}
+  end
+
+  defp update_response({:error, %{reason: reason}}, state) do
+    Logger.error("Release Manager: error checking for update #{inspect reason}")
     {:no_update, state}
   end
 
