@@ -168,6 +168,7 @@ defmodule Peridiod.Config do
       |> override_if_set(:trusted_signing_key_dir, config_file["trusted_signing_key_dir"])
       |> override_if_set(:trusted_signing_keys, config_file["trusted_signing_keys"])
       |> override_if_set(:release_poll_enabled, config_file["release_poll_enabled"])
+      |> override_if_set(:release_poll_interval, config_file["release_poll_interval"])
       |> override_if_set(
         :trusted_signing_key_threshold,
         config_file["trusted_signing_key_threshold"]
