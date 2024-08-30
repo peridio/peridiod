@@ -1,5 +1,11 @@
 # peridiod releases
 
+## v3.0.0-rc.1
+
+* Bug fixes
+  * Update systemd peridiod.service to point to /usr/lib/peridiod
+  * Allow `release_poll_interval` to be configured from PERIDIO_CONFIG_FILE
+
 ## v3.0.0-rc.0
 
 **This is a major update and this release should be thoroughly tested.**
