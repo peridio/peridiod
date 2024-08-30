@@ -6,7 +6,7 @@ Restart=on-failure
 RestartSec=5s
 
 EnvironmentFile=/etc/peridiod/peridiod.env
-ExecStart=/opt/peridiod/bin/peridiod start
+ExecStart=/usr/lib/peridiod/bin/peridiod start
 User=root
 
 [Install]
