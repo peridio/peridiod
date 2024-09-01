@@ -80,9 +80,23 @@ defmodule Peridiod.Release.Server do
     poll_interval = config.release_poll_interval || @update_poll_interval
     progress_message_interval = @progress_message_interval
 
-    current_release_prn = KV.get("peridio_rel_current") || ""
-    current_release_version = KV.get("peridio_vsn_current") || ""
-    progress_release_prn = KV.get("peridio_rel_progress")
+    current_release_prn =
+      case KV.get("peridio_rel_current") do
+        "" -> nil
+        peridio_rel_current -> peridio_rel_current
+      end
+
+    current_release_version =
+      case KV.get("peridio_vsn_current") do
+        "" -> nil
+        peridio_vsn_current -> peridio_vsn_current
+      end
+
+    progress_release_prn =
+      case KV.get("peridio_rel_progress") do
+        "" -> nil
+        peridio_rel_progress -> peridio_rel_progress
+      end
 
     current_release = load_release_metadata_from_cache(current_release_prn, cache_pid)
     progress_release = load_release_metadata_from_cache(progress_release_prn, cache_pid)
@@ -546,10 +560,16 @@ defmodule Peridiod.Release.Server do
     Release.stamp_installed(state.cache_pid, release_metadata)
     Release.kv_advance(state.kv_pid)
 
+    version =
+      case release_metadata.version do
+        nil -> nil
+        version -> Version.to_string(version)
+      end
+
     sdk_client =
       state.sdk_client
       |> Map.put(:release_prn, release_metadata.prn)
-      |> Map.put(:release_version, Version.to_string(release_metadata.version))
+      |> Map.put(:release_version, version)
 
     try_send(callback, {__MODULE__, :install, release_metadata.prn, :complete})
 

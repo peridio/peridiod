@@ -26,10 +26,22 @@ defmodule Peridiod.Release do
 
   defimpl Jason.Encoder, for: Release do
     def encode(%Release{} = release_metadata, opts) do
+      version =
+        case release_metadata.version do
+          nil -> nil
+          version -> Version.to_string(version)
+        end
+
+      version_requirement =
+        case release_metadata.version_requirement do
+          nil -> nil
+          version_requirement -> version_requirement.source
+        end
+
       release_metadata
       |> Map.take([:prn, :name, :version_requirement, :bundle_prn])
-      |> Map.put(:version, Version.to_string(release_metadata.version))
-      |> Map.put(:version_requirement, release_metadata.version_requirement.source)
+      |> Map.put(:version, version)
+      |> Map.put(:version_requirement, version_requirement)
       |> Jason.Encode.map(opts)
     end
   end
@@ -69,16 +81,22 @@ defmodule Peridiod.Release do
   end
 
   def metadata_from_map(release_metadata) do
+    version =
+      case release_metadata["version"] do
+        nil -> nil
+        version -> Version.parse!(version)
+      end
+
     version_requirement =
-      case Version.parse_requirement(release_metadata["version_requirement"]) do
-        {:ok, version_requirement} -> version_requirement
-        _ -> ""
+      case release_metadata["version_requirement"] do
+        nil -> nil
+        version_requirement -> Version.parse_requirement!(version_requirement)
       end
 
     %__MODULE__{
       prn: release_metadata["prn"],
       name: release_metadata["name"],
-      version: Version.parse!(release_metadata["version"]),
+      version: version,
       version_requirement: version_requirement,
       bundle_prn: release_metadata["bundle_prn"]
     }
@@ -93,12 +111,24 @@ defmodule Peridiod.Release do
         "manifest" => binaries,
         "bundle" => bundle
       }) do
+    version =
+      case release_metadata["version"] do
+        nil -> nil
+        version -> Version.parse!(version)
+      end
+
+    version_requirement =
+      case release_metadata["version_requirement"] do
+        nil -> nil
+        version_requirement -> Version.parse_requirement!(version_requirement)
+      end
+
     {:ok,
      %__MODULE__{
        prn: release_metadata["prn"],
        name: release_metadata["name"],
-       version: Version.parse!(release_metadata["version"]),
-       version_requirement: Version.parse_requirement!(release_metadata["version_requirement"]),
+       version: version,
+       version_requirement: version_requirement,
        bundle_prn: bundle["prn"],
        binaries: Enum.map(binaries, &Binary.metadata_from_manifest/1)
      }}
@@ -160,19 +190,36 @@ defmodule Peridiod.Release do
     Enum.filter(binaries, &(&1.target in [nil, "" | targets]))
   end
 
-  def kv_progress(kv_pid \\ KV, %__MODULE__{} = release_metadata) do
+  def kv_progress(kv_pid \\ KV, %__MODULE__{prn: prn} = release_metadata) when not is_nil(prn) do
+    version =
+      case release_metadata.version do
+        nil -> ""
+        version -> Version.to_string(version)
+      end
+
     KV.put_map(kv_pid, %{
       "peridio_rel_progress" => release_metadata.prn,
-      "peridio_vsn_progress" => Version.to_string(release_metadata.version)
+      "peridio_vsn_progress" => version
     })
   end
 
   def kv_advance(kv_pid \\ KV) do
     KV.get_all_and_update(kv_pid, fn kv ->
       rel_progress = Map.get(kv, "peridio_rel_progress")
-      vsn_progress = Map.get(kv, "peridio_vsn_progress")
+
+      vsn_progress =
+        case Map.get(kv, "peridio_vsn_progress") do
+          nil -> ""
+          vsn_progress -> vsn_progress
+        end
+
       rel_current = Map.get(kv, "peridio_rel_current")
-      vsn_current = Map.get(kv, "peridio_vsn_current")
+
+      vsn_current =
+        case Map.get(kv, "peridio_vsn_current") do
+          nil -> ""
+          vsn_current -> vsn_current
+        end
 
       kv
       |> Map.put("peridio_rel_previous", rel_current)
