@@ -235,9 +235,10 @@ defmodule Peridiod.Release.Server do
   def handle_info(:check_for_update, state) do
     Logger.debug("Checking for an update")
 
-    state
-    |> update_check()
-    |> update_response(state)
+    {_, state} =
+      state
+      |> update_check()
+      |> update_response(state)
 
     update_timer = Process.send_after(self(), :check_for_update, state.poll_interval)
 
@@ -440,9 +441,18 @@ defmodule Peridiod.Release.Server do
       {true, false} ->
         Logger.debug("Install Release: ok")
         Release.kv_progress(state.kv_pid, release_metadata)
-        state = do_binaries_jobs(binaries_metadata, Installer.Supervisor, callback, state)
-        state = %{state | installing_release: {release_metadata, binaries_metadata, callback}}
-        {:ok, state}
+
+        case binaries_metadata do
+          [] ->
+            state = %{state | installing_release: {release_metadata, binaries_metadata, callback}}
+            state = finish_release(state)
+            {:ok, state}
+
+          _ ->
+            state = do_binaries_jobs(binaries_metadata, Installer.Supervisor, callback, state)
+            state = %{state | installing_release: {release_metadata, binaries_metadata, callback}}
+            {:ok, state}
+        end
 
       {false, _} ->
         Logger.debug("Install Release: untrusted signatures")
@@ -509,7 +519,6 @@ defmodule Peridiod.Release.Server do
       end)
 
     case trusted_result do
-      {[], []} -> false
       {_trusted, []} -> true
       _ -> false
     end
