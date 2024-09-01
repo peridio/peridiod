@@ -37,7 +37,7 @@ defmodule Peridiod.MixProject do
       {:telemetry, "~> 1.0"},
       {:peridiod_persistence, github: "peridio/peridiod-persistence", branch: "main"},
       {:peridio_rat, github: "peridio/peridio-rat", branch: "main"},
-      {:peridio_sdk, github: "peridio/peridio-elixir", branch: "main"},
+      {:peridio_sdk, github: "peridio/peridio-elixir", branch: "nil-headers"},
       {:erlexec, github: "peridio/erlexec"},
       {:circuits_uart, "~> 1.5"},
       {:castore, "~> 1.0"},
