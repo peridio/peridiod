@@ -1,5 +1,13 @@
 # peridiod releases
 
+## v3.0.0-rc.2
+
+* Enhancements
+  * Added support for deb and rpm package installers
+
+* Bug fixes
+  * Fixed issues in checking for release logic for releases
+
 ## v3.0.0-rc.1
 
 * Bug fixes
