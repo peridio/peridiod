@@ -1,5 +1,10 @@
 # peridiod releases
 
+## v3.0.0-rc.3
+
+* Bug fixes
+  * Allow `nil` for release version data in device API headers
+
 ## v3.0.0-rc.2
 
 * Enhancements
