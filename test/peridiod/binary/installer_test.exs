@@ -12,7 +12,7 @@ defmodule Peridiod.Binary.InstallerTest do
     setup :setup_fwup
 
     test "install task upgrade", %{binary_metadata: binary_metadata, opts: opts} = context do
-      Installer.start_link(binary_metadata, opts)
+      spawn_installer(binary_metadata, opts)
       prn = binary_metadata.prn
       assert_receive {Installer, ^prn, :complete}
       assert File.exists?(context.upgrade_file)
@@ -21,8 +21,7 @@ defmodule Peridiod.Binary.InstallerTest do
     @tag capture_log: true
     test "install task error", %{binary_metadata: binary_metadata, opts: opts} do
       binary_metadata = update_installer_opts(binary_metadata, "task", "does_not_exist")
-      Installer.start_link(binary_metadata, opts)
-
+      spawn_installer(binary_metadata, opts)
       assert_receive {Installer, _, {:error, error}}
       assert error =~ "does_not_exist"
     end
@@ -31,8 +30,7 @@ defmodule Peridiod.Binary.InstallerTest do
     test "invalid signature", %{binary_metadata: binary_metadata, opts: opts} do
       untrusted = TestFixtures.untrusted_release_binary() |> Binary.metadata_from_manifest()
       binary_metadata = Map.put(binary_metadata, :signatures, untrusted.signatures)
-      Installer.start_link(binary_metadata, opts)
-
+      spawn_installer(binary_metadata, opts)
       assert_receive {Installer, _, {:error, :invalid_signature}}
     end
   end
@@ -67,5 +65,10 @@ defmodule Peridiod.Binary.InstallerTest do
       |> update_in(["peridiod", "installer_opts", key], fn _ -> value end)
 
     %{binary_metadata | custom_metadata: custom_metadata}
+  end
+
+  defp spawn_installer(binary_metadata, opts) do
+    opts = Map.put(opts, :callback, self())
+    spawn(fn -> Installer.start_link(binary_metadata, opts) end)
   end
 end
