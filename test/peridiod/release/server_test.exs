@@ -119,21 +119,6 @@ defmodule Peridiod.Release.ServerTest do
       assert {:error, :already_cached} =
                Release.Server.cache_release(release_server_pid, release_metadata)
     end
-
-    test "already installed", %{
-      cache_pid: cache_pid,
-      release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries} = release_metadata
-    } do
-      binary_metadata = List.first(binaries)
-      :ok = Binary.metadata_to_cache(cache_pid, binary_metadata)
-      signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Release.Server.add_trusted_signing_key(release_server_pid, signing_key)
-      assert :ok = Release.stamp_installed(cache_pid, release_metadata)
-
-      assert {:error, :already_installed} =
-               Release.Server.install_release(release_server_pid, release_metadata)
-    end
   end
 
   describe "binary install cache" do

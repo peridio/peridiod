@@ -174,14 +174,10 @@ defmodule Peridiod.Release.Server do
   def handle_call(
         {:install_release, %Release{} = release_metadata},
         {from, _ref},
-        %{installing_release: nil} = state
+        state
       ) do
     {reply, state} = do_install_release(release_metadata, from, state)
     {:reply, reply, state}
-  end
-
-  def handle_call({:install_release, %Release{}}, _from, state) do
-    {:reply, {:error, {:installing_release, state.installing_release}}, state}
   end
 
   def handle_call(
@@ -441,7 +437,7 @@ defmodule Peridiod.Release.Server do
     MapSet.new(keys)
   end
 
-  defp do_install_release(release_metadata, callback, state) do
+  defp do_install_release(release_metadata, callback, %{installing_release: nil} = state) do
     binaries_metadata =
       release_metadata
       |> Release.filter_binaries_by_targets(state.targets)
@@ -449,10 +445,9 @@ defmodule Peridiod.Release.Server do
       |> Enum.reject(&Binary.installed?(state.cache_pid, &1))
 
     trusted? = binaries_trusted?(binaries_metadata, state)
-    installed? = Release.installed?(state.cache_pid, release_metadata)
 
-    case {trusted?, installed?} do
-      {true, false} ->
+    case trusted? do
+      true ->
         Logger.debug("Install Release: ok")
         Release.kv_progress(state.kv_pid, release_metadata)
 
@@ -468,14 +463,18 @@ defmodule Peridiod.Release.Server do
             {:ok, state}
         end
 
-      {false, _} ->
+      false ->
         Logger.debug("Install Release: untrusted signatures")
         {{:error, :untrusted_signatures}, state}
-
-      {_, true} ->
-        Logger.debug("Install Release: already installed")
-        {{:error, :already_installed}, state}
     end
+  end
+
+  defp do_install_release(
+         release_metadata,
+         _callback,
+         %{installing_release: {release_metadata, _, _}} = state
+       ) do
+    {{:error, {:installing_release, release_metadata}}, state}
   end
 
   defp do_cache_release(release_metadata, callback, state) do
