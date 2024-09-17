@@ -78,13 +78,6 @@ defmodule PeridiodTest.Case do
       end
 
     {:ok, pid} = Release.Server.start_link(config, [])
-
-    on_exit(fn ->
-      if Process.alive?(pid) do
-        Release.Server.stop(pid)
-      end
-    end)
-
     Map.put(context, :release_server_pid, pid)
   end
 end
