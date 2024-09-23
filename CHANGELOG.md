@@ -1,5 +1,11 @@
 # peridiod releases
 
+## v3.0.0-rc.4
+
+* Bug fixes
+  * Prevent release server from applying another release if one is in progress
+  * Bump erlexec to latest to fix compilation issues on Apple Silicon
+
 ## v3.0.0-rc.3
 
 * Bug fixes
