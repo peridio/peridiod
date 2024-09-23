@@ -1,5 +1,10 @@
 # peridiod releases
 
+## v2.5.5
+
+* Bug fixes
+  * Bump erlexec to latest to solve issues with building on Apple Silicon
+
 ## v2.5.4
 
 * Enhancement
