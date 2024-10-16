@@ -88,7 +88,7 @@ defmodule Peridiod.Release.Server do
 
     current_release_version =
       case KV.get("peridio_vsn_current") do
-        "" -> nil
+        "" -> KV.get_active("peridio_version")
         peridio_vsn_current -> peridio_vsn_current
       end
 
