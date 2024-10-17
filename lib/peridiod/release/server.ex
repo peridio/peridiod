@@ -88,7 +88,7 @@ defmodule Peridiod.Release.Server do
 
     current_release_version =
       case KV.get("peridio_vsn_current") do
-        "" -> KV.get_active("peridio_version")
+        nil -> KV.get_active("peridio_version")
         peridio_vsn_current -> peridio_vsn_current
       end
 
@@ -412,6 +412,12 @@ defmodule Peridiod.Release.Server do
   end
 
   defp update_response({:ok, %{status: 200, body: %{"status" => "no_update"}}}, state) do
+    Logger.debug("Release Manager: no update")
+    {:no_update, state}
+  end
+
+  defp update_response({:ok, %{status: 200, body: %{"status" => "device_quarantined"}}}, state) do
+    Logger.debug("Release Manager: Device Quarantined")
     Logger.debug("Release Manager: no update")
     {:no_update, state}
   end
