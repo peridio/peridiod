@@ -86,8 +86,10 @@ defmodule Peridiod.Binary do
 
     custom_metadata_hash = :crypto.hash(:sha256, ordered_metadata)
 
+    binary_prn = sanitize_prn(binary_metadata["prn"])
+
     %__MODULE__{
-      prn: binary_metadata["prn"],
+      prn: binary_prn,
       name: binary_metadata["name"],
       version: binary_metadata["version"],
       hash: Base.decode16!(binary_metadata["hash"], case: :mixed),
@@ -114,13 +116,6 @@ defmodule Peridiod.Binary do
 
     custom_metadata = Map.get(binary_metadata, "custom_metadata", %{})
 
-    ordered_metadata =
-      custom_metadata
-      |> sort_keys_recursively()
-      |> Jason.encode!()
-
-    custom_metadata_hash = :crypto.hash(:sha256, ordered_metadata)
-
     %__MODULE__{
       prn: binary_prn,
       name: binary_metadata["artifact"]["name"],
@@ -129,7 +124,7 @@ defmodule Peridiod.Binary do
       size: size,
       uri: URI.new!(url),
       custom_metadata: custom_metadata,
-      custom_metadata_hash: custom_metadata_hash,
+      custom_metadata_hash: custom_metadata_hash(custom_metadata),
       target: target,
       signatures: signatures
     }
@@ -137,10 +132,10 @@ defmodule Peridiod.Binary do
 
   def metadata_to_cache(
         cache_pid \\ Cache,
-        %__MODULE__{prn: binary_prn} = binary_metadata
+        %__MODULE__{} = binary_metadata
       ) do
     binary_json = Jason.encode!(binary_metadata)
-    manifest_file = Path.join([@cache_dir, binary_prn, "manifest"])
+    manifest_file = Path.join(cache_dir(binary_metadata), "manifest")
     Cache.write(cache_pid, manifest_file, binary_json)
   end
 
@@ -154,12 +149,21 @@ defmodule Peridiod.Binary do
     Cache.exists?(cache_pid, stamp_file)
   end
 
-  def cache_dir(%__MODULE__{prn: binary_prn}) do
-    Path.join([@cache_dir, binary_prn])
+  def cache_dir(%__MODULE__{prn: binary_prn, custom_metadata_hash: custom_metadata_hash}) do
+    Path.join([@cache_dir, "#{binary_prn}:#{custom_metadata_hash}"])
   end
 
   def cache_file(%__MODULE__{} = binary_metadata) do
     Path.join(cache_dir(binary_metadata), @cache_file)
+  end
+
+  def custom_metadata_hash(custom_metadata) do
+    ordered_metadata =
+      custom_metadata
+      |> sort_keys_recursively()
+      |> Jason.encode!()
+
+    :crypto.hash(:sha256, ordered_metadata)
   end
 
   def installed?(cache_pid \\ Cache, %__MODULE__{} = binary_metadata) do
@@ -183,7 +187,7 @@ defmodule Peridiod.Binary do
 
   def id_from_prn(binary_prn) do
     case String.split(binary_prn, ":") do
-      ["prn", "1", _org_id, "binary", binary_id] -> {:ok, binary_id}
+      ["prn", "1", _org_id, "binary", binary_id | _] -> {:ok, binary_id}
       _ -> {:error, :invalid_prn}
     end
   end
@@ -296,4 +300,10 @@ defmodule Peridiod.Binary do
   end
 
   defp sort_keys_recursively(value), do: value
+
+  defp sanitize_prn(binary_prn) do
+    String.split(binary_prn, ":", parts: 6)
+    |> Enum.take(5)
+    |> Enum.join(":")
+  end
 end
