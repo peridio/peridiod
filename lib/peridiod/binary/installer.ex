@@ -211,6 +211,7 @@ defmodule Peridiod.Binary.Installer do
       state.installer_state
     ])
     |> installer_resp(state)
+    |> installer_progress()
     |> installer_complete()
   end
 
@@ -229,12 +230,12 @@ defmodule Peridiod.Binary.Installer do
   defp installer_complete({:stop, :normal, state}) do
     Logger.debug("Installer [#{state.binary_metadata.prn}]: complete")
     Binary.stamp_installed(state.cache_pid, state.binary_metadata)
+    Binary.put_kv_installed(state.kv_pid, state.binary_metadata, :progress)
     try_send(state.callback, {Installer, state.binary_metadata.prn, :complete})
     {:stop, :normal, state}
   end
 
   defp installer_complete({:noreply, state}) do
-    Logger.debug("Installer [#{state.binary_metadata.prn}]: complete noreply")
     {:noreply, state}
   end
 
