@@ -239,7 +239,7 @@ defmodule Peridiod.Binary do
       |> id_from_prn!()
       |> id_to_bin()
       |> Base.encode16(case: :lower)
-
+    KV.reinitialize(kv_pid)
     KV.get_and_update(kv_pid, @kv_bin_installed <> to_string(store), fn installed ->
       installed
       |> parse_kv_installed()
