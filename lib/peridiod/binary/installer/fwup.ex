@@ -8,6 +8,8 @@ defmodule Peridiod.Binary.Installer.Fwup do
   alias PeridiodPersistence.KV
   alias __MODULE__
 
+  require Logger
+
   def install_init(
         _binary_metadata,
         opts,
@@ -55,17 +57,20 @@ defmodule Peridiod.Binary.Installer.Fwup do
 
   def install_info({:fwup, message}, state) do
     case message do
-      {:ok, 0, _message} ->
+      {:ok, 0, message} ->
+        Logger.debug("[FWUP] Finished")
         {:stop, :normal, state}
 
-      {:progress, _percent} ->
+      {:progress, percent} ->
+        Logger.debug("[FWUP] Progress: #{inspect percent}")
         {:ok, state}
 
       {:error, _, message} ->
-        # Fwup error
+        Logger.debug("[FWUP] Error: #{inspect message}")
         {:error, message, state}
 
-      _ ->
+      resp ->
+        Logger.debug("[FWUP] Misc: #{inspect resp}")
         {:ok, state}
     end
   end
