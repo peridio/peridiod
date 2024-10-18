@@ -204,20 +204,26 @@ defmodule Peridiod.Release do
   end
 
   def kv_advance(kv_pid \\ KV) do
+    KV.reinitialize(kv_pid)
     KV.get_all_and_update(kv_pid, fn kv ->
       rel_progress = Map.get(kv, "peridio_rel_progress", "")
       vsn_progress = Map.get(kv, "peridio_vsn_progress", "")
+      bin_progress = Map.get(kv, "peridio_vsn_progress", "")
 
       rel_current = Map.get(kv, "peridio_rel_current", "")
       vsn_current = Map.get(kv, "peridio_vsn_current", "")
+      bin_current = Map.get(kv, "peridio_vsn_current", "")
 
       kv
       |> Map.put("peridio_rel_previous", rel_current)
       |> Map.put("peridio_vsn_previous", vsn_current)
+      |> Map.put("peridio_bin_previous", bin_current)
       |> Map.put("peridio_rel_current", rel_progress)
       |> Map.put("peridio_vsn_current", vsn_progress)
+      |> Map.put("peridio_bin_current", bin_progress)
       |> Map.put("peridio_rel_progress", "")
       |> Map.put("peridio_vsn_progress", "")
+      |> Map.put("peridio_bin_progress", "")
     end)
   end
 end
