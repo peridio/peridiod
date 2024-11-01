@@ -22,7 +22,7 @@ COUNTER=$(cat "$COUNTER_FILE")
 if [ "$COUNTER" -le 0 ]; then
   case $DPORT in
     22)
-      exec /usr/sbin/sshd
+      /usr/sbin/sshd &
       ;;
     *)
       ;;

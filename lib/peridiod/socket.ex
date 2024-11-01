@@ -97,6 +97,7 @@ defmodule Peridiod.Socket do
     Logger.debug("[#{inspect(__MODULE__)}] Joined Device channel")
     Peridiod.Connection.connected()
     _ = handle_join_reply(reply)
+    send(self(), :tunnel_synchronize)
     {:ok, socket}
   end
 
@@ -183,7 +184,7 @@ defmodule Peridiod.Socket do
       "Remote Access Tunnel requested but not enabled on the device: #{inspect(payload)}"
     )
 
-    Peridiod.Tunnel.close_request(socket.assigns.sdk_client, tunnel_prn, "feature_not_enabled")
+    Peridiod.Tunnel.close(tunnel_prn, "feature_not_enabled")
     {:ok, socket}
   end
 
@@ -196,18 +197,25 @@ defmodule Peridiod.Socket do
     service_ports = socket.assigns.remote_access_tunnels.service_ports
 
     if dport in service_ports do
-      Peridiod.Tunnel.create(
-        socket.assigns.sdk_client,
-        tunnel_prn,
-        dport,
-        socket.assigns.remote_access_tunnels
-      )
+      case Peridiod.Tunnel.create(
+             socket.assigns.sdk_client,
+             tunnel_prn,
+             dport,
+             socket.assigns.remote_access_tunnels
+           ) do
+        {:ok, _state} ->
+          :ok
+
+        error ->
+          Logger.debug("Tunnel Open Error: #{inspect(error)}")
+          Peridiod.Tunnel.close(tunnel_prn, "server_error_create")
+      end
     else
       Logger.warning(
         "Remote Access Tunnel requested for port #{dport} but not enabled in service port list: #{inspect(service_ports)}"
       )
 
-      Peridiod.Tunnel.close_request(socket.assigns.sdk_client, tunnel_prn, "dport_not_allowed")
+      Peridiod.Tunnel.close(tunnel_prn, "dport_not_allowed")
     end
 
     {:ok, socket}
@@ -229,6 +237,7 @@ defmodule Peridiod.Socket do
         socket
       ) do
     {:ok, expires_at, _offset} = DateTime.from_iso8601(expires_at)
+    Logger.debug("Tunnel Server requested extend")
     Peridio.RAT.extend_tunnel(tunnel_prn, expires_at)
     {:ok, socket}
   end
@@ -243,7 +252,8 @@ defmodule Peridiod.Socket do
   end
 
   def handle_message(@device_topic, "tunnel_close", %{"tunnel_prn" => tunnel_prn}, socket) do
-    Peridio.RAT.close_tunnel(tunnel_prn)
+    Logger.debug("Tunnel Server requested close")
+    Peridiod.Tunnel.close(tunnel_prn, "server_requested_close")
     {:ok, socket}
   end
 
@@ -325,6 +335,12 @@ defmodule Peridiod.Socket do
   def handle_info({:remote_console, _pid, data}, socket) do
     data = remove_unwanted_chars(data)
     _ = push(socket, @console_topic, "up", %{data: data})
+    {:noreply, socket}
+  end
+
+  def handle_info(:tunnel_synchronize, socket) do
+    Logger.debug("Tunnel Synchronize")
+    Peridiod.Tunnel.synchronize(socket.assigns.sdk_client, socket.assigns.remote_access_tunnels)
     {:noreply, socket}
   end
 

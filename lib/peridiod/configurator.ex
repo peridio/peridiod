@@ -192,7 +192,7 @@ defmodule Peridiod.Configurator do
           error("Unknown key pair type: #{type}")
       end
 
-    adapter = {Tesla.Adapter.Mint, transport_opts: config.ssl}
+    adapter = {Tesla.Adapter.Mint, timeout: 10_000, transport_opts: config.ssl}
 
     sdk_client =
       PeridioSDK.Client.new(
@@ -221,6 +221,7 @@ defmodule Peridiod.Configurator do
 
     %{
       enabled: rat_config_file["enabled"] || rat_config[:enabled] || false,
+      data_dir: rat_config_file["data_dir"] || rat_config[:data_dir] || System.tmp_dir!(),
       port_range:
         (rat_config_file["port_range"] || rat_config[:port_range]) |> encode_port_range(),
       ipv4_cidrs:
