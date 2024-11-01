@@ -111,6 +111,23 @@ The release server will check for an update from Peridio Cloud a the designated 
 When peridiod installs a release, it will accumulate `reboot_required` and trigger a reboot once all binaries have finished the installation process if any `reboot_required` is true.
 
 See the [Peridio Docs](https://docs.peridio.com/) for more information on configuring Releases for your organization.
+## v2.6.0
+
+* Enhancements
+  * Remote Access Tunnels
+    * Tunnels that are unknown will be closed and cleaned up
+    * Tunnels that are requested while the device was offline will configure and open
+    * Tunnels that are known will be resumed
+    * Tunnels that are expected to be open but are missing configurations / interfaces will be closed
+
+    This also adds support for configuring a persistent `data_dir` where you want to write tunnel interface configurations in the peridio config. By specifying a persistent location for configurations, tunnels will resume even after device reboots.
+
+    ```json
+    "remote_access_tunnels": {
+        "enabled": true,
+        "data_dir": "/etc/peridiod"
+      },
+    ```
 
 ## v2.5.4
 
