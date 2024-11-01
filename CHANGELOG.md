@@ -1,5 +1,23 @@
 # peridiod releases
 
+## v2.6.0
+
+* Enhancements
+  * Remote Access Tunnels
+    * Tunnels that are unknown will be closed and cleaned up
+    * Tunnels that are requested while the device was offline will configure and open
+    * Tunnels that are known will be resumed
+    * Tunnels that are expected to be open but are missing configurations / interfaces will be closed
+
+    This also adds support for configuring a persistent `data_dir` where you want to write tunnel interface configurations in the peridio config. By specifying a persistent location for configurations, tunnels will resume even after device reboots.
+
+    ```json
+    "remote_access_tunnels": {
+        "enabled": true,
+        "data_dir": "/etc/peridiod"
+      },
+    ```
+
 ## v2.5.4
 
 * Enhancement
