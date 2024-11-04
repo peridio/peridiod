@@ -1,5 +1,10 @@
 # peridiod releases
 
+## v2.6.1
+
+* Bug fixes
+  * Update erlexec to revert docs change which broke backwards compatability with > OTP 27
+
 ## v2.6.0
 
 * Enhancements
