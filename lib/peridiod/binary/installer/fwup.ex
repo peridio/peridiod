@@ -57,7 +57,7 @@ defmodule Peridiod.Binary.Installer.Fwup do
 
   def install_info({:fwup, message}, state) do
     case message do
-      {:ok, 0, message} ->
+      {:ok, 0, _message} ->
         Logger.debug("[FWUP] Finished")
         {:stop, :normal, state}
 
