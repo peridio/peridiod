@@ -288,6 +288,9 @@ defmodule Peridiod.Binary.Installer do
   defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "opkg"}}}),
     do: Installer.Opkg
 
+  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "swupdate"}}}),
+    do: Installer.SWUpdate
+
   defp do_install_from_cache(state) do
     cache_file = Binary.cache_file(state.binary_metadata)
     send(self(), {:cache_install, :start})
