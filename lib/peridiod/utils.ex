@@ -23,4 +23,8 @@ defmodule Peridiod.Utils do
     DateTime.utc_now()
     |> DateTime.to_iso8601()
   end
+
+  def exec_installed?(exec) do
+    is_binary(System.find_executable(exec))
+  end
 end
