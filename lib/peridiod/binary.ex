@@ -50,8 +50,8 @@ defmodule Peridiod.Binary do
     end
   end
 
-  def metadata_from_cache(cache_pid, binary_prn) do
-    manifest_file = Path.join([@cache_dir, binary_prn, "manifest"])
+  def metadata_from_cache(cache_pid, id) do
+    manifest_file = Path.join(cache_dir(id), "manifest")
 
     case Cache.read(cache_pid, manifest_file) do
       {:ok, json} -> metadata_from_json(json)
@@ -135,6 +135,7 @@ defmodule Peridiod.Binary do
         %__MODULE__{} = binary_metadata
       ) do
     binary_json = Jason.encode!(binary_metadata)
+    cache_dir(binary_metadata)
     manifest_file = Path.join(cache_dir(binary_metadata), "manifest")
     Cache.write(cache_pid, manifest_file, binary_json)
   end
@@ -149,8 +150,16 @@ defmodule Peridiod.Binary do
     Cache.exists?(cache_pid, stamp_file)
   end
 
+  def cache_dir({binary_prn, custom_metadata_hash}) do
+    cache_dir("#{binary_prn}:#{Base.encode16(custom_metadata_hash, case: :lower)}")
+  end
+
   def cache_dir(%__MODULE__{prn: binary_prn, custom_metadata_hash: custom_metadata_hash}) do
-    Path.join([@cache_dir, "#{binary_prn}:#{custom_metadata_hash}"])
+    cache_dir({binary_prn, custom_metadata_hash})
+  end
+
+  def cache_dir(path) when is_binary(path) do
+    Path.join([@cache_dir, path])
   end
 
   def cache_file(%__MODULE__{} = binary_metadata) do
@@ -239,7 +248,9 @@ defmodule Peridiod.Binary do
       |> id_from_prn!()
       |> id_to_bin()
       |> Base.encode16(case: :lower)
+
     KV.reinitialize(kv_pid)
+
     KV.get_and_update(kv_pid, @kv_bin_installed <> to_string(store), fn installed ->
       installed
       |> parse_kv_installed()
