@@ -25,6 +25,7 @@ defmodule Peridiod.BinaryTest do
         version: binary_version,
         hash: binary_hash,
         custom_metadata: custom_metadata,
+        custom_metadata_hash: custom_metadata_hash,
         target: target,
         signatures: signatures,
         size: size
@@ -32,17 +33,20 @@ defmodule Peridiod.BinaryTest do
 
       Binary.metadata_to_cache(cache_pid, binary_metadata)
 
-      assert {:ok,
-              %Binary{
-                prn: ^binary_prn,
-                name: ^binary_name,
-                version: ^binary_version,
-                hash: ^binary_hash,
-                custom_metadata: ^custom_metadata,
-                target: ^target,
-                signatures: ^signatures,
-                size: ^size
-              }} = Binary.metadata_from_cache(cache_pid, binary_prn)
+      {:ok, from_cache} =
+        Binary.metadata_from_cache(cache_pid, {binary_prn, custom_metadata_hash})
+
+      assert %Binary{
+               prn: ^binary_prn,
+               name: ^binary_name,
+               version: ^binary_version,
+               hash: ^binary_hash,
+               custom_metadata: ^custom_metadata,
+               custom_metadata_hash: ^custom_metadata_hash,
+               target: ^target,
+               signatures: ^signatures,
+               size: ^size
+             } = from_cache
     end
 
     test "metadata read cache missing", %{
@@ -50,7 +54,12 @@ defmodule Peridiod.BinaryTest do
       release_metadata: release_metadata
     } do
       binary_metadata = List.first(release_metadata.binaries)
-      assert {:error, :enoent} = Binary.metadata_from_cache(cache_pid, binary_metadata.prn)
+
+      assert {:error, :enoent} =
+               Binary.metadata_from_cache(
+                 cache_pid,
+                 {binary_metadata.prn, binary_metadata.custom_metadata_hash}
+               )
     end
 
     test "metadata read cache invalid signature", %{
@@ -60,11 +69,21 @@ defmodule Peridiod.BinaryTest do
     } do
       binary_metadata = List.first(release_metadata.binaries)
       Binary.metadata_to_cache(cache_pid, binary_metadata)
-      signature_file = Path.join([cache_dir, "binary", binary_metadata.prn, "manifest.sig"])
+
+      signature_file =
+        Path.join([
+          cache_dir,
+          Binary.cache_dir({binary_metadata.prn, binary_metadata.custom_metadata_hash}),
+          "manifest.sig"
+        ])
+
       File.write(signature_file, "")
 
       assert {:error, :invalid_signature} =
-               Binary.metadata_from_cache(cache_pid, binary_metadata.prn)
+               Binary.metadata_from_cache(
+                 cache_pid,
+                 {binary_metadata.prn, binary_metadata.custom_metadata_hash}
+               )
     end
 
     test "stamp installed", %{
@@ -77,7 +96,11 @@ defmodule Peridiod.BinaryTest do
       Binary.stamp_installed(cache_pid, binary_metadata)
 
       stamp_installed_file =
-        Path.join([cache_dir, "binary", binary_metadata.prn, ".stamp_installed"])
+        Path.join([
+          cache_dir,
+          Binary.cache_dir({binary_metadata.prn, binary_metadata.custom_metadata_hash}),
+          ".stamp_installed"
+        ])
 
       assert File.exists?(stamp_installed_file)
     end
