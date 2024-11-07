@@ -1,6 +1,22 @@
 defmodule Peridiod.Binary.Installer.Fwup do
   @moduledoc """
-  Configurable embedded Linux firmware update creator and runner
+  Installer module for fwup packages
+
+  custom_metadata
+  ```
+  {
+    "peridiod": {
+      "installer": "fwup",
+      "installer_opts": {
+        "env": {"KEY": "VALUE"},
+        "extra_args": [],
+        "task": "upgrade",
+        "devpath": "/dev/mmcblk0"
+      },
+      "reboot_required": false
+    }
+  }
+  ```
   """
 
   use Peridiod.Binary.Installer.Behaviour
@@ -62,15 +78,15 @@ defmodule Peridiod.Binary.Installer.Fwup do
         {:stop, :normal, state}
 
       {:progress, percent} ->
-        Logger.debug("[FWUP] Progress: #{inspect percent}")
+        Logger.debug("[FWUP] Progress: #{inspect(percent)}")
         {:ok, state}
 
       {:error, _, message} ->
-        Logger.debug("[FWUP] Error: #{inspect message}")
+        Logger.debug("[FWUP] Error: #{inspect(message)}")
         {:error, message, state}
 
       resp ->
-        Logger.debug("[FWUP] Misc: #{inspect resp}")
+        Logger.debug("[FWUP] Misc: #{inspect(resp)}")
         {:ok, state}
     end
   end
@@ -121,7 +137,6 @@ defmodule Peridiod.Binary.Installer.Fwup do
   def stream(pid, args, opts \\ []) do
     all_opts =
       opts
-      |> Keyword.put_new(:name, Fwup.Stream)
       |> Keyword.put(:cm, pid)
       |> Keyword.put(:fwup_args, args)
 

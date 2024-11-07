@@ -1,4 +1,21 @@
 defmodule Peridiod.Binary.Installer.Deb do
+  @moduledoc """
+  Installer module for deb packages
+
+  custom_metadata
+  ```
+  {
+    "peridiod": {
+      "installer": "deb",
+      "installer_opts": {
+        "extra_args": []
+      },
+      "reboot_required": false
+    }
+  }
+  ```
+  """
+
   use Peridiod.Binary.Installer.Behaviour
 
   alias Peridiod.Binary

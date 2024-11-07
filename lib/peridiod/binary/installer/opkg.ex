@@ -1,4 +1,20 @@
 defmodule Peridiod.Binary.Installer.Opkg do
+  @moduledoc """
+  Installer module for ipk / opkg packages
+
+  custom_metadata
+  ```
+  {
+    "peridiod": {
+      "installer": "opkg",
+      "installer_opts": {
+        "extra_args": []
+      },
+      "reboot_required": false
+    }
+  }
+  ```
+  """
   use Peridiod.Binary.Installer.Behaviour
 
   alias Peridiod.Binary

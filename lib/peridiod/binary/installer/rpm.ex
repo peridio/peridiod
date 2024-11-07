@@ -1,4 +1,21 @@
 defmodule Peridiod.Binary.Installer.Rpm do
+  @moduledoc """
+  Installer module for rpm packages
+
+  custom_metadata
+  ```
+  {
+    "peridiod": {
+      "installer": "rpm",
+      "installer_opts": {
+        "extra_args": []
+      },
+      "reboot_required": false
+    }
+  }
+  ```
+  """
+
   use Peridiod.Binary.Installer.Behaviour
 
   alias Peridiod.Binary

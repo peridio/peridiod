@@ -1,4 +1,22 @@
 defmodule Peridiod.Binary.Installer.File do
+  @moduledoc """
+  Installer module for files
+
+  custom_metadata
+  ```
+  {
+    "peridiod": {
+      "installer": "file",
+      "installer_opts": {
+        "name": "filename.ext",
+        "path": "/path/to/"
+      },
+      "reboot_required": false
+    }
+  }
+  ```
+  """
+
   use Peridiod.Binary.Installer.Behaviour
 
   alias Peridiod.Binary

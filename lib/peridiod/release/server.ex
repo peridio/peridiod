@@ -334,22 +334,29 @@ defmodule Peridiod.Release.Server do
     {:noreply, state}
   end
 
-  def handle_info({Installer, binary_prn, {:error, error}}, state) do
+  def handle_info({Installer, binary_prn, {:error, reason}}, state) do
+    Logger.debug("Release Server: Installer error #{inspect(reason)}")
+
     try_send(
       state.processing_binaries[binary_prn][:callback],
-      {__MODULE__, :install, binary_prn, {:error, error}}
+      {__MODULE__, :install, binary_prn, {:error, reason}}
     )
 
     progress_message =
       state.progress_message
       |> Map.delete(binary_prn)
 
+    processing_binary =
+      Map.get(state.processing_binaries, binary_prn, %{binary_prn => %{status: {:error, reason}}})
+      |> Map.put(:status, {:error, reason})
+
     state = %{
       state
-      | processing_binaries: Map.delete(state.processing_binaries, binary_prn),
+      | processing_binaries: Map.put(state.processing_binaries, binary_prn, processing_binary),
         progress_message: progress_message
     }
 
+    state = process_release(state)
     {:noreply, state}
   end
 
@@ -454,11 +461,11 @@ defmodule Peridiod.Release.Server do
 
     case trusted? do
       true ->
-        Logger.debug("Install Release: ok")
         Release.kv_progress(state.kv_pid, release_metadata)
 
         case binaries_metadata do
           [] ->
+            Logger.warning("Release binaries list empty")
             state = %{state | installing_release: {release_metadata, binaries_metadata, callback}}
             state = finish_release(state)
             {:ok, state}
@@ -520,7 +527,8 @@ defmodule Peridiod.Release.Server do
 
           Map.put(processing_binaries, binary_metadata.prn, %{
             job_pid: job_pid,
-            callback: callback
+            callback: callback,
+            status: :ok
           })
         end
       )
@@ -587,6 +595,35 @@ defmodule Peridiod.Release.Server do
         progress_release: nil,
         sdk_client: sdk_client
     }
+  end
+
+  defp finish_release(
+         %{installing_release: {_release_metadata, _remaining_binaries, _callback}} = state
+       ) do
+    Logger.debug("Finishing #{inspect(state.processing_binaries)}")
+
+    result =
+      Enum.split_with(state.processing_binaries, fn
+        {_, %{status: {:error, _reason}}} ->
+          true
+
+        {_, _} ->
+          false
+      end)
+
+    case result do
+      {[], _} ->
+        state
+
+      {[_ | _], _} ->
+        Logger.error("Release Manager: Install error. stopping release")
+        # Errors
+        %{
+          state
+          | installing_release: nil,
+            current_release: nil
+        }
+    end
   end
 
   defp finish_release(state), do: state
