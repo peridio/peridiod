@@ -57,8 +57,8 @@ defmodule Peridiod.Release do
         case Cache.ls(cache_pid, Path.join(["bundle", release_metadata.bundle_prn])) do
           {:ok, binary_prns} ->
             binary_prns
-            |> Enum.reduce([], fn binary_prn, acc ->
-              case Binary.metadata_from_cache(cache_pid, binary_prn) do
+            |> Enum.reduce([], fn dirname, acc ->
+              case Binary.metadata_from_cache(cache_pid, dirname) do
                 {:ok, binary_metadata} -> [binary_metadata | acc]
                 _error -> acc
               end
@@ -149,7 +149,13 @@ defmodule Peridiod.Release do
         Enum.each(binaries, fn binary_metadata ->
           Binary.metadata_to_cache(cache_pid, binary_metadata)
           target = Binary.cache_dir(binary_metadata)
-          link = Path.join([bundle_path, binary_metadata.prn])
+
+          link =
+            Path.join([
+              bundle_path,
+              "#{binary_metadata.prn}:#{Base.encode16(binary_metadata.custom_metadata_hash, case: :lower)}"
+            ])
+
           Cache.ln_s(cache_pid, target, link)
         end)
 
@@ -205,6 +211,7 @@ defmodule Peridiod.Release do
 
   def kv_advance(kv_pid \\ KV) do
     KV.reinitialize(kv_pid)
+
     KV.get_all_and_update(kv_pid, fn kv ->
       rel_progress = Map.get(kv, "peridio_rel_progress", "")
       vsn_progress = Map.get(kv, "peridio_vsn_progress", "")
