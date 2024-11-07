@@ -1,7 +1,25 @@
 defmodule Peridiod.Binary.Installer.SWUpdate do
+  @moduledoc """
+  Installer module for swu (SWUpdate) packages
+
+  custom_metadata
+  ```
+  {
+    "peridiod": {
+      "installer": "swupdate",
+      "installer_opts": {
+        "extra_args": ["-p", "custom_post_action"]
+      },
+      "reboot_required": false
+    }
+  }
+  ```
+  """
   use Peridiod.Binary.Installer.Behaviour
 
   alias Peridiod.Binary
+
+  require Logger
 
   def install_init(
         binary_metadata,
@@ -35,6 +53,7 @@ defmodule Peridiod.Binary.Installer.SWUpdate do
         {:stop, :normal, nil}
 
       {error, _} ->
+        Logger.debug("[Installer SWupdate] Install Error: #{inspect(error)}")
         File.rm(cache_file)
         {:error, error, nil}
     end

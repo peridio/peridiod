@@ -81,7 +81,13 @@ defmodule Peridiod.Binary.Installer do
 
   def handle_continue(false, %{binary_metadata: %{url: nil}} = state) do
     Logger.error("Installer [#{state.binary_metadata.prn}]: No Cache / URL to Install")
-    {:stop, :no_url, state}
+
+    try_send(
+      state.callback,
+      {Installer, state.binary_metadata.prn, {:error, "no url to install"}}
+    )
+
+    {:stop, :normal, state}
   end
 
   def handle_continue(false, state) do
@@ -242,7 +248,7 @@ defmodule Peridiod.Binary.Installer do
   defp installer_complete({:stop, error, state}) do
     Logger.error("Installer [#{state.binary_metadata.prn}]: error #{inspect(error)}")
     try_send(state.callback, {Installer, state.binary_metadata.prn, {:error, error}})
-    {:stop, error, state}
+    {:stop, :normal, state}
   end
 
   defp installer_progress({:noreply, state}) do
@@ -264,13 +270,13 @@ defmodule Peridiod.Binary.Installer do
   defp installer_progress({:stop, error, state}) do
     Logger.error("Installer [#{state.binary_metadata.prn}]: error #{inspect(error)}")
     try_send(state.callback, {Installer, state.binary_metadata.prn, {:error, error}})
-    {:stop, error, state}
+    {:stop, :normal, state}
   end
 
   defp installer_error({:stop, error, state}) do
     Logger.error("Installer [#{state.binary_metadata.prn}]: error #{inspect(error)}")
     try_send(state.callback, {Installer, state.binary_metadata.prn, {:error, error}})
-    {:stop, error, state}
+    {:stop, :normal, state}
   end
 
   defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "fwup"}}}),

@@ -31,7 +31,6 @@ defmodule Peridiod.MixProject do
 
   defp deps do
     [
-      {:gen_stage, "~> 1.0"},
       {:extty, "~> 0.2"},
       {:uuid, "~> 1.0"},
       {:telemetry, "~> 1.0"},
