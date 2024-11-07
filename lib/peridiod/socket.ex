@@ -2,7 +2,7 @@ defmodule Peridiod.Socket do
   use Slipstream
   require Logger
 
-  alias Peridiod.{Client, Distribution, RemoteConsole}
+  alias Peridiod.{Client, Distribution, RemoteConsole, Utils}
   alias Peridiod.Binary.Installer.Fwup
   alias PeridiodPersistence.KV
 
@@ -79,7 +79,7 @@ defmodule Peridiod.Socket do
       |> Map.put("console_version", @console_version)
 
     params =
-      case Fwup.installed?() do
+      case Utils.exec_installed?("fwup") do
         true -> Map.put(params, "fwup_version", Fwup.version())
         false -> params
       end

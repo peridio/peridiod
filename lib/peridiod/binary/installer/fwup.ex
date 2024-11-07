@@ -19,42 +19,28 @@ defmodule Peridiod.Binary.Installer.Fwup do
   ```
   """
 
+  @exec "fwup"
+
   use Peridiod.Binary.Installer.Behaviour
 
   alias PeridiodPersistence.KV
+  alias Peridiod.Utils
   alias __MODULE__
 
   require Logger
 
   def install_init(
-        _binary_metadata,
-        opts,
-        _source,
-        config
-      ) do
-    devpath =
-      opts["devpath"] || config.fwup_devpath || KV.get("peridio_disk_devpath") ||
-        KV.get("nerves_fw_devpath")
-
-    env = opts["env"] || config.fwup_env
-    extra_args = opts["extra_args"] || config.fwup_extra_args
-    public_keys = config.fwup_public_keys
-    task = opts["task"] || "upgrade"
-
-    fwup_config = %Fwup.Config{
-      fwup_public_keys: public_keys,
-      fwup_devpath: devpath,
-      fwup_env: Fwup.Config.parse_fwup_env(env),
-      fwup_extra_args: extra_args,
-      fwup_task: task
-    }
-
-    fwup_config = Fwup.Config.validate_base!(fwup_config)
-
-    {:ok, fwup} =
-      Fwup.stream(self(), Fwup.Config.to_cmd_args(fwup_config), fwup_env: fwup_config.fwup_env)
-
-    {:ok, %{fwup: fwup}}
+    _binary_metadata,
+    opts,
+    _source,
+    config
+  ) do
+    case Utils.exec_installed?(@exec) do
+      false ->
+        {:error, "Unable to locate executable #{@exec} which is required to install with the FWUP installer"}
+      true ->
+        do_init(opts, config)
+    end
   end
 
   def install_update(_binary_metadata, data, state) do
@@ -93,7 +79,7 @@ defmodule Peridiod.Binary.Installer.Fwup do
 
   @doc "Returns a list of `[\"/path/to/device\", byte_size]`"
   def get_devices do
-    {result, 0} = System.cmd("fwup", ["--detect"])
+    {result, 0} = System.cmd(@exec, ["--detect"])
 
     result
     |> String.trim()
@@ -103,7 +89,7 @@ defmodule Peridiod.Binary.Installer.Fwup do
 
   @doc "Returns the path to the `fwup` executable."
   def exe do
-    System.find_executable("fwup") || raise("Could not find `fwup` executable.")
+    System.find_executable(@exec) || raise("Could not find `fwup` executable.")
   end
 
   @doc """
@@ -146,12 +132,34 @@ defmodule Peridiod.Binary.Installer.Fwup do
   defdelegate send_chunk(pid, chunk),
     to: Fwup.Stream
 
-  def installed?() do
-    is_binary(System.find_executable("fwup"))
+  def version do
+    {version_string, 0} = System.cmd(@exec, ["--version"])
+    String.trim(version_string)
   end
 
-  def version do
-    {version_string, 0} = System.cmd("fwup", ["--version"])
-    String.trim(version_string)
+  defp do_init(opts, config) do
+    devpath =
+      opts["devpath"] || config.fwup_devpath || KV.get("peridio_disk_devpath") ||
+        KV.get("nerves_fw_devpath")
+
+    env = opts["env"] || config.fwup_env
+    extra_args = opts["extra_args"] || config.fwup_extra_args
+    public_keys = config.fwup_public_keys
+    task = opts["task"] || "upgrade"
+
+    fwup_config = %Fwup.Config{
+      fwup_public_keys: public_keys,
+      fwup_devpath: devpath,
+      fwup_env: Fwup.Config.parse_fwup_env(env),
+      fwup_extra_args: extra_args,
+      fwup_task: task
+    }
+
+    fwup_config = Fwup.Config.validate_base!(fwup_config)
+
+    {:ok, fwup} =
+      Fwup.stream(self(), Fwup.Config.to_cmd_args(fwup_config), fwup_env: fwup_config.fwup_env)
+
+    {:ok, %{fwup: fwup}}
   end
 end
