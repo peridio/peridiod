@@ -74,6 +74,9 @@ RUN apk add --no-cache \
     openssh-server \
     coreutils
 
+RUN apk add opkg --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing
+RUN apk add apt --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community
+
 RUN ssh-keygen -A
 RUN addgroup "peridio"
 RUN adduser --disabled-password --ingroup "peridio" "peridio"
