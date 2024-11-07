@@ -19,9 +19,11 @@ defmodule PeridiodTest.Case do
     :ok
   end
 
-  setup do
+  setup context do
+    install_dir = "test/workspace/install/#{context.test}"
+
     opts = [
-      release_manifest: TestFixtures.release_manifest(),
+      release_manifest: TestFixtures.release_manifest(install_dir),
       trusted_signing_key: TestFixtures.trusted_signing_key(),
       untrusted_signing_key: TestFixtures.untrusted_signing_key()
     ]
@@ -31,19 +33,7 @@ defmodule PeridiodTest.Case do
 
   def load_release_metadata_from_manifest(%{release_manifest: release_manifest} = context) do
     {:ok, release_metadata} = Release.metadata_from_manifest(release_manifest)
-    install_dir = "test/workspace/install/#{context.test}"
-    binaries_metadata = release_metadata.binaries
-
-    binaries_metadata =
-      Enum.map(binaries_metadata, fn binary ->
-        custom_metadata =
-          binary.custom_metadata
-          |> update_in(["peridiod", "installer_opts", "path"], fn _ -> install_dir end)
-
-        %{binary | custom_metadata: custom_metadata}
-      end)
-
-    Map.put(context, :release_metadata, %{release_metadata | binaries: binaries_metadata})
+    Map.put(context, :release_metadata, release_metadata)
   end
 
   def start_cache(context) do

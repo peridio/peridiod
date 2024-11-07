@@ -159,7 +159,14 @@ defmodule Peridiod.TestFixtures do
   def binary_fixture_path(), do: Path.expand("../fixtures/binaries", __DIR__)
   def binary_manifest_fwup(), do: @trusted_release_binary_fwup
 
-  def release_manifest(bundle \\ [@trusted_release_binary_file]) do
-    %{@release_manifest | "manifest" => bundle}
+  def release_manifest(install_dir) do
+    manifest =
+      update_in(
+        @trusted_release_binary_file,
+        ["custom_metadata", "peridiod", "installer_opts", "path"],
+        fn _ -> install_dir end
+      )
+
+    %{@release_manifest | "manifest" => [manifest]}
   end
 end
