@@ -37,6 +37,11 @@ defmodule Peridiod.Tunnel do
   @doc """
   Synchronize with the server
   """
+  def synchronize(_client, %{enabled: false}) do
+    Logger.info("Remote Access Tunnels disabled skipping sync")
+    :ok
+  end
+
   def synchronize(client, rat_config) do
     local_tunnels = RAT.list_tunnels()
     local_tunnel_prns = Enum.map(local_tunnels, &elem(&1, 0))
