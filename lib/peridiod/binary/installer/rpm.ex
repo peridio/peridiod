@@ -30,7 +30,9 @@ defmodule Peridiod.Binary.Installer.Rpm do
       ) do
     case Utils.exec_installed?(@exec) do
       false ->
-        {:error, "Unable to locate executable #{@exec} which is required to install with the RPM installer"}
+        {:error,
+         "Unable to locate executable #{@exec} which is required to install with the RPM installer"}
+
       true ->
         do_init(binary_metadata, opts)
     end
