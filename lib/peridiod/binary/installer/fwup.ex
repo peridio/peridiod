@@ -30,14 +30,16 @@ defmodule Peridiod.Binary.Installer.Fwup do
   require Logger
 
   def install_init(
-    _binary_metadata,
-    opts,
-    _source,
-    config
-  ) do
+        _binary_metadata,
+        opts,
+        _source,
+        config
+      ) do
     case Utils.exec_installed?(@exec) do
       false ->
-        {:error, "Unable to locate executable #{@exec} which is required to install with the FWUP installer"}
+        {:error,
+         "Unable to locate executable #{@exec} which is required to install with the FWUP installer"}
+
       true ->
         do_init(opts, config)
     end

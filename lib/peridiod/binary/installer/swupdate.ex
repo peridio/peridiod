@@ -25,14 +25,16 @@ defmodule Peridiod.Binary.Installer.SWUpdate do
   require Logger
 
   def install_init(
-    binary_metadata,
-    opts,
-    _source,
-    _config
-  ) do
+        binary_metadata,
+        opts,
+        _source,
+        _config
+      ) do
     case Utils.exec_installed?(@exec) do
       false ->
-        {:error, "Unable to locate executable #{@exec} which is required to install with the RPM installer"}
+        {:error,
+         "Unable to locate executable #{@exec} which is required to install with the RPM installer"}
+
       true ->
         do_init(binary_metadata, opts)
     end

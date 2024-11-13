@@ -30,13 +30,13 @@ defmodule Peridiod.Binary.Installer.Deb do
       ) do
     case Utils.exec_installed?(@exec) do
       nil ->
-        {:error, "Unable to locate executable #{@exec} which is required to install with deb installer"}
+        {:error,
+         "Unable to locate executable #{@exec} which is required to install with deb installer"}
+
       _ ->
         do_init(binary_metadata, opts)
     end
   end
-
-
 
   def install_update(_binary_metadata, data, {cache_file, opts}) do
     File.write(cache_file, data, [:append, :binary])
