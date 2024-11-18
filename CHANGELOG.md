@@ -111,6 +111,13 @@ The release server will check for an update from Peridio Cloud a the designated 
 When peridiod installs a release, it will accumulate `reboot_required` and trigger a reboot once all binaries have finished the installation process if any `reboot_required` is true.
 
 See the [Peridio Docs](https://docs.peridio.com/) for more information on configuring Releases for your organization.
+## v2.6.2
+
+* Bug fixes
+  * Skip Remote Acess Tunnel sync if disabled
+  * Force files writes to be synced to disk as they are written to the cache
+  * Handle corrupt cached metadata in wireguard config parsing
+
 ## v2.6.1
 
 * Bug fixes
