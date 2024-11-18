@@ -1,5 +1,12 @@
 # peridiod releases
 
+## v2.6.2
+
+* Bug fixes
+  * Skip Remote Acess Tunnel sync if disabled
+  * Force files writes to be synced to disk as they are written to the cache
+  * Handle corrupt cached metadata in wireguard config parsing
+
 ## v2.6.1
 
 * Bug fixes
