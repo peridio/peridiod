@@ -9,7 +9,7 @@ defmodule Peridiod.BinaryTest do
     setup :start_cache
 
     test "metadata write cache", %{cache_pid: cache_pid, release_metadata: release_metadata} do
-      binary_metadata = List.first(release_metadata.binaries)
+      binary_metadata = List.first(release_metadata.bundle.binaries)
       assert :ok = Binary.metadata_to_cache(cache_pid, binary_metadata)
     end
 
@@ -17,7 +17,7 @@ defmodule Peridiod.BinaryTest do
       cache_pid: cache_pid,
       release_metadata: release_metadata
     } do
-      binary_metadata = List.first(release_metadata.binaries)
+      binary_metadata = List.first(release_metadata.bundle.binaries)
 
       %Binary{
         prn: binary_prn,
@@ -53,7 +53,7 @@ defmodule Peridiod.BinaryTest do
       cache_pid: cache_pid,
       release_metadata: release_metadata
     } do
-      binary_metadata = List.first(release_metadata.binaries)
+      binary_metadata = List.first(release_metadata.bundle.binaries)
 
       assert {:error, :enoent} =
                Binary.metadata_from_cache(
@@ -67,7 +67,7 @@ defmodule Peridiod.BinaryTest do
       cache_dir: cache_dir,
       release_metadata: release_metadata
     } do
-      binary_metadata = List.first(release_metadata.binaries)
+      binary_metadata = List.first(release_metadata.bundle.binaries)
       Binary.metadata_to_cache(cache_pid, binary_metadata)
 
       signature_file =
@@ -91,7 +91,7 @@ defmodule Peridiod.BinaryTest do
       cache_dir: cache_dir,
       release_metadata: release_metadata
     } do
-      binary_metadata = List.first(release_metadata.binaries)
+      binary_metadata = List.first(release_metadata.bundle.binaries)
       Binary.metadata_to_cache(cache_pid, binary_metadata)
       Binary.stamp_installed(cache_pid, binary_metadata)
 
@@ -116,7 +116,7 @@ defmodule Peridiod.BinaryTest do
       kv_pid: kv_pid,
       release_metadata: release_metadata
     } do
-      binary_metadata = List.first(release_metadata.binaries)
+      binary_metadata = List.first(release_metadata.bundle.binaries)
       Binary.metadata_to_cache(cache_pid, binary_metadata)
       assert {:ok, _contents} = Binary.put_kv_installed(kv_pid, binary_metadata, :progress)
       kv_installed = Binary.get_all_kv_installed(kv_pid, :progress)
@@ -137,7 +137,7 @@ defmodule Peridiod.BinaryTest do
       kv_pid: kv_pid,
       release_metadata: release_metadata
     } do
-      binary_metadata = List.first(release_metadata.binaries)
+      binary_metadata = List.first(release_metadata.bundle.binaries)
       Binary.metadata_to_cache(cache_pid, binary_metadata)
       Binary.put_kv_installed(kv_pid, binary_metadata, :progress)
       Binary.pop_kv_installed(kv_pid, binary_metadata, :progress)

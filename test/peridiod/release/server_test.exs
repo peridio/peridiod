@@ -11,7 +11,7 @@ defmodule Peridiod.Release.ServerTest do
 
     test "cache trusted signatures", %{
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries}
+      release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
       signing_key = List.first(binary_metadata.signatures).signing_key
@@ -23,7 +23,7 @@ defmodule Peridiod.Release.ServerTest do
 
     test "cache untrusted signatures", %{
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries}
+      release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
 
@@ -33,7 +33,7 @@ defmodule Peridiod.Release.ServerTest do
 
     test "install untrusted signatures", %{
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries}
+      release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
 
@@ -44,7 +44,7 @@ defmodule Peridiod.Release.ServerTest do
     test "already cached", %{
       cache_pid: cache_pid,
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries}
+      release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
       :ok = Binary.metadata_to_cache(cache_pid, binary_metadata)
@@ -59,7 +59,7 @@ defmodule Peridiod.Release.ServerTest do
     test "already installed", %{
       cache_pid: cache_pid,
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries}
+      release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
       :ok = Binary.metadata_to_cache(cache_pid, binary_metadata)
@@ -80,7 +80,7 @@ defmodule Peridiod.Release.ServerTest do
 
     test "cache trusted signatures", %{
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries} = release_metadata
+      release_metadata: %Release{bundle: %{binaries: binaries}} = release_metadata
     } do
       binary_metadata = List.first(binaries)
       signing_key = List.first(binary_metadata.signatures).signing_key
@@ -109,7 +109,7 @@ defmodule Peridiod.Release.ServerTest do
     test "already cached", %{
       cache_pid: cache_pid,
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries} = release_metadata
+      release_metadata: %Release{bundle: %{binaries: binaries}} = release_metadata
     } do
       binary_metadata = List.first(binaries)
       signing_key = List.first(binary_metadata.signatures).signing_key
@@ -130,7 +130,7 @@ defmodule Peridiod.Release.ServerTest do
     test "file from cache", %{
       cache_pid: cache_pid,
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries}
+      release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
       cache_file = Binary.cache_file(binary_metadata)
@@ -156,7 +156,7 @@ defmodule Peridiod.Release.ServerTest do
     test "file url to cache", %{
       cache_pid: cache_pid,
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries}
+      release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
       cache_file = Binary.cache_file(binary_metadata)
@@ -184,7 +184,7 @@ defmodule Peridiod.Release.ServerTest do
     test "file from cache", %{
       cache_pid: cache_pid,
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries} = release_metadata
+      release_metadata: %Release{bundle: %{binaries: binaries}} = release_metadata
     } do
       binary_metadata = List.first(binaries)
       cache_file = Binary.cache_file(binary_metadata)
@@ -211,7 +211,7 @@ defmodule Peridiod.Release.ServerTest do
     test "from downloader", %{
       cache_pid: cache_pid,
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries} = release_metadata
+      release_metadata: %Release{bundle: %{binaries: binaries}} = release_metadata
     } do
       binary_metadata = List.first(binaries)
       cache_file = Binary.cache_file(binary_metadata)
@@ -230,7 +230,7 @@ defmodule Peridiod.Release.ServerTest do
     test "reboot", %{
       cache_pid: cache_pid,
       release_server_pid: release_server_pid,
-      release_metadata: %Release{binaries: binaries} = release_metadata
+      release_metadata: %Release{bundle: %{binaries: binaries}} = release_metadata
     } do
       binary_metadata = List.first(binaries)
       cache_file = Binary.cache_file(binary_metadata)
@@ -240,7 +240,8 @@ defmodule Peridiod.Release.ServerTest do
         |> update_in(["peridiod", "reboot_required"], fn _ -> true end)
 
       binary_metadata = %{binary_metadata | custom_metadata: custom_metadata}
-      release_metadata = %{release_metadata | binaries: [binary_metadata]}
+      bundle_metadata = %{release_metadata.bundle | binaries: [binary_metadata]}
+      release_metadata = %{release_metadata | bundle: bundle_metadata}
 
       false = Binary.cached?(cache_pid, binary_metadata)
       false = Cache.exists?(cache_pid, cache_file)
@@ -258,7 +259,7 @@ defmodule Peridiod.Release.ServerTest do
   def cache_binary(
         %{
           cache_pid: cache_pid,
-          release_metadata: %Release{binaries: binaries}
+          release_metadata: %Release{bundle: %{binaries: binaries}}
         } = context
       ) do
     binary_metadata = List.first(binaries)

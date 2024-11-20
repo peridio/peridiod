@@ -20,7 +20,7 @@ defmodule Peridiod.Release.Server do
 
   require Logger
 
-  alias Peridiod.{Binary, SigningKey, Socket, Release}
+  alias Peridiod.{Binary, SigningKey, Socket, Release, Bundle}
   alias Peridiod.Binary.{Installer, CacheDownloader}
   alias PeridiodPersistence.KV
 
@@ -394,13 +394,14 @@ defmodule Peridiod.Release.Server do
       "bundle.prn",
       "release.prn",
       "release.version",
-      "release.version_requirement"
+      "release.version_requirement",
+      "bundle_override"
     ])
   end
 
   # An update is available, We should retrieve the manifest and start installing binaries
   defp update_response(
-         {:ok, %{status: 200, body: %{"status" => "update"} = body}},
+         {:ok, %{status: 200, body: %{"status" => "update", "release" => _release} = body}},
          state
        ) do
     # Logger.debug("Release Manager: update #{inspect(body)}")
@@ -416,6 +417,18 @@ defmodule Peridiod.Release.Server do
         Logger.error("Release Manager: Error #{inspect(error)}")
         {:no_update, state}
     end
+  end
+
+  defp update_response(
+         {:ok,
+          %{
+            status: 200,
+            body: %{"status" => "update", "bundle_override" => _bundle_override} = _body
+          }},
+         state
+       ) do
+    Logger.info("Release Manager: Installing Bundle Override")
+    {:no_update, state}
   end
 
   defp update_response({:ok, %{status: 200, body: %{"status" => "no_update"}}}, state) do
@@ -452,8 +465,8 @@ defmodule Peridiod.Release.Server do
 
   defp do_install_release(release_metadata, callback, %{installing_release: nil} = state) do
     binaries_metadata =
-      release_metadata
-      |> Release.filter_binaries_by_targets(state.targets)
+      release_metadata.bundle
+      |> Bundle.filter_binaries_by_targets(state.targets)
       |> Enum.reject(&Binary.kv_installed?(state.kv_pid, &1, :current))
       |> Enum.reject(&Binary.installed?(state.cache_pid, &1))
 
@@ -492,8 +505,8 @@ defmodule Peridiod.Release.Server do
 
   defp do_cache_release(release_metadata, callback, state) do
     binaries_metadata =
-      release_metadata
-      |> Release.filter_binaries_by_targets(state.targets)
+      release_metadata.bundle
+      |> Bundle.filter_binaries_by_targets(state.targets)
       |> Enum.reject(&Binary.kv_installed?(state.kv_pid, &1, :current))
       |> Enum.reject(&Binary.cached?(state.cache_pid, &1))
 
@@ -637,7 +650,7 @@ defmodule Peridiod.Release.Server do
     end
   end
 
-  defp maybe_reboot(%Release{binaries: binaries} = release_metadata, callback) do
+  defp maybe_reboot(%Release{bundle: %{binaries: binaries}} = release_metadata, callback) do
     reboot? =
       Enum.any?(binaries, fn %Binary{custom_metadata: custom_metadata} ->
         case custom_metadata["peridiod"]["reboot_required"] do

@@ -21,7 +21,7 @@ defmodule Peridiod.ReleaseTest do
       release_metadata:
         %Release{
           prn: prn,
-          bundle_prn: bundle_prn,
+          bundle: _bundle,
           name: name,
           version: version,
           version_requirement: version_requirement
@@ -40,28 +40,31 @@ defmodule Peridiod.ReleaseTest do
           signatures: signatures,
           size: size
         }
-      ] = release_metadata.binaries
+      ] = release_metadata.bundle.binaries
+
+      release_metadata = Release.metadata_from_cache(cache_pid, release_metadata.prn)
 
       assert {:ok,
               %Release{
                 prn: ^prn,
-                bundle_prn: ^bundle_prn,
+                bundle: %{
+                  binaries: [
+                    %Binary{
+                      prn: ^binary_prn,
+                      name: ^binary_name,
+                      version: ^binary_version,
+                      hash: ^binary_hash,
+                      custom_metadata: ^custom_metadata,
+                      target: ^target,
+                      signatures: ^signatures,
+                      size: ^size
+                    }
+                  ]
+                },
                 name: ^name,
                 version: ^version,
-                version_requirement: ^version_requirement,
-                binaries: [
-                  %Binary{
-                    prn: ^binary_prn,
-                    name: ^binary_name,
-                    version: ^binary_version,
-                    hash: ^binary_hash,
-                    custom_metadata: ^custom_metadata,
-                    target: ^target,
-                    signatures: ^signatures,
-                    size: ^size
-                  }
-                ]
-              }} = Release.metadata_from_cache(cache_pid, release_metadata.prn)
+                version_requirement: ^version_requirement
+              }} = release_metadata
     end
 
     test "metadata read cache missing", %{

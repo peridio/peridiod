@@ -2,7 +2,7 @@ defmodule PeridiodTest.Case do
   use ExUnit.CaseTemplate
 
   alias PeridiodPersistence.KV
-  alias Peridiod.{Cache, Release}
+  alias Peridiod.{Cache, Release, Bundle}
   alias PeridiodTest.StaticRouter
   alias Peridiod.TestFixtures
 
@@ -34,6 +34,11 @@ defmodule PeridiodTest.Case do
   def load_release_metadata_from_manifest(%{release_manifest: release_manifest} = context) do
     {:ok, release_metadata} = Release.metadata_from_manifest(release_manifest)
     Map.put(context, :release_metadata, release_metadata)
+  end
+
+  def load_bundle_metadata_from_manifest(%{release_manifest: release_manifest} = context) do
+    {:ok, bundle_metadata} = Bundle.metadata_from_manifest(release_manifest)
+    Map.put(context, :bundle_metadata, bundle_metadata)
   end
 
   def start_cache(context) do
