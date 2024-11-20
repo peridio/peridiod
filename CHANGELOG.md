@@ -1,5 +1,16 @@
 # peridiod releases
 
+## v3.0.0-rc.5
+
+* Enhancements
+  * Support for migrating from v2 to v3 peridiod
+  * Binary Installers
+    * Added swupdate installer
+    * Added opkg installer
+* Bug fixes
+  * Improved error handling for releases and installers. If an installer fails with an error, the installer will be stopped and the remainder of the release will be halted. The device will continue to report it is on the previous release
+  * Store binary metadata in the cache with the custom_metadata_hash in its path
+
 ## v3.0.0-rc.4
 
 * Bug fixes
