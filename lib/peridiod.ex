@@ -4,9 +4,9 @@ defmodule Peridiod do
 
   @env Mix.env()
 
-  @spec env :: atom()
-  def env() do
-    @env
+  @spec env_test? :: atom()
+  def env_test?() do
+    @env == :test
   end
 
   @doc """

@@ -662,7 +662,7 @@ defmodule Peridiod.Release.Server do
     if reboot? do
       try_send(callback, {__MODULE__, :install, release_metadata.prn, :reboot})
 
-      if Peridiod.env() != :test do
+      unless Peridiod.env_test?() do
         System.cmd("reboot", [], stderr_to_stdout: true)
       end
     end

@@ -1,4 +1,4 @@
-FROM hexpm/elixir:1.17.2-erlang-27.0.1-ubuntu-noble-20240605 AS build
+FROM hexpm/elixir:1.18.1-erlang-27.2-ubuntu-noble-20241118.1 AS build
 
 ARG MIX_ENV=prod
 ENV DEBIAN_FRONTEND=noninteractive

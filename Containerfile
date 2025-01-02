@@ -1,4 +1,4 @@
-FROM elixir:1.17.3-otp-27-alpine AS build
+FROM hexpm/elixir:1.18.1-erlang-27.2-alpine-3.21.0 AS build
 
 ARG MIX_ENV=prod
 ARG UBOOT_ENV_SIZE=0x20000
@@ -35,7 +35,7 @@ RUN /usr/local/bin/mix local.rebar --force
 
 # Build fwup here to ensure that its built for the arch
 WORKDIR /opt
-RUN git clone https://github.com/fwup-home/fwup --depth 1 --branch v1.10.2
+RUN git clone https://github.com/fwup-home/fwup --depth 1 --branch v1.12.0
 WORKDIR /opt/fwup
 RUN ./autogen.sh && PKG_CONFIG_PATH=$PKG_CONFIG_PATH ./configure --enable-shared=no && make && make install
 
@@ -57,7 +57,7 @@ RUN fwup -a -t complete -i support/peridiod.fw -d support/peridiod.img
 RUN mix deps.get --only $MIX_ENV
 RUN mix release --overwrite
 
-FROM alpine:3.20 as app
+FROM alpine:3.21 as app
 
 RUN apk add --no-cache \
     agetty \
