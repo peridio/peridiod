@@ -29,11 +29,11 @@ defmodule Peridiod.Binary.Installer.Deb do
         _config
       ) do
     case Utils.exec_installed?(@exec) do
-      nil ->
+      false ->
         {:error,
          "Unable to locate executable #{@exec} which is required to install with deb installer"}
 
-      _ ->
+      true ->
         do_init(binary_metadata, opts)
     end
   end

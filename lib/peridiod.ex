@@ -4,6 +4,7 @@ defmodule Peridiod do
 
   @env Mix.env()
 
+  @spec env :: atom()
   def env() do
     @env
   end

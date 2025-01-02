@@ -29,11 +29,11 @@ defmodule Peridiod.Binary.Installer.Opkg do
         _config
       ) do
     case Utils.exec_installed?(@exec) do
-      nil ->
+      false ->
         {:error,
          "Unable to locate executable #{@exec} which is required to install with the RPM installer"}
 
-      _ ->
+      true ->
         do_init(binary_metadata, opts)
     end
   end
