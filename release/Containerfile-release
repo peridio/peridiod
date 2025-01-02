@@ -1,4 +1,4 @@
-FROM elixir:1.17.2-alpine AS build
+FROM hexpm/elixir:1.18.1-erlang-27.2-alpine-3.21.0 AS build
 
 ARG MIX_ENV=prod
 
@@ -28,7 +28,7 @@ RUN /usr/local/bin/mix local.rebar --force
 
 # Build fwup here to ensure that its built for the arch
 WORKDIR /opt
-RUN git clone https://github.com/fwup-home/fwup --depth 1 --branch v1.10.2
+RUN git clone https://github.com/fwup-home/fwup --depth 1 --branch v1.12.0
 WORKDIR /opt/fwup
 RUN ./autogen.sh && PKG_CONFIG_PATH=$PKG_CONFIG_PATH ./configure --enable-shared=no && make && make install
 
@@ -40,7 +40,7 @@ WORKDIR /opt/app
 RUN mix deps.get --only $MIX_ENV
 RUN mix release --overwrite
 
-FROM alpine:3.20
+FROM alpine:3.21
 
 RUN apk add --no-cache \
     agetty \
