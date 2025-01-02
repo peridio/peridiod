@@ -2,8 +2,8 @@ FROM fedora:40 AS build
 
 ARG MIX_ENV=prod
 ARG OPENSSL_VERSION=1.1.1v
-ARG ERLANG_VERSION=27.0.1
-ARG ELIXIR_VERSION=1.17.2
+ARG ERLANG_VERSION=27.2
+ARG ELIXIR_VERSION=1.18.1
 
 RUN dnf groupinstall -y 'Development Tools' && \
     dnf install -y \
