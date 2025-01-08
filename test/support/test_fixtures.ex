@@ -55,7 +55,27 @@ defmodule Peridiod.TestFixtures do
     "url" => "http://localhost:4001/1M.bin"
   }
 
-  @trusted_release_binary_fwup %{
+  @custom_metadata_fwup %{
+    "peridiod" => %{
+      "installer" => "fwup",
+      "installer_opts" => %{
+        "devpath" => "test/workspace",
+        "extra_args" => ["--unsafe"],
+        "env" => %{}
+      },
+      "reboot_required" => true
+    }
+  }
+
+  @custom_metadata_cache %{
+    "peridiod" => %{
+      "installer" => "cache",
+      "installer_opts" => %{},
+      "reboot_required" => false
+    }
+  }
+
+  @trusted_release_binary %{
     "artifact" => %{
       "name" => "fwup.fw",
       "prn" =>
@@ -68,17 +88,7 @@ defmodule Peridiod.TestFixtures do
     },
     "binary_prn" =>
       "prn:1:92d0a3ed-9058-4632-ae29-f420078c4507:binary:3018924c-f367-4870-9c17-e25ec68c9494",
-    "custom_metadata" => %{
-      "peridiod" => %{
-        "installer" => "fwup",
-        "installer_opts" => %{
-          "devpath" => "test/workspace",
-          "extra_args" => ["--unsafe"],
-          "env" => %{}
-        },
-        "reboot_required" => true
-      }
-    },
+    "custom_metadata" => @custom_metadata_fwup,
     "hash" => "8bb7566846ae03b99e55b72d022d0f899404af8a22a335b4be8789cb997f0ea2",
     "signatures" => [
       %{
@@ -157,7 +167,14 @@ defmodule Peridiod.TestFixtures do
   def untrusted_signing_key, do: SigningKey.new(:ed25519, untrusted_key_pem()) |> elem(1)
   def untrusted_release_binary, do: @untrusted_release_binary
   def binary_fixture_path(), do: Path.expand("../fixtures/binaries", __DIR__)
-  def binary_manifest_fwup(), do: @trusted_release_binary_fwup
+
+  def binary_manifest_fwup(),
+    do: @trusted_release_binary |> Map.put("custom_metadata", @custom_metadata_fwup)
+
+  def binary_manifest_cache(),
+    do: @trusted_release_binary |> Map.put("custom_metadata", @custom_metadata_cache)
+
+  def custom_metadata_cache(), do: @custom_metadata_cache
 
   def release_manifest(install_dir) do
     manifest =

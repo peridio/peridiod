@@ -3,7 +3,7 @@ defmodule Peridiod.Bundle do
 
   import Peridiod.Utils, only: [stamp_utc_now: 0]
 
-  @cache_dir "bundle"
+  @cache_path "bundle"
   @stamp_cached ".stamp_cached"
   @stamp_installed ".stamp_installed"
 
@@ -24,11 +24,11 @@ defmodule Peridiod.Bundle do
   end
 
   def metadata_from_cache(cache_pid, bundle_prn) do
-    manifest_file = Path.join([cache_dir(bundle_prn), "manifest"])
+    manifest_file = Path.join([cache_path(bundle_prn), "manifest"])
 
     with {:ok, json} <- Cache.read(cache_pid, manifest_file),
          {:ok, bundle_metadata} <- metadata_from_json(json) do
-      binaries_dir = Path.join(cache_dir(bundle_metadata), "binaries")
+      binaries_dir = Path.join(cache_path(bundle_metadata), "binaries")
 
       binaries =
         case Cache.ls(cache_pid, binaries_dir) do
@@ -89,7 +89,7 @@ defmodule Peridiod.Bundle do
     with :ok <- Cache.write(cache_pid, manifest_file, bundle_json) do
       Enum.each(binaries, fn binary_metadata ->
         Binary.metadata_to_cache(cache_pid, binary_metadata)
-        target = Binary.cache_dir(binary_metadata)
+        target = Binary.cache_path(binary_metadata)
 
         link =
           Path.join([
@@ -104,26 +104,26 @@ defmodule Peridiod.Bundle do
     end
   end
 
-  def cache_dir(%__MODULE__{prn: bundle_prn}) do
-    cache_dir(bundle_prn)
+  def cache_path(%__MODULE__{prn: bundle_prn}) do
+    cache_path(bundle_prn)
   end
 
-  def cache_dir(bundle_prn) when is_binary(bundle_prn) do
-    Path.join([@cache_dir, bundle_prn])
+  def cache_path(bundle_prn) when is_binary(bundle_prn) do
+    Path.join([@cache_path, bundle_prn])
   end
 
   def installed?(cache_pid \\ Cache, %__MODULE__{} = release_metadata) do
-    stamp_file = Path.join([cache_dir(release_metadata), @stamp_installed])
+    stamp_file = Path.join([cache_path(release_metadata), @stamp_installed])
     Cache.exists?(cache_pid, stamp_file)
   end
 
   def stamp_cached(cache_pid \\ Cache, %__MODULE__{} = release_metadata) do
-    stamp_file = Path.join([cache_dir(release_metadata), @stamp_cached])
+    stamp_file = Path.join([cache_path(release_metadata), @stamp_cached])
     Cache.write(cache_pid, stamp_file, stamp_utc_now())
   end
 
   def stamp_installed(cache_pid \\ Cache, %__MODULE__{} = release_metadata) do
-    stamp_file = Path.join([cache_dir(release_metadata), @stamp_installed])
+    stamp_file = Path.join([cache_path(release_metadata), @stamp_installed])
     Cache.write(cache_pid, stamp_file, stamp_utc_now())
   end
 

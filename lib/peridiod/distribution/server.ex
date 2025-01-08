@@ -10,7 +10,7 @@ defmodule Peridiod.Distribution.Server do
   use GenServer
 
   alias Peridiod.{Client, Distribution}
-  alias Peridiod.Binary.{Downloader, Downloader.Supervisor, Installer.Fwup}
+  alias Peridiod.Binary.{StreamDownloader, StreamDownloader.Supervisor, Installer.Fwup}
   alias PeridiodPersistence.KV
 
   require Logger
@@ -268,7 +268,7 @@ defmodule Peridiod.Distribution.Server do
     fun = &send(pid, {:download, &1})
 
     {:ok, download} =
-      Downloader.Supervisor.start_child(
+      StreamDownloader.Supervisor.start_child(
         distribution.firmware_meta.uuid,
         distribution.firmware_url,
         fun

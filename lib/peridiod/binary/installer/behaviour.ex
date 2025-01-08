@@ -3,16 +3,20 @@ defmodule Peridiod.Binary.Installer.Behaviour do
     quote do
       @behaviour Peridiod.Binary.Installer.Behaviour
 
+      def install_downloader(%Peridiod.Binary{}, _installer_opts) do
+        Peridiod.Binary.CacheDownloader
+      end
+
       def install_init(%Peridiod.Binary{}, _source, _config) do
         {:ok, %{}}
       end
 
-      def install_update(%Peridiod.Binary{}, data, state) do
-        {:ok, state}
-      end
-
       def install_update(%Peridiod.Binary{}, {:error, reason}, state) do
         {:error, reason, state}
+      end
+
+      def install_update(%Peridiod.Binary{}, data, state) do
+        {:ok, state}
       end
 
       def install_finish(%Peridiod.Binary{}, :invalid_signature, state) do
@@ -27,7 +31,8 @@ defmodule Peridiod.Binary.Installer.Behaviour do
         {:error, error, installer_state}
       end
 
-      defoverridable install_init: 3,
+      defoverridable install_downloader: 2,
+                     install_init: 3,
                      install_update: 3,
                      install_finish: 3,
                      install_info: 2,
@@ -36,10 +41,12 @@ defmodule Peridiod.Binary.Installer.Behaviour do
   end
 
   alias Peridiod.Binary
+  alias Peridiod.Binary.{CacheDownloader, StreamDownloader}
 
   @type installer_state :: any()
   @type installer_opts :: map()
 
+  @callback install_downloader(Binary.t(), installer_opts) :: StreamDownloader | CacheDownloader
   @callback install_init(Binary.t(), :cache | :download, installer_opts, installer_state()) ::
               {:ok, installer_state()} | {:error, reason :: any(), installer_state()}
   @callback install_update(Binary.t(), data :: binary(), installer_state()) ::

@@ -20,6 +20,11 @@ defmodule Peridiod.Binary.Installer.File do
   use Peridiod.Binary.Installer.Behaviour
 
   alias Peridiod.Binary
+  alias Peridiod.Binary.StreamDownloader
+
+  def install_downloader(_binary_metadata, _opts) do
+    StreamDownloader
+  end
 
   def install_init(
         %Binary{

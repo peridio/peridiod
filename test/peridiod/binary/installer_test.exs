@@ -35,6 +35,29 @@ defmodule Peridiod.Binary.InstallerTest do
     end
   end
 
+  describe "install_downloader" do
+    setup :start_cache
+    setup :start_kv
+    setup :setup_cache
+
+    test "cache", %{binary_metadata: binary_metadata, opts: opts} do
+      spawn_installer(binary_metadata, opts)
+      prn = binary_metadata.prn
+      assert_receive {Installer, ^prn, :complete}
+    end
+  end
+
+  def setup_cache(context) do
+    application_config = Application.get_all_env(:peridiod)
+    config = struct(Peridiod.Config, application_config) |> Peridiod.Config.new()
+    binary_metadata = TestFixtures.binary_manifest_cache() |> Binary.metadata_from_manifest()
+    opts = %{callback: self(), config: config, cache_pid: context.cache_pid}
+
+    context
+    |> Map.put(:binary_metadata, binary_metadata)
+    |> Map.put(:opts, opts)
+  end
+
   def setup_fwup(context) do
     application_config = Application.get_all_env(:peridiod)
     config = struct(Peridiod.Config, application_config) |> Peridiod.Config.new()

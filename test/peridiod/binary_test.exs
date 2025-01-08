@@ -73,7 +73,7 @@ defmodule Peridiod.BinaryTest do
       signature_file =
         Path.join([
           cache_dir,
-          Binary.cache_dir({binary_metadata.prn, binary_metadata.custom_metadata_hash}),
+          Binary.cache_path({binary_metadata.prn, binary_metadata.custom_metadata_hash}),
           "manifest.sig"
         ])
 
@@ -98,7 +98,7 @@ defmodule Peridiod.BinaryTest do
       stamp_installed_file =
         Path.join([
           cache_dir,
-          Binary.cache_dir({binary_metadata.prn, binary_metadata.custom_metadata_hash}),
+          Binary.cache_path({binary_metadata.prn, binary_metadata.custom_metadata_hash}),
           ".stamp_installed"
         ])
 

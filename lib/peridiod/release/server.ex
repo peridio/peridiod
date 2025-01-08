@@ -442,6 +442,13 @@ defmodule Peridiod.Release.Server do
     {:no_update, state}
   end
 
+  defp update_response({:ok, %{status: status_code, body: body}}, state) do
+    Logger.debug("Release Manager: Non 200 response from server")
+    Logger.debug("Release Manager: Status code: #{inspect status_code}")
+    Logger.debug("Release Manager: Response: #{inspect body}")
+    {:no_update, state}
+  end
+
   defp update_response({:error, %{reason: reason}}, state) do
     Logger.error("Release Manager: error checking for update #{inspect(reason)}")
     {:no_update, state}

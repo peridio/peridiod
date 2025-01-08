@@ -24,10 +24,15 @@ defmodule Peridiod.Binary.Installer.Fwup do
   use Peridiod.Binary.Installer.Behaviour
 
   alias PeridiodPersistence.KV
+  alias Peridiod.Binary.StreamDownloader
   alias Peridiod.Utils
   alias __MODULE__
 
   require Logger
+
+  def install_downloader(_binary_metadata, _opts) do
+    StreamDownloader
+  end
 
   def install_init(
         _binary_metadata,

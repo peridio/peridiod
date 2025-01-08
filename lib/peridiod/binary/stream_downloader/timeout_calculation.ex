@@ -1,4 +1,4 @@
-defmodule Peridiod.Binary.Downloader.TimeoutCalculation do
+defmodule Peridiod.Binary.StreamDownloader.TimeoutCalculation do
   @moduledoc """
   Pure functions for dealing with timeouts
   """

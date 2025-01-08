@@ -3,7 +3,7 @@ defmodule Peridiod.Binary.CacheDownloader do
 
   require Logger
 
-  alias Peridiod.Binary.Downloader
+  alias Peridiod.Binary.StreamDownloader
   alias Peridiod.{Cache, Binary}
 
   def child_spec(%Binary{prn: binary_prn} = binary_metadata, opts) do
@@ -34,7 +34,7 @@ defmodule Peridiod.Binary.CacheDownloader do
     fun = &send(pid, {:download_cache, &1})
 
     {:ok, downloader} =
-      Downloader.Supervisor.start_child(
+      StreamDownloader.Supervisor.start_child(
         binary_metadata.prn,
         binary_metadata.uri,
         fun
@@ -110,7 +110,7 @@ defmodule Peridiod.Binary.CacheDownloader do
   end
 
   def handle_info(msg, state) do
-    Logger.debug("CacheDownloader unhandled message: #{inspect(msg)}")
+    Logger.debug("Cache Downloader unhandled message: #{inspect(msg)}")
     {:noreply, state}
   end
 end

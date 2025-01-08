@@ -6,7 +6,7 @@ defmodule Peridiod.Release do
 
   require Logger
 
-  @cache_dir "release"
+  @cache_path "release"
   @stamp_cached ".stamp_cached"
   @stamp_installed ".stamp_installed"
 
@@ -136,26 +136,26 @@ defmodule Peridiod.Release do
   end
 
   def cached?(cache_pid \\ Cache, %__MODULE__{} = release_metadata) do
-    stamp_file = Path.join([cache_dir(release_metadata), @stamp_cached])
+    stamp_file = Path.join([cache_path(release_metadata), @stamp_cached])
     Cache.exists?(cache_pid, stamp_file)
   end
 
-  def cache_dir(%__MODULE__{prn: release_prn}) do
-    Path.join([@cache_dir, release_prn])
+  def cache_path(%__MODULE__{prn: release_prn}) do
+    Path.join([@cache_path, release_prn])
   end
 
   def installed?(cache_pid \\ Cache, %__MODULE__{} = release_metadata) do
-    stamp_file = Path.join([cache_dir(release_metadata), @stamp_installed])
+    stamp_file = Path.join([cache_path(release_metadata), @stamp_installed])
     Cache.exists?(cache_pid, stamp_file)
   end
 
   def stamp_cached(cache_pid \\ Cache, %__MODULE__{} = release_metadata) do
-    stamp_file = Path.join([cache_dir(release_metadata), @stamp_cached])
+    stamp_file = Path.join([cache_path(release_metadata), @stamp_cached])
     Cache.write(cache_pid, stamp_file, stamp_utc_now())
   end
 
   def stamp_installed(cache_pid \\ Cache, %__MODULE__{} = release_metadata) do
-    stamp_file = Path.join([cache_dir(release_metadata), @stamp_installed])
+    stamp_file = Path.join([cache_path(release_metadata), @stamp_installed])
     Cache.write(cache_pid, stamp_file, stamp_utc_now())
   end
 

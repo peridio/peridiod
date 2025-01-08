@@ -1,4 +1,4 @@
-defmodule Peridiod.Binary.Downloader do
+defmodule Peridiod.Binary.StreamDownloader do
   @moduledoc """
   Handles downloading files via HTTP.
   internally caches several interesting properties about
@@ -17,7 +17,12 @@ defmodule Peridiod.Binary.Downloader do
 
   use GenServer
 
-  alias Peridiod.Binary.{Downloader, Downloader.RetryConfig, Downloader.TimeoutCalculation}
+  alias Peridiod.Binary.{
+    StreamDownloader,
+    StreamDownloader.RetryConfig,
+    StreamDownloader.TimeoutCalculation
+  }
+
   require Logger
 
   defstruct id: nil,
@@ -43,7 +48,7 @@ defmodule Peridiod.Binary.Downloader do
   # alias for readability
   @typep timer() :: reference()
 
-  @type t :: %Downloader{
+  @type t :: %StreamDownloader{
           id: nil | String.t(),
           uri: nil | URI.t(),
           conn: nil | Mint.HTTP.t(),
@@ -61,7 +66,7 @@ defmodule Peridiod.Binary.Downloader do
           worst_case_timeout_remaining_ms: nil | non_neg_integer()
         }
 
-  @type initialized_download :: %Downloader{
+  @type initialized_download :: %StreamDownloader{
           id: String.t(),
           uri: URI.t(),
           conn: Mint.HTTP.t(),
@@ -89,7 +94,7 @@ defmodule Peridiod.Binary.Downloader do
         ...> :complete -> send pid, :complete
         ...> end
         #Function<44.97283095/1 in :erl_eval.expr/5>
-        iex> Peridiod.Downloader.start_link("https://httpbin.com/", fun, %RetryConfig{})
+        iex> Peridiod.StreamDownloader.start_link("https://httpbin.com/", fun, %RetryConfig{})
         {:ok, #PID<0.111.0>}
         iex> flush()
         :complete
@@ -120,7 +125,7 @@ defmodule Peridiod.Binary.Downloader do
     timer = Process.send_after(self(), :max_timeout, retry_args.max_timeout)
 
     state =
-      reset(%Downloader{
+      reset(%StreamDownloader{
         id: id,
         handler_fun: fun,
         retry_args: retry_args,
@@ -136,19 +141,19 @@ defmodule Peridiod.Binary.Downloader do
   # this message is scheduled during init/1
   # it is a extreme condition where regardless of download attempts,
   # idle timeouts etc, this entire process has lived for TOO long.
-  def handle_info(:max_timeout, %Downloader{} = state) do
+  def handle_info(:max_timeout, %StreamDownloader{} = state) do
     {:stop, :max_timeout_reached, state}
   end
 
   # this message is scheduled when we receive the `content_length` value
-  def handle_info(:worst_case_download_speed_timeout, %Downloader{} = state) do
+  def handle_info(:worst_case_download_speed_timeout, %StreamDownloader{} = state) do
     {:stop, :worst_case_download_speed_reached, state}
   end
 
   # this message is delivered after `state.retry_args.idle_timeout`
   # milliseconds have occurred. It indicates that many milliseconds have elapsed since
   # the last "chunk" from the HTTP server
-  def handle_info(:timeout, %Downloader{handler_fun: handler} = state) do
+  def handle_info(:timeout, %StreamDownloader{handler_fun: handler} = state) do
     _ = handler.({:error, :idle_timeout})
     state = reschedule_resume(state)
     {:noreply, state}
@@ -157,7 +162,7 @@ defmodule Peridiod.Binary.Downloader do
   # message is scheduled when a resumable event happens.
   def handle_info(
         :resume,
-        %Downloader{
+        %StreamDownloader{
           retry_number: retry_number,
           retry_args: %RetryConfig{max_disconnects: retry_number}
         } = state
@@ -166,7 +171,7 @@ defmodule Peridiod.Binary.Downloader do
     {:stop, :max_disconnects_reached, state}
   end
 
-  def handle_info(:resume, %Downloader{handler_fun: handler} = state) do
+  def handle_info(:resume, %StreamDownloader{handler_fun: handler} = state) do
     case resume_download(state.uri, state) do
       {:ok, state} ->
         {:noreply, state, state.retry_args.idle_timeout}
@@ -178,7 +183,7 @@ defmodule Peridiod.Binary.Downloader do
     end
   end
 
-  def handle_info(message, %Downloader{handler_fun: handler} = state) do
+  def handle_info(message, %StreamDownloader{handler_fun: handler} = state) do
     case Mint.HTTP.stream(state.conn, message) do
       {:ok, conn, responses} ->
         handle_responses(responses, %{state | conn: conn})
@@ -194,7 +199,7 @@ defmodule Peridiod.Binary.Downloader do
 
   # schedules a message to be delivered based on retry args
   @spec reschedule_resume(t()) :: resume_rescheduled()
-  defp reschedule_resume(%Downloader{retry_number: retry_number} = state) do
+  defp reschedule_resume(%StreamDownloader{retry_number: retry_number} = state) do
     # cancel the worst_case_timeout if it was running
     worst_case_timeout_remaining_ms =
       if state.worst_case_timeout do
@@ -204,7 +209,7 @@ defmodule Peridiod.Binary.Downloader do
     timer = Process.send_after(self(), :resume, state.retry_args.time_between_retries)
     Logger.warning("[Peridiod] Increment retry counter #{retry_number + 1}")
 
-    %Downloader{
+    %StreamDownloader{
       state
       | retry_timeout: timer,
         retry_number: retry_number + 1,
@@ -214,27 +219,31 @@ defmodule Peridiod.Binary.Downloader do
 
   @spec schedule_worst_case_timer(t()) :: t()
   # only calculate worst_case_timeout_remaining_ms is not set
-  defp schedule_worst_case_timer(%Downloader{worst_case_timeout_remaining_ms: nil} = download) do
+  defp schedule_worst_case_timer(
+         %StreamDownloader{worst_case_timeout_remaining_ms: nil} = download
+       ) do
     # decompose here because in the formatter doesn't like all this being in the head
-    %Downloader{retry_args: retry_config, content_length: content_length} = download
+    %StreamDownloader{retry_args: retry_config, content_length: content_length} = download
     %RetryConfig{worst_case_download_speed: speed} = retry_config
     ms = TimeoutCalculation.calculate_worst_case_timeout(content_length, speed)
     Logger.warning("[Peridiod] Worst case timeout: #{ms}")
     timer = Process.send_after(self(), :worst_case_download_speed_timeout, ms)
-    %Downloader{download | worst_case_timeout: timer}
+    %StreamDownloader{download | worst_case_timeout: timer}
   end
 
   # worst_case_timeout_remaining_ms gets set if the timer gets canceled by reschedule_resume/1
   # this is done so that the timer doesn't keep counting while not actively downloading data
-  defp schedule_worst_case_timer(%Downloader{worst_case_timeout_remaining_ms: ms} = download) do
+  defp schedule_worst_case_timer(
+         %StreamDownloader{worst_case_timeout_remaining_ms: ms} = download
+       ) do
     timer = Process.send_after(self(), :worst_case_download_speed_timeout, ms)
-    %Downloader{download | worst_case_timeout: timer}
+    %StreamDownloader{download | worst_case_timeout: timer}
   end
 
-  defp handle_responses([response | rest], %Downloader{} = state) do
+  defp handle_responses([response | rest], %StreamDownloader{} = state) do
     case handle_response(response, state) do
       # this `status != nil` thing seems really weird. Shouldn't be needed.
-      %Downloader{status: status} = state when status != nil and status >= 400 ->
+      %StreamDownloader{status: status} = state when status != nil and status >= 400 ->
         {:stop, {:http_error, status}, state}
 
       state ->
@@ -244,54 +253,54 @@ defmodule Peridiod.Binary.Downloader do
 
   defp handle_responses(
          [],
-         %Downloader{downloaded_length: downloaded, content_length: downloaded} = state
+         %StreamDownloader{downloaded_length: downloaded, content_length: downloaded} = state
        )
        when downloaded != 0 do
     _ = state.handler_fun.(:complete)
     {:stop, :normal, state}
   end
 
-  defp handle_responses([], %Downloader{} = state) do
+  defp handle_responses([], %StreamDownloader{} = state) do
     {:noreply, state, state.retry_args.idle_timeout}
   end
 
   @doc false
   @spec handle_response(
           {:status, reference(), non_neg_integer()} | {:headers, reference(), keyword()},
-          Downloader.t()
+          StreamDownloader.t()
         ) ::
-          Downloader.t()
+          StreamDownloader.t()
   def handle_response(
         {:status, request_ref, status},
-        %Downloader{request_ref: request_ref} = state
+        %StreamDownloader{request_ref: request_ref} = state
       )
       when status >= 300 and status < 400 do
-    %Downloader{state | status: status}
+    %StreamDownloader{state | status: status}
   end
 
   # the handle_responses/2 function checks this value again because this function only handles state
   def handle_response(
         {:status, request_ref, status},
-        %Downloader{request_ref: request_ref} = state
+        %StreamDownloader{request_ref: request_ref} = state
       )
       when status >= 400 do
     # kind of a hack to make the error type uniform
     state.handler_fun.({:error, %Mint.HTTPError{reason: {:http_error, status}}})
-    %Downloader{state | status: status}
+    %StreamDownloader{state | status: status}
   end
 
   def handle_response(
         {:status, request_ref, status},
-        %Downloader{request_ref: request_ref} = state
+        %StreamDownloader{request_ref: request_ref} = state
       )
       when status >= 200 and status < 300 do
-    %Downloader{state | status: status}
+    %StreamDownloader{state | status: status}
   end
 
   # handles HTTP redirects.
   def handle_response(
         {:headers, request_ref, headers},
-        %Downloader{request_ref: request_ref, status: status, handler_fun: handler} = state
+        %StreamDownloader{request_ref: request_ref, status: status, handler_fun: handler} = state
       )
       when status >= 300 and status < 400 do
     location = fetch_location(headers)
@@ -300,7 +309,7 @@ defmodule Peridiod.Binary.Downloader do
     state = reset(state)
 
     case resume_download(location, state) do
-      {:ok, %Downloader{} = state} ->
+      {:ok, %StreamDownloader{} = state} ->
         state
 
       error ->
@@ -313,15 +322,15 @@ defmodule Peridiod.Binary.Downloader do
   # range requests will change this value
   def handle_response(
         {:headers, request_ref, headers},
-        %Downloader{request_ref: request_ref, content_length: content_length} = state
+        %StreamDownloader{request_ref: request_ref, content_length: content_length} = state
       )
       when content_length > 0 do
-    schedule_worst_case_timer(%Downloader{state | response_headers: headers})
+    schedule_worst_case_timer(%StreamDownloader{state | response_headers: headers})
   end
 
   def handle_response(
         {:headers, request_ref, headers},
-        %Downloader{request_ref: request_ref, content_length: 0} = state
+        %StreamDownloader{request_ref: request_ref, content_length: 0} = state
       ) do
     case fetch_accept_ranges(headers) do
       accept_ranges when accept_ranges in ["none", nil] ->
@@ -333,7 +342,7 @@ defmodule Peridiod.Binary.Downloader do
 
     content_length = fetch_content_length(headers)
 
-    schedule_worst_case_timer(%Downloader{
+    schedule_worst_case_timer(%StreamDownloader{
       state
       | response_headers: headers,
         content_length: content_length
@@ -342,23 +351,23 @@ defmodule Peridiod.Binary.Downloader do
 
   def handle_response(
         {:data, request_ref, data},
-        %Downloader{request_ref: request_ref, downloaded_length: downloaded} = state
+        %StreamDownloader{request_ref: request_ref, downloaded_length: downloaded} = state
       ) do
     _ = state.handler_fun.({:data, data})
-    %Downloader{state | downloaded_length: downloaded + byte_size(data)}
+    %StreamDownloader{state | downloaded_length: downloaded + byte_size(data)}
   end
 
-  def handle_response({:done, request_ref}, %Downloader{request_ref: request_ref} = state) do
+  def handle_response({:done, request_ref}, %StreamDownloader{request_ref: request_ref} = state) do
     state
   end
 
   # ignore other messages when redirecting
-  def handle_response(_, %Downloader{status: nil} = state) do
+  def handle_response(_, %StreamDownloader{status: nil} = state) do
     state
   end
 
-  defp reset(%Downloader{} = state) do
-    %Downloader{
+  defp reset(%StreamDownloader{} = state) do
+    %StreamDownloader{
       state
       | retry_number: 0,
         downloaded_length: 0,
@@ -372,7 +381,7 @@ defmodule Peridiod.Binary.Downloader do
           | {:error, Mint.HTTP.t(), Mint.Types.error()}
   defp resume_download(
          %URI{scheme: scheme, host: host, port: port, path: path, query: query} = uri,
-         %Downloader{} = state
+         %StreamDownloader{} = state
        )
        when scheme in ["https", "http"] do
     request_headers =
@@ -390,7 +399,7 @@ defmodule Peridiod.Binary.Downloader do
     with {:ok, conn} <- Mint.HTTP.connect(String.to_existing_atom(scheme), host, port),
          {:ok, conn, request_ref} <- Mint.HTTP.request(conn, "GET", path, request_headers, nil) do
       {:ok,
-       %Downloader{
+       %StreamDownloader{
          state
          | uri: uri,
            conn: conn,
@@ -421,14 +430,14 @@ defmodule Peridiod.Binary.Downloader do
   @spec add_range_header(Mint.Types.headers(), t()) :: Mint.Types.headers()
   defp add_range_header(headers, state)
 
-  defp add_range_header(headers, %Downloader{content_length: 0}), do: headers
+  defp add_range_header(headers, %StreamDownloader{content_length: 0}), do: headers
 
-  defp add_range_header(headers, %Downloader{downloaded_length: r, content_length: total})
+  defp add_range_header(headers, %StreamDownloader{downloaded_length: r, content_length: total})
        when total > 0,
        do: [{"Range", "bytes=#{r}-#{total}"} | headers]
 
   @spec add_retry_number_header(Mint.Types.headers(), t()) :: Mint.Types.headers()
-  defp add_retry_number_header(headers, %Downloader{retry_number: retry_number}),
+  defp add_retry_number_header(headers, %StreamDownloader{retry_number: retry_number}),
     do: [{"X-Retry-Number", "#{retry_number}"} | headers]
 
   defp add_user_agent_header(headers, _),

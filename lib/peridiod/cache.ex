@@ -44,6 +44,14 @@ defmodule Peridiod.Cache do
     GenServer.call(pid_or_name, {:ls, path})
   end
 
+  def abs_path(pid_or_name \\ __MODULE__, file) do
+    GenServer.call(pid_or_name, {:abs_path, file})
+  end
+
+  def rm(pid_or_name \\ __MODULE__, file) do
+    GenServer.call(pid_or_name, {:rm, file})
+  end
+
   def init(config) do
     private_key = config.cache_private_key
     public_key = config.cache_public_key
@@ -152,6 +160,16 @@ defmodule Peridiod.Cache do
   def handle_call({:ls, path}, _from, state) do
     path = Path.join([state.path, path])
     {:reply, File.ls(path), state}
+  end
+
+  def handle_call({:abs_path, file}, _from, state) do
+    path = Path.join([state.path, file])
+    {:reply, path, state}
+  end
+
+  def handle_call({:rm, file}, _from, state) do
+    path = Path.join([state.path, file])
+    {:reply, File.rm(path), state}
   end
 
   defp do_write(file, content, %{

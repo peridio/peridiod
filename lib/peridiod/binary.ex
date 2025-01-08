@@ -3,7 +3,7 @@ defmodule Peridiod.Binary do
   alias PeridiodPersistence.KV
   import Peridiod.Utils, only: [stamp_utc_now: 0]
 
-  @cache_dir "binary"
+  @cache_path "binary"
   @stamp_cached ".stamp_cached"
   @stamp_installed ".stamp_installed"
   @cache_file "binary"
@@ -51,7 +51,7 @@ defmodule Peridiod.Binary do
   end
 
   def metadata_from_cache(cache_pid, id) do
-    manifest_file = Path.join(cache_dir(id), "manifest")
+    manifest_file = Path.join(cache_path(id), "manifest")
 
     case Cache.read(cache_pid, manifest_file) do
       {:ok, json} -> metadata_from_json(json)
@@ -135,8 +135,8 @@ defmodule Peridiod.Binary do
         %__MODULE__{} = binary_metadata
       ) do
     binary_json = Jason.encode!(binary_metadata)
-    cache_dir(binary_metadata)
-    manifest_file = Path.join(cache_dir(binary_metadata), "manifest")
+    cache_path(binary_metadata)
+    manifest_file = Path.join(cache_path(binary_metadata), "manifest")
     Cache.write(cache_pid, manifest_file, binary_json)
   end
 
@@ -146,24 +146,31 @@ defmodule Peridiod.Binary do
   end
 
   def cached?(cache_pid \\ Cache, %__MODULE__{} = binary_metadata) do
-    stamp_file = Path.join([cache_dir(binary_metadata), @stamp_cached])
+    stamp_file = Path.join([cache_path(binary_metadata), @stamp_cached])
     Cache.exists?(cache_pid, stamp_file)
   end
 
-  def cache_dir({binary_prn, custom_metadata_hash}) do
-    cache_dir("#{binary_prn}:#{Base.encode16(custom_metadata_hash, case: :lower)}")
+  def cache_path({binary_prn, custom_metadata_hash}) do
+    cache_path("#{binary_prn}:#{Base.encode16(custom_metadata_hash, case: :lower)}")
   end
 
-  def cache_dir(%__MODULE__{prn: binary_prn, custom_metadata_hash: custom_metadata_hash}) do
-    cache_dir({binary_prn, custom_metadata_hash})
+  def cache_path(%__MODULE__{prn: binary_prn, custom_metadata_hash: custom_metadata_hash}) do
+    cache_path({binary_prn, custom_metadata_hash})
   end
 
-  def cache_dir(path) when is_binary(path) do
-    Path.join([@cache_dir, path])
+  def cache_path(path) when is_binary(path) do
+    Path.join([@cache_path, path])
   end
 
   def cache_file(%__MODULE__{} = binary_metadata) do
-    Path.join(cache_dir(binary_metadata), @cache_file)
+    Path.join(cache_path(binary_metadata), @cache_file)
+  end
+
+  def cache_rm(cache_pid \\ Cache, %__MODULE__{} = binary_metadata) do
+    stamp_file = Path.join([cache_path(binary_metadata), @stamp_cached])
+    cache_file_path = cache_file(binary_metadata)
+    Cache.rm(cache_pid, stamp_file)
+    Cache.rm(cache_pid, cache_file_path)
   end
 
   def custom_metadata_hash(custom_metadata) do
@@ -176,17 +183,17 @@ defmodule Peridiod.Binary do
   end
 
   def installed?(cache_pid \\ Cache, %__MODULE__{} = binary_metadata) do
-    stamp_file = Path.join([cache_dir(binary_metadata), @stamp_installed])
+    stamp_file = Path.join([cache_path(binary_metadata), @stamp_installed])
     Cache.exists?(cache_pid, stamp_file)
   end
 
   def stamp_cached(cache_pid \\ Cache, %__MODULE__{} = binary_metadata) do
-    stamp_file = Path.join([cache_dir(binary_metadata), @stamp_cached])
+    stamp_file = Path.join([cache_path(binary_metadata), @stamp_cached])
     Cache.write(cache_pid, stamp_file, stamp_utc_now())
   end
 
   def stamp_installed(cache_pid \\ Cache, %__MODULE__{} = binary_metadata) do
-    stamp_file = Path.join([cache_dir(binary_metadata), @stamp_installed])
+    stamp_file = Path.join([cache_path(binary_metadata), @stamp_installed])
     Cache.write(cache_pid, stamp_file, stamp_utc_now())
   end
 

@@ -17,7 +17,7 @@ defmodule Peridiod.Application do
     children = [
       {Cache, config},
       Binary.Installer.Supervisor,
-      Binary.Downloader.Supervisor,
+      Binary.StreamDownloader.Supervisor,
       Binary.CacheDownloader.Supervisor,
       {Release.Server, config}
     ]
