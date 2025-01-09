@@ -132,10 +132,7 @@ defmodule Peridiod.Release.Server do
   def handle_continue(true, state) do
     Logger.debug("Release Polling Enabled")
 
-    {_resp, state} =
-      state
-      |> update_check()
-      |> update_response(state)
+    send(self(), :check_for_update)
 
     progress_message_timer =
       Process.send_after(self(), :send_progress_message, state.progress_message_interval)
@@ -444,8 +441,8 @@ defmodule Peridiod.Release.Server do
 
   defp update_response({:ok, %{status: status_code, body: body}}, state) do
     Logger.debug("Release Manager: Non 200 response from server")
-    Logger.debug("Release Manager: Status code: #{inspect status_code}")
-    Logger.debug("Release Manager: Response: #{inspect body}")
+    Logger.debug("Release Manager: Status code: #{inspect(status_code)}")
+    Logger.debug("Release Manager: Response: #{inspect(body)}")
     {:no_update, state}
   end
 
@@ -507,6 +504,7 @@ defmodule Peridiod.Release.Server do
          _callback,
          %{installing_release: {release_metadata, _, _}} = state
        ) do
+    IO.inspect("Error, release is currently being installed")
     {{:error, {:installing_release, release_metadata}}, state}
   end
 
