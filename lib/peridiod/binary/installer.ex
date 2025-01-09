@@ -91,9 +91,9 @@ defmodule Peridiod.Binary.Installer do
   end
 
   def handle_continue(false, state) do
-    Logger.error("Installer [#{state.binary_metadata.prn}]: Installing from download stream")
+    Logger.debug("Installer [#{state.binary_metadata.prn}]: Installing from download stream")
     do_install_from_download(state)
-    {:noreply, state}
+    {:noreply, %{state | status: :installing, source: :download}}
   end
 
   # Streaming from Cache

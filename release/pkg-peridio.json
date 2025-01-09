@@ -2,7 +2,7 @@
   "version": 1,
   "cache_dir": "/var/peridiod",
   "remote_shell": false,
-  "release_poll_enabled": true,
+  "update_poll_enabled": true,
   "targets": ["portable"],
   "trusted_signing_keys": [],
   "remote_access_tunnels": {

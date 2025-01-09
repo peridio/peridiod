@@ -6,7 +6,7 @@ defmodule Peridiod.Application do
     Connection,
     Socket,
     Distribution,
-    Release,
+    Update,
     Binary
   }
 
@@ -19,7 +19,7 @@ defmodule Peridiod.Application do
       Binary.Installer.Supervisor,
       Binary.StreamDownloader.Supervisor,
       Binary.CacheDownloader.Supervisor,
-      {Release.Server, config}
+      {Update.Server, config}
     ]
 
     children =

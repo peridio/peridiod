@@ -1,11 +1,7 @@
 defmodule Peridiod.Bundle do
+  use Peridiod.Cache.Helpers, cache_path: "bundle"
+
   alias Peridiod.{Binary, Cache, Bundle}
-
-  import Peridiod.Utils, only: [stamp_utc_now: 0]
-
-  @cache_path "bundle"
-  @stamp_cached ".stamp_cached"
-  @stamp_installed ".stamp_installed"
 
   defstruct prn: nil,
             binaries: nil
@@ -102,29 +98,6 @@ defmodule Peridiod.Bundle do
         Cache.ln_s(cache_pid, target, link)
       end)
     end
-  end
-
-  def cache_path(%__MODULE__{prn: bundle_prn}) do
-    cache_path(bundle_prn)
-  end
-
-  def cache_path(bundle_prn) when is_binary(bundle_prn) do
-    Path.join([@cache_path, bundle_prn])
-  end
-
-  def installed?(cache_pid \\ Cache, %__MODULE__{} = release_metadata) do
-    stamp_file = Path.join([cache_path(release_metadata), @stamp_installed])
-    Cache.exists?(cache_pid, stamp_file)
-  end
-
-  def stamp_cached(cache_pid \\ Cache, %__MODULE__{} = release_metadata) do
-    stamp_file = Path.join([cache_path(release_metadata), @stamp_cached])
-    Cache.write(cache_pid, stamp_file, stamp_utc_now())
-  end
-
-  def stamp_installed(cache_pid \\ Cache, %__MODULE__{} = release_metadata) do
-    stamp_file = Path.join([cache_path(release_metadata), @stamp_installed])
-    Cache.write(cache_pid, stamp_file, stamp_utc_now())
   end
 
   def filter_binaries_by_targets(%__MODULE__{binaries: binaries}, []), do: binaries

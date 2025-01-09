@@ -2,7 +2,7 @@ defmodule Peridiod.Socket do
   use Slipstream
   require Logger
 
-  alias Peridiod.{Client, Distribution, RemoteConsole, Utils}
+  alias Peridiod.{Client, Distribution, RemoteConsole, Utils, Update}
   alias Peridiod.Binary.Installer.Fwup
   alias PeridiodPersistence.KV
 
@@ -84,13 +84,12 @@ defmodule Peridiod.Socket do
         false -> params
       end
 
-    current_release_prn = KV.get("peridio_rel_current")
-    current_release_version = KV.get("peridio_vsn_current")
+    current_via_prn = KV.get("peridio_via_current") || KV.get("peridio_rel_current")
+    current_bundle_prn = KV.get("peridio_bun_current")
+    current_version = KV.get("peridio_vsn_current")
 
     sdk_client =
-      config.sdk_client
-      |> Map.put(:release_prn, current_release_prn)
-      |> Map.put(:release_version, current_release_version)
+      Update.sdk_client(config.sdk_client, current_via_prn, current_bundle_prn, current_version)
 
     socket =
       new_socket()

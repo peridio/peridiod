@@ -9,7 +9,7 @@
   },
   "remote_iex": false,
   "remote_shell": true,
-  "release_poll_enabled": true,
+  "update_poll_enabled": true,
   "remote_access_tunnels": {
     "enabled": true,
     "service_ports": [22],

@@ -2,7 +2,7 @@ defmodule PeridiodTest.Case do
   use ExUnit.CaseTemplate
 
   alias PeridiodPersistence.KV
-  alias Peridiod.{Cache, Release, Bundle}
+  alias Peridiod.{Cache, Release, Bundle, Update}
   alias PeridiodTest.StaticRouter
   alias Peridiod.TestFixtures
 
@@ -60,7 +60,7 @@ defmodule PeridiodTest.Case do
     Map.put(context, :kv_pid, kv_pid)
   end
 
-  def start_release_server(%{cache_pid: cache_pid} = context) do
+  def start_update_server(%{cache_pid: cache_pid} = context) do
     application_config = Application.get_all_env(:peridiod)
     config = struct(Peridiod.Config, application_config) |> Peridiod.Config.new()
     config = Map.put(config, :cache_pid, cache_pid)
@@ -72,7 +72,7 @@ defmodule PeridiodTest.Case do
         config
       end
 
-    {:ok, pid} = Release.Server.start_link(config, [])
-    Map.put(context, :release_server_pid, pid)
+    {:ok, pid} = Update.Server.start_link(config, [])
+    Map.put(context, :update_server_pid, pid)
   end
 end

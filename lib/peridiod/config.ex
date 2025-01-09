@@ -27,10 +27,8 @@ defmodule Peridiod.Config do
             remote_shell: false,
             remote_iex: false,
             remote_access_tunnels: %{},
-            release_poll_enabled: false,
-            release_poll_interval: 300_000,
-            release_prn: nil,
-            release_version: nil,
+            update_poll_enabled: false,
+            update_poll_interval: 300_000,
             targets: ["portable"],
             trusted_signing_keys: [],
             trusted_signing_key_dir: nil,
@@ -62,10 +60,8 @@ defmodule Peridiod.Config do
           remote_iex: boolean,
           remote_shell: boolean,
           remote_access_tunnels: map(),
-          release_poll_enabled: boolean,
-          release_poll_interval: non_neg_integer(),
-          release_prn: String.t(),
-          release_version: String.t(),
+          update_poll_enabled: boolean,
+          update_poll_interval: non_neg_integer(),
           targets: [String.t()],
           trusted_signing_keys: [SigningKey.t()],
           trusted_signing_key_dir: Path.t(),
@@ -167,8 +163,10 @@ defmodule Peridiod.Config do
       |> override_if_set(:targets, config_file["targets"])
       |> override_if_set(:trusted_signing_key_dir, config_file["trusted_signing_key_dir"])
       |> override_if_set(:trusted_signing_keys, config_file["trusted_signing_keys"])
-      |> override_if_set(:release_poll_enabled, config_file["release_poll_enabled"])
-      |> override_if_set(:release_poll_interval, config_file["release_poll_interval"])
+      |> override_if_set(:update_poll_enabled, config_file["release_poll_enabled"])
+      |> override_if_set(:update_poll_enabled, config_file["update_poll_enabled"])
+      |> override_if_set(:update_poll_interval, config_file["release_poll_interval"])
+      |> override_if_set(:update_poll_interval, config_file["update_poll_interval"])
       |> override_if_set(
         :trusted_signing_key_threshold,
         config_file["trusted_signing_key_threshold"]
