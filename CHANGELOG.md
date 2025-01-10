@@ -1,5 +1,16 @@
 # peridiod releases
 
+## v3.0.0-rc.6
+
+* Bug fixes
+  * Fix issues with `swupdate`, `deb`, `apt`, and `opkg` installers writing intermediate files outside peridiod cache dir.
+  * Improved error handling for responses from release server check for update when a device is not in a cohort.
+  * Improved error handling for erroneous responses from the release server.
+  * Fixed issue with release server crashing peridiod on start if `release_poll_enabled` is enabled and the server responds abnormally.
+  * Improvements to installers for verifying system executable dependencies are present.
+  * Trim plain text from the preamble of certificates in ubootenv and env. This was causing `SERVER ALERT: Fatal - Handshake Failure`.
+  * Remote Access Tunnels: Fix issue where CIDR and Port negotiation may fail if a tunnel is in the process of closing when the system is queried for used resources.
+
 ## v3.0.0-rc.5
 
 * Enhancements
