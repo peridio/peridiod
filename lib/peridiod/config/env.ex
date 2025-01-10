@@ -1,7 +1,7 @@
 defmodule Peridiod.Config.Env do
   require Logger
 
-  import Peridiod.Utils, only: [try_base64_decode: 1]
+  import Peridiod.Utils, only: [try_base64_decode: 1, pem_certificate_trim: 1]
 
   def config(%{"private_key" => nil, "certificate" => nil}, base_config) do
     Logger.error("""
@@ -16,7 +16,7 @@ defmodule Peridiod.Config.Env do
     with {:ok, key} <- System.fetch_env(key),
          {:ok, cert} <- System.fetch_env(cert) do
       key_pem = try_base64_decode(key)
-      cert_pem = try_base64_decode(cert)
+      cert_pem = try_base64_decode(cert) |> pem_certificate_trim()
       set_ssl_opts(cert_pem, key_pem, base_config)
     else
       _e ->

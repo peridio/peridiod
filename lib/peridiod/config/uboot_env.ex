@@ -2,11 +2,11 @@ defmodule Peridiod.Config.UBootEnv do
   require Logger
 
   alias PeridiodPersistence.KV
-  import Peridiod.Utils, only: [try_base64_decode: 1]
+  import Peridiod.Utils, only: [try_base64_decode: 1, pem_certificate_trim: 1]
 
   def config(%{"private_key" => key, "certificate" => cert}, base_config) do
     key_pem = KV.get(key) |> try_base64_decode()
-    cert_pem = KV.get(cert) |> try_base64_decode()
+    cert_pem = KV.get(cert) |> try_base64_decode() |> pem_certificate_trim()
 
     cert = cert_from_pem(cert_pem)
     cert_der = X509.Certificate.to_der(cert)

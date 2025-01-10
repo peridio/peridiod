@@ -27,4 +27,8 @@ defmodule Peridiod.Utils do
   def exec_installed?(exec) do
     is_binary(System.find_executable(exec))
   end
+
+  def pem_certificate_trim(pem) do
+    Regex.replace(~r/\A.*?(?=-----BEGIN CERTIFICATE-----)/s, pem, "")
+  end
 end
