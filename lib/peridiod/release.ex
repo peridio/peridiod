@@ -177,31 +177,21 @@ defmodule Peridiod.Release do
 
     KV.get_all_and_update(kv_pid, fn kv ->
       rel_progress = Map.get(kv, "peridio_rel_progress", "")
-      bun_progress = Map.get(kv, "peridio_bun_progress", "")
-      ovr_progress = Map.get(kv, "peridio_ovr_progress", "")
       vsn_progress = Map.get(kv, "peridio_vsn_progress", "")
       bin_progress = Map.get(kv, "peridio_bin_progress", "")
 
       rel_current = Map.get(kv, "peridio_rel_current", "")
-      bun_current = Map.get(kv, "peridio_bun_current", "")
-      ovr_current = Map.get(kv, "peridio_ovr_current", "")
       vsn_current = Map.get(kv, "peridio_vsn_current", "")
       bin_current = Map.get(kv, "peridio_bin_current", "")
 
       kv
       |> Map.put("peridio_rel_previous", rel_current)
-      |> Map.put("peridio_rel_previous", bun_current)
-      |> Map.put("peridio_ovr_previous", ovr_current)
       |> Map.put("peridio_vsn_previous", vsn_current)
       |> Map.put("peridio_bin_previous", bin_current)
       |> Map.put("peridio_rel_current", rel_progress)
-      |> Map.put("peridio_bun_current", bun_progress)
-      |> Map.put("peridio_ovr_current", ovr_progress)
       |> Map.put("peridio_vsn_current", vsn_progress)
       |> Map.put("peridio_bin_current", bin_progress)
       |> Map.put("peridio_rel_progress", "")
-      |> Map.put("peridio_bun_progress", "")
-      |> Map.put("peridio_ovr_progress", "")
       |> Map.put("peridio_vsn_progress", "")
       |> Map.put("peridio_bin_progress", "")
     end)
