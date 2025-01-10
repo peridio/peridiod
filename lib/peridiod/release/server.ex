@@ -436,19 +436,19 @@ defmodule Peridiod.Release.Server do
   defp update_response({:ok, %{status: 200, body: %{"status" => "device_quarantined"}}}, state) do
     Logger.debug("Release Manager: Device Quarantined")
     Logger.debug("Release Manager: no update")
-    {:no_update, state}
+    {:device_quarantined, state}
   end
 
-  defp update_response({:ok, %{status: status_code, body: body}}, state) do
+  defp update_response({_, %{status: status_code, body: body}}, state) do
     Logger.debug("Release Manager: Non 200 response from server")
     Logger.debug("Release Manager: Status code: #{inspect(status_code)}")
     Logger.debug("Release Manager: Response: #{inspect(body)}")
-    {:no_update, state}
+    {{:error, body}, state}
   end
 
-  defp update_response({:error, %{reason: reason}}, state) do
+  defp update_response({:error, reason}, state) do
     Logger.error("Release Manager: error checking for update #{inspect(reason)}")
-    {:no_update, state}
+    {{:error, reason}, state}
   end
 
   defp load_trusted_signing_keys([]) do
