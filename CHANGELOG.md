@@ -1,5 +1,14 @@
 # peridiod releases
 
+## v3.0.0-rc.7
+
+* Enhancements
+  * Full support for installing via bundle overrides and releases in cohort workflows
+  * Improved log messaging
+* Bug fixes
+  * Fixed issue with Cache downloader appending to existing cache file instead of starting over on restart. This was causing the cache download file to fail signature checks and grow the cache to unreasonable size.
+  * Allow custom_metadata installer_opts key to be optional. Caused Installer process to crash if omitted.
+
 ## v3.0.0-rc.6
 
 * Bug fixes
