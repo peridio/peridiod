@@ -43,36 +43,43 @@ defmodule Peridiod.Binary.Installer do
   end
 
   def init({binary_metadata, opts}) do
-    Logger.debug("Starting Installer: #{binary_metadata.prn}")
-    installer_mod = installer_mod(binary_metadata)
-    installer_opts = binary_metadata.custom_metadata["peridiod"]["installer_opts"]
-    cache_enabled? = Map.get(installer_opts, "cache_enabled", true)
-    cache_pid = Map.get(opts, :cache_pid, Cache)
-    kv_pid = Map.get(opts, :kv_pid, KV)
-    callback = opts.callback
-    config = Map.put(opts.config, :cache_pid, cache_pid)
+    Logger.info("[Installer #{binary_metadata.prn}] Starting")
 
-    {:ok,
-     %State{
-       callback: callback,
-       cache_pid: cache_pid,
-       kv_pid: kv_pid,
-       config: config,
-       installer_mod: installer_mod,
-       installer_opts: installer_opts,
-       binary_metadata: binary_metadata
-     }, {:continue, cache_enabled?}}
+    case installer_mod(binary_metadata) do
+      {:error, reason} ->
+        Logger.error("[Installer #{binary_metadata.prn}] Error #{reason}")
+        {:stop, :normal, nil}
+
+      installer_mod ->
+        installer_opts = binary_metadata.custom_metadata["peridiod"]["installer_opts"] || %{}
+        cache_enabled? = Map.get(installer_opts, "cache_enabled", true)
+        cache_pid = Map.get(opts, :cache_pid, Cache)
+        kv_pid = Map.get(opts, :kv_pid, KV)
+        callback = opts.callback
+        config = Map.put(opts.config, :cache_pid, cache_pid)
+
+        {:ok,
+         %State{
+           callback: callback,
+           cache_pid: cache_pid,
+           kv_pid: kv_pid,
+           config: config,
+           installer_mod: installer_mod,
+           installer_opts: installer_opts,
+           binary_metadata: binary_metadata
+         }, {:continue, cache_enabled?}}
+    end
   end
 
   def handle_continue(true, %{binary_metadata: %{uri: uri}} = state) when not is_nil(uri) do
     case Binary.cached?(state.cache_pid, state.binary_metadata) do
       true ->
-        Logger.debug("Installer [#{state.binary_metadata.prn}]: Installing from Cache")
+        Logger.info("[Installer #{state.binary_metadata.prn}] Installing from Cache")
         do_install_from_cache(state)
         {:noreply, %{state | status: :installing, source: :cache, download_percent: 1.0}}
 
       false ->
-        Logger.debug("Installer [#{state.binary_metadata.prn}]: Install from download")
+        Logger.info("[Installer #{state.binary_metadata.prn}] Install from download")
 
         do_install_from_download(state)
         {:noreply, %{state | status: :installing, source: :download}}
@@ -80,7 +87,7 @@ defmodule Peridiod.Binary.Installer do
   end
 
   def handle_continue(false, %{binary_metadata: %{url: nil}} = state) do
-    Logger.error("Installer [#{state.binary_metadata.prn}]: No Cache / URL to Install")
+    Logger.error("[Installer #{state.binary_metadata.prn}] No Cache / URL to Install")
 
     try_send(
       state.callback,
@@ -91,7 +98,7 @@ defmodule Peridiod.Binary.Installer do
   end
 
   def handle_continue(false, state) do
-    Logger.debug("Installer [#{state.binary_metadata.prn}]: Installing from download stream")
+    Logger.debug("[Installer #{state.binary_metadata.prn}] Installing from download stream")
     do_install_from_download(state)
     {:noreply, %{state | status: :installing, source: :download}}
   end
@@ -275,7 +282,7 @@ defmodule Peridiod.Binary.Installer do
   end
 
   defp installer_complete({:stop, :normal, state}) do
-    Logger.debug("Installer [#{state.binary_metadata.prn}]: complete")
+    Logger.info("[Installer #{state.binary_metadata.prn}] Complete")
     Binary.stamp_installed(state.cache_pid, state.binary_metadata)
     Binary.put_kv_installed(state.kv_pid, state.binary_metadata, :progress)
     try_send(state.callback, {Installer, state.binary_metadata.prn, :complete})
@@ -287,7 +294,7 @@ defmodule Peridiod.Binary.Installer do
   end
 
   defp installer_complete({:stop, error, state}) do
-    Logger.error("Installer [#{state.binary_metadata.prn}]: error #{inspect(error)}")
+    Logger.error("[Installer #{state.binary_metadata.prn}] Error #{inspect(error)}")
     try_send(state.callback, {Installer, state.binary_metadata.prn, {:error, error}})
     {:stop, :normal, state}
   end
@@ -309,13 +316,13 @@ defmodule Peridiod.Binary.Installer do
   end
 
   defp installer_progress({:stop, error, state}) do
-    Logger.error("Installer [#{state.binary_metadata.prn}]: error #{inspect(error)}")
+    Logger.error("[Installer #{state.binary_metadata.prn}] Error #{inspect(error)}")
     try_send(state.callback, {Installer, state.binary_metadata.prn, {:error, error}})
     {:stop, :normal, state}
   end
 
   defp installer_error({:stop, error, state}) do
-    Logger.error("Installer [#{state.binary_metadata.prn}]: error #{inspect(error)}")
+    Logger.error("[Installer #{state.binary_metadata.prn}] Error #{inspect(error)}")
     try_send(state.callback, {Installer, state.binary_metadata.prn, {:error, error}})
     {:stop, :normal, state}
   end
@@ -340,6 +347,18 @@ defmodule Peridiod.Binary.Installer do
 
   defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "swupdate"}}}),
     do: Installer.SWUpdate
+
+  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => installer}}}) do
+    {:error, "The specified installer: #{inspect(installer)} is not a supported installer module"}
+  end
+
+  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => _}}) do
+    {:error, "Installer key missing from custom_metadata"}
+  end
+
+  defp installer_mod(_binary_metadata) do
+    {:error, "custom_metadata is missing peridiod configuration settings"}
+  end
 
   defp do_install_from_cache(state) do
     cache_file = Binary.cache_file(state.binary_metadata)

@@ -123,6 +123,7 @@ defmodule Peridiod.Binary.StreamDownloader do
   @impl GenServer
   def init([id, %URI{} = uri, fun, %RetryConfig{} = retry_args]) do
     timer = Process.send_after(self(), :max_timeout, retry_args.max_timeout)
+    Logger.info("[Stream Downloader #{id}] Started")
 
     state =
       reset(%StreamDownloader{
@@ -167,7 +168,7 @@ defmodule Peridiod.Binary.StreamDownloader do
           retry_args: %RetryConfig{max_disconnects: retry_number}
         } = state
       ) do
-    Logger.warning("[Peridiod] Max disconnects reached")
+    Logger.warning("[Stream Downloader #{state.id}] Max disconnects reached")
     {:stop, :max_disconnects_reached, state}
   end
 
@@ -207,7 +208,7 @@ defmodule Peridiod.Binary.StreamDownloader do
       end
 
     timer = Process.send_after(self(), :resume, state.retry_args.time_between_retries)
-    Logger.warning("[Peridiod] Increment retry counter #{retry_number + 1}")
+    Logger.warning("[Stream Downloader #{state.id}] Increment retry counter #{retry_number + 1}")
 
     %StreamDownloader{
       state
@@ -226,7 +227,7 @@ defmodule Peridiod.Binary.StreamDownloader do
     %StreamDownloader{retry_args: retry_config, content_length: content_length} = download
     %RetryConfig{worst_case_download_speed: speed} = retry_config
     ms = TimeoutCalculation.calculate_worst_case_timeout(content_length, speed)
-    Logger.warning("[Peridiod] Worst case timeout: #{ms}")
+    Logger.warning("[Stream Downloader #{download.id}] Worst case timeout: #{ms}")
     timer = Process.send_after(self(), :worst_case_download_speed_timeout, ms)
     %StreamDownloader{download | worst_case_timeout: timer}
   end
@@ -304,7 +305,7 @@ defmodule Peridiod.Binary.StreamDownloader do
       )
       when status >= 300 and status < 400 do
     location = fetch_location(headers)
-    Logger.debug("Redirecting to #{location}")
+    Logger.debug("[Stream Downloader #{state.id}] Redirecting to #{location}")
 
     state = reset(state)
 
@@ -334,7 +335,9 @@ defmodule Peridiod.Binary.StreamDownloader do
       ) do
     case fetch_accept_ranges(headers) do
       accept_ranges when accept_ranges in ["none", nil] ->
-        Logger.error("HTTP Server does not support the Range header")
+        Logger.error(
+          "[Stream Downloader #{state.id}] HTTP Server does not support the Range header"
+        )
 
       _ ->
         :ok
@@ -394,7 +397,9 @@ defmodule Peridiod.Binary.StreamDownloader do
     # like this. There may be a better way to do this..
     path = if query, do: "#{path}?#{query}", else: path
 
-    Logger.debug("Resuming download attempt number #{state.retry_number} #{uri}")
+    Logger.info(
+      "[Stream Downloader #{state.id}] Resuming download attempt number #{state.retry_number} #{uri}"
+    )
 
     with {:ok, conn} <- Mint.HTTP.connect(String.to_existing_atom(scheme), host, port),
          {:ok, conn, request_ref} <- Mint.HTTP.request(conn, "GET", path, request_headers, nil) do

@@ -175,7 +175,7 @@ defmodule Peridiod.Distribution.Server do
 
     case message do
       {:ok, 0, _message} ->
-        Logger.info("[Peridiod] FWUP Finished")
+        Logger.info("[Distributions] FWUP Finished")
         try_send(state.callback, {__MODULE__, :install, :complete})
         {:noreply, %State{state | fwup: nil, distribution: nil, status: :idle}}
 
@@ -194,12 +194,12 @@ defmodule Peridiod.Distribution.Server do
 
   # messages from Download
   def handle_info({:download, :complete}, state) do
-    Logger.info("[Peridiod] Firmware Download complete")
+    Logger.info("[Distributions] Firmware Download complete")
     {:noreply, %State{state | download: nil}}
   end
 
   def handle_info({:download, {:error, reason}}, state) do
-    Logger.error("[Peridiod] Nonfatal HTTP download error: #{inspect(reason)}")
+    Logger.error("[Distributions] Nonfatal HTTP download error: #{inspect(reason)}")
     {:noreply, state}
   end
 
@@ -247,7 +247,7 @@ defmodule Peridiod.Distribution.Server do
 
       {:reschedule, ms} ->
         timer = Process.send_after(self(), {:update_reschedule, distribution}, ms)
-        Logger.info("[Peridiod] rescheduling firmware update in #{ms} milliseconds")
+        Logger.info("[Distributions] rescheduling firmware update in #{ms} milliseconds")
         %{state | status: :update_rescheduled, update_reschedule_timer: timer}
     end
   end
@@ -279,7 +279,7 @@ defmodule Peridiod.Distribution.Server do
         fwup_env: state.fwup_config.fwup_env
       )
 
-    Logger.info("[Peridiod] Downloading firmware: #{distribution.firmware_url}")
+    Logger.info("[Distributions] Downloading firmware: #{distribution.firmware_url}")
 
     %State{
       state

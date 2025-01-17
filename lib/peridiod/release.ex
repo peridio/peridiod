@@ -109,7 +109,7 @@ defmodule Peridiod.Release do
           bundle
 
         error ->
-          Logger.error("Error loading bundle from manifest: #{inspect(error)}")
+          Logger.error("[Release] Error loading bundle from manifest: #{inspect(error)}")
           nil
       end
 

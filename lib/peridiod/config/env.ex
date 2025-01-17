@@ -5,6 +5,7 @@ defmodule Peridiod.Config.Env do
 
   def config(%{"private_key" => nil, "certificate" => nil}, base_config) do
     Logger.error("""
+    [Config]
     Unable to set identity using Environmenmt variables.
     Variables are unset. Check your peridiod configuration.
     """)
@@ -21,6 +22,7 @@ defmodule Peridiod.Config.Env do
     else
       _e ->
         Logger.error("""
+        [Config]
         Unset error fetching the key / certificate from the environment")
           key:  #{key}
           cert: #{cert}
@@ -32,7 +34,7 @@ defmodule Peridiod.Config.Env do
 
   def config(_, base_config) do
     Logger.error(
-      "key_pair_source env requires private_key and certificate to be passed as key_pair_options"
+      "[Config] key_pair_source env requires private_key and certificate to be passed as key_pair_options"
     )
 
     base_config
@@ -58,7 +60,10 @@ defmodule Peridiod.Config.Env do
         cert_erl |> X509.Certificate.to_der()
 
       {error, _} ->
-        Logger.error("An error occurred while reading the certificate from env:\n#{error}")
+        Logger.error(
+          "[Config] An error occurred while reading the certificate from env:\n#{error}"
+        )
+
         ""
     end
   end
@@ -69,7 +74,10 @@ defmodule Peridiod.Config.Env do
         key_erl |> X509.PrivateKey.to_der()
 
       {error, _} ->
-        Logger.error("An error occurred while reading the private key from env:\n#{error}")
+        Logger.error(
+          "[Config] An error occurred while reading the private key from env:\n#{error}"
+        )
+
         ""
     end
   end
@@ -80,7 +88,7 @@ defmodule Peridiod.Config.Env do
         private_key
 
       {:error, error} ->
-        Logger.warning("Unable to load cache encryption private key: #{inspect(error)}")
+        Logger.warning("[Config] Unable to load cache encryption private key: #{inspect(error)}")
         nil
     end
   end
@@ -91,7 +99,7 @@ defmodule Peridiod.Config.Env do
         X509.Certificate.public_key(certificate)
 
       {:error, error} ->
-        Logger.warning("Unable to load cache encryption public keyy: #{inspect(error)}")
+        Logger.warning("[Config] Unable to load cache encryption public keyy: #{inspect(error)}")
         nil
     end
   end

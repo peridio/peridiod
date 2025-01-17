@@ -5,6 +5,7 @@ defmodule Peridiod.Config.File do
 
   def config(%{"certificate_path" => nil, "private_key_path" => nil}, base_config) do
     Logger.error("""
+    [Config]
     Unable to set identity using file paths.
     Variables are unset. Check your peridiod configuration.
     """)
@@ -28,7 +29,7 @@ defmodule Peridiod.Config.File do
 
   def config(_, base_config) do
     Logger.error(
-      "key_pair_source file requires certificate_path and private_key_path to be passed as key_pair_options"
+      "[Config] key_pair_source file requires certificate_path and private_key_path to be passed as key_pair_options"
     )
 
     base_config
@@ -40,7 +41,7 @@ defmodule Peridiod.Config.File do
         private_key
 
       {:error, error} ->
-        Logger.warning("Unable to load cache encryption private key: #{inspect(error)}")
+        Logger.warning("[Config] Unable to load cache encryption private key: #{inspect(error)}")
         nil
     end
   end
@@ -51,7 +52,7 @@ defmodule Peridiod.Config.File do
         public_key
 
       {:error, error} ->
-        Logger.warning("Unable to load cache encryption public keyy: #{inspect(error)}")
+        Logger.warning("[Config] Unable to load cache encryption public keyy: #{inspect(error)}")
         nil
     end
   end

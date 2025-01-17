@@ -8,8 +8,6 @@ defmodule Peridiod.Tunnel do
   alias Peridio.RAT.{Network, WireGuard}
 
   def create(client, tunnel_prn, dport, rat_config) do
-    Logger.debug("Tunnel Create #{tunnel_prn}")
-
     opts =
       [
         dport: dport,
@@ -26,7 +24,7 @@ defmodule Peridiod.Tunnel do
         configure_response(client, tunnel_data, interface, rat_config, opts)
 
       error ->
-        Logger.error("Remote Tunnel Error #{inspect(error)}")
+        error
     end
   end
 
@@ -38,7 +36,7 @@ defmodule Peridiod.Tunnel do
   Synchronize with the server
   """
   def synchronize(_client, %{enabled: false}) do
-    Logger.info("Remote Access Tunnels disabled skipping sync")
+    Logger.info("[Remote Access Tunnels] Disabled skipping sync")
     :ok
   end
 
@@ -48,14 +46,11 @@ defmodule Peridiod.Tunnel do
 
     case PeridioSDK.DeviceAPI.Tunnels.list(client) do
       {:ok, %{body: %{"tunnels" => []}}} ->
-        Logger.debug("No Tunnels")
         Enum.each(local_tunnels, &close(elem(&1, 0)))
         :ok
 
       {:ok, %{body: %{"tunnels" => tunnels}}} ->
-        Logger.debug("Server Tunnels: #{inspect(tunnels)}")
         unknown_tunnels = Enum.reject(tunnels, &(&1["prn"] in local_tunnel_prns))
-        Logger.debug("Unknown Tunnels: #{inspect(unknown_tunnels)}")
 
         {unknown_requested, unknown_other} =
           Enum.split_with(unknown_tunnels, &(&1["state"] == "requested"))
@@ -66,13 +61,10 @@ defmodule Peridiod.Tunnel do
           &create(client, &1["prn"], &1["device_tunnel_port"], rat_config)
         )
 
-        Logger.debug("Unknown Requested: #{inspect(unknown_requested)}")
-
         interface_confs =
           WireGuard.list_interfaces(data_dir: rat_config.data_dir)
 
         unknown_open = Enum.filter(unknown_other, &(&1["state"] == "open"))
-        Logger.debug("Unknown Open: #{inspect(unknown_open)}")
 
         # Handle tunnels that are open
         Enum.each(unknown_open, fn tunnel_data ->
@@ -87,7 +79,10 @@ defmodule Peridiod.Tunnel do
           case conf do
             # Server lists tunnel as open, but the config is missing locally. No way to recover, close the tunnel
             nil ->
-              Logger.debug("Close Open: #{inspect(tunnel_data["prn"])}")
+              Logger.debug(
+                "[Remote Access Tunnels] Closing open tunnel missing local config: #{inspect(tunnel_data["prn"])}"
+              )
+
               close_request(client, tunnel_data["prn"], "device_tunnel_abnormal_down")
 
             # Server lists tunnel as open, create a new tunnel process and resume
@@ -138,7 +133,7 @@ defmodule Peridiod.Tunnel do
         )
 
       error ->
-        Logger.error("Tunnel synchronize error: #{inspect(error)}")
+        Logger.error("[Remote Access Tunnels] Synchronize error: #{inspect(error)}")
         error
     end
   end

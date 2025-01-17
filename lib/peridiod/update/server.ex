@@ -153,7 +153,7 @@ defmodule Peridiod.Update.Server do
 
   @impl GenServer
   def handle_continue(true, state) do
-    Logger.debug("Update Server: Polling enabled")
+    Logger.info("[Update Server] Polling enabled")
 
     send(self(), :check_for_update)
 
@@ -167,7 +167,7 @@ defmodule Peridiod.Update.Server do
   end
 
   def handle_continue(false, state) do
-    Logger.debug("Update Server: Polling Disabled")
+    Logger.info("[Update Server] Polling Disabled")
     {:noreply, state}
   end
 
@@ -263,8 +263,6 @@ defmodule Peridiod.Update.Server do
 
   @impl GenServer
   def handle_info(:check_for_update, state) do
-    Logger.debug("Checking for an update")
-
     {_, state} =
       state
       |> update_check()
@@ -291,8 +289,6 @@ defmodule Peridiod.Update.Server do
       {__MODULE__, :download, binary_metadata.prn, :complete}
     )
 
-    Logger.debug("Downloading to cache complete")
-
     Binary.stamp_cached(state.cache_pid, binary_metadata)
 
     state = %{
@@ -309,7 +305,7 @@ defmodule Peridiod.Update.Server do
       {__MODULE__, :download, binary_metadata.prn, {:error, error}}
     )
 
-    Logger.error("Error downloading to cache: #{inspect(error)}")
+    Logger.error("[Update Server] Error downloading to cache: #{inspect(error)}")
 
     state = %{
       state
@@ -334,8 +330,6 @@ defmodule Peridiod.Update.Server do
   end
 
   def handle_info({Installer, binary_prn, :complete}, state) do
-    Logger.debug("Release Server: Installer Complete")
-
     try_send(
       state.processing_binaries[binary_prn][:callback],
       {__MODULE__, :install, binary_prn, :complete}
@@ -355,8 +349,6 @@ defmodule Peridiod.Update.Server do
   end
 
   def handle_info({Installer, binary_prn, {:error, reason}}, state) do
-    Logger.debug("Release Server: Installer error #{inspect(reason)}")
-
     try_send(
       state.processing_binaries[binary_prn][:callback],
       {__MODULE__, :install, binary_prn, {:error, reason}}
@@ -397,8 +389,7 @@ defmodule Peridiod.Update.Server do
   end
 
   defp update_check(%{sdk_client: client}) do
-    Logger.info("Checking for update")
-    Logger.debug("Client: #{inspect(client)}")
+    Logger.info("[Update Server] Checking for update")
 
     PeridioSDK.DeviceAPI.Devices.update(client, [
       "manifest.binary_prn",
@@ -433,7 +424,7 @@ defmodule Peridiod.Update.Server do
     case do_install_bundle(release_metadata.bundle, self(), state) do
       {:ok, state} ->
         Logger.info(
-          "Update Server: Installing Bundle #{release_metadata.bundle.prn} from Release #{release_metadata.prn}"
+          "[Update Server] Installing Bundle #{release_metadata.bundle.prn} from Release #{release_metadata.prn}"
         )
 
         {:updating,
@@ -441,7 +432,7 @@ defmodule Peridiod.Update.Server do
 
       {{:error, error}, state} ->
         Logger.error(
-          "Update Server: Error installing bundle #{release_metadata.bundle.prn} #{inspect(error)}"
+          "[Update Server] Error installing bundle #{release_metadata.bundle.prn} #{inspect(error)}"
         )
 
         {:no_update, state}
@@ -464,7 +455,7 @@ defmodule Peridiod.Update.Server do
     case do_install_bundle(override_metadata.bundle, self(), state) do
       {:ok, state} ->
         Logger.info(
-          "Update Server: Installing Bundle #{override_metadata.bundle.prn} from BundleOverride #{override_metadata.prn}"
+          "[Update Server] Installing Bundle #{override_metadata.bundle.prn} from BundleOverride #{override_metadata.prn}"
         )
 
         {:updating,
@@ -472,7 +463,7 @@ defmodule Peridiod.Update.Server do
 
       {{:error, error}, state} ->
         Logger.error(
-          "Update Server: Error installing bundle #{override_metadata.bundle.prn} #{inspect(error)}"
+          "[Update Server] Error installing bundle #{override_metadata.bundle.prn} #{inspect(error)}"
         )
 
         {:no_update, state}
@@ -482,25 +473,25 @@ defmodule Peridiod.Update.Server do
   end
 
   defp update_response({:ok, %{status: 200, body: %{"status" => "no_update"}}}, state) do
-    Logger.debug("Update Server: no update")
+    Logger.info("[Update Server] no update")
     {:no_update, state}
   end
 
   defp update_response({:ok, %{status: 200, body: %{"status" => "device_quarantined"}}}, state) do
-    Logger.debug("Update Server: Device Quarantined")
-    Logger.debug("Update Server: no update")
+    Logger.info("[Update Server] Device Quarantined")
+    Logger.info("[Update Server] no update")
     {:device_quarantined, state}
   end
 
   defp update_response({_, %{status: status_code, body: body}}, state) do
-    Logger.debug("Update Server: Non 200 response from server")
-    Logger.debug("Update Server: Status code: #{inspect(status_code)}")
-    Logger.debug("Update Server: Response: #{inspect(body)}")
+    Logger.info("[Update Server] Non 200 response from server")
+    Logger.info("[Update Server] Status code: #{inspect(status_code)}")
+    Logger.info("[Update Server] Response: #{inspect(body)}")
     {{:error, body}, state}
   end
 
   defp update_response({:error, reason}, state) do
-    Logger.error("Update Server: error checking for update #{inspect(reason)}")
+    Logger.error("[Update Server] error checking for update #{inspect(reason)}")
     {{:error, reason}, state}
   end
 
@@ -534,7 +525,7 @@ defmodule Peridiod.Update.Server do
         binaries_metadata
       else
         {reason, binaries_metadata} ->
-          Logger.info("Update Server: No binaries to install because #{reason}")
+          Logger.info("[Update Server] No binaries to install because #{reason}")
           binaries_metadata
       end
 
@@ -559,7 +550,7 @@ defmodule Peridiod.Update.Server do
         end
 
       false ->
-        Logger.error("Update Server: unable to install binaries with untrusted signatures")
+        Logger.error("[Update Server] unable to install binaries with untrusted signatures")
         {{:error, :untrusted_signatures}, state}
     end
   end
@@ -570,7 +561,7 @@ defmodule Peridiod.Update.Server do
          %{installing_bundle: {bundle_metadata, _, _}} = state
        ) do
     Logger.error(
-      "Update Server: Error installing while bundle #{bundle_metadata.prn} is being installed"
+      "[Update Server] Error installing while bundle #{bundle_metadata.prn} is being installed"
     )
 
     {{:error, {:installing_bundle, bundle_metadata}}, state}
@@ -588,15 +579,15 @@ defmodule Peridiod.Update.Server do
 
     case {trusted?, cached?} do
       {true, false} ->
-        Logger.debug("Update Server: Caching bundle #{bundle_metadata.prn}")
+        Logger.info("[Update Server] Caching bundle #{bundle_metadata.prn}")
         {:ok, do_binaries_jobs(binaries_metadata, CacheDownloader.Supervisor, callback, state)}
 
       {false, _} ->
-        Logger.debug("Update Server: Unable to cache bundle due to untrusted signatures")
+        Logger.error("[Update Server] Unable to cache bundle due to untrusted signatures")
         {{:error, :untrusted_signatures}, state}
 
       {true, true} ->
-        Logger.debug("Update Server: Bundle #{bundle_metadata.prn} already cached")
+        Logger.info("[Update Server] Bundle #{bundle_metadata.prn} already cached")
         {{:error, :already_cached}, state}
     end
   end
@@ -650,7 +641,7 @@ defmodule Peridiod.Update.Server do
       end)
 
     Logger.info(
-      "Bundle Server: Bundle install processing remaining: #{inspect(Enum.count(remaining_binaries))}"
+      "[Update Server] Bundle install processing remaining: #{inspect(Enum.count(remaining_binaries))}"
     )
 
     finish_bundle(%{state | installing_bundle: {bundle_metadata, remaining_binaries, callback}})
@@ -673,7 +664,7 @@ defmodule Peridiod.Update.Server do
 
     Bundle.stamp_installed(state.cache_pid, bundle_metadata)
     Update.kv_advance(state.kv_pid)
-    Logger.info("Update Server: Install complete")
+    Logger.info("[Update Server] Install complete")
 
     sdk_client =
       Update.sdk_client(
@@ -714,7 +705,7 @@ defmodule Peridiod.Update.Server do
         state
 
       {[_ | _], _} ->
-        Logger.error("Update Server: Install error. stopping release")
+        Logger.error("[Update Server] Install error. stopping release")
         # Errors
         %{
           state

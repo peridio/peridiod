@@ -18,7 +18,10 @@ defmodule Peridiod.Config.PKCS11 do
           cert_pem |> X509.Certificate.from_pem!()
 
         {error, _} ->
-          Logger.error("An error occurred while reading the certificate from pkcs11:\n#{error}")
+          Logger.error(
+            "[Config] An error occurred while reading the certificate from pkcs11:\n#{error}"
+          )
+
           ""
       end
 
@@ -39,7 +42,7 @@ defmodule Peridiod.Config.PKCS11 do
 
   def config(_, base_config) do
     Logger.error(
-      "key_pair_source pkcsll requires key_id and cert_id to be passed as key_pair_options"
+      "[Config] key_pair_source pkcsll requires key_id and cert_id to be passed as key_pair_options"
     )
 
     base_config

@@ -126,7 +126,7 @@ defmodule Peridiod.Socket do
 
   @impl Slipstream
   def handle_join(@device_topic, reply, socket) do
-    Logger.debug("[#{inspect(__MODULE__)}] Joined Device channel")
+    Logger.info("[Socket] Joined Device channel")
     Peridiod.Connection.connected()
     _ = handle_join_reply(reply)
     send(self(), :tunnel_synchronize)
@@ -135,7 +135,7 @@ defmodule Peridiod.Socket do
 
   def handle_join(@console_topic, _reply, socket) do
     protocol = if socket.assigns.remote_iex, do: "IEx", else: "getty"
-    Logger.debug("[#{inspect(__MODULE__)}] Joined Console channel: #{protocol}")
+    Logger.info("[Socket] Joined Console channel: #{protocol}")
     {:ok, socket}
   end
 
@@ -191,7 +191,7 @@ defmodule Peridiod.Socket do
   # Device API messages
   #
   def handle_message(@device_topic, "reboot", _params, socket) do
-    Logger.warning("Reboot Request from Peridiod")
+    Logger.warning("[Socket] Reboot Request")
     _ = push(socket, @device_topic, "rebooting", %{})
 
     System.cmd("reboot", [], stderr_to_stdout: true)
@@ -218,7 +218,10 @@ defmodule Peridiod.Socket do
         {:ok, socket}
 
       error ->
-        Logger.error("Error parsing update data: #{inspect(update)} error: #{inspect(error)}")
+        Logger.error(
+          "[Socket] Error parsing update data: #{inspect(update)} error: #{inspect(error)}"
+        )
+
         {:ok, socket}
     end
   end
@@ -230,7 +233,7 @@ defmodule Peridiod.Socket do
         %{assigns: %{remote_access_tunnels: %{enabled: false}}} = socket
       ) do
     Logger.warning(
-      "Remote Access Tunnel requested but not enabled on the device: #{inspect(payload)}"
+      "[Socket] Remote Access Tunnel requested but not enabled on the device: #{inspect(payload)}"
     )
 
     Peridiod.Tunnel.close(tunnel_prn, "feature_not_enabled")
@@ -256,12 +259,12 @@ defmodule Peridiod.Socket do
           :ok
 
         error ->
-          Logger.debug("Tunnel Open Error: #{inspect(error)}")
+          Logger.error("[Socket] Tunnel Open Error: #{inspect(error)}")
           Peridiod.Tunnel.close(tunnel_prn, "server_error_create")
       end
     else
       Logger.warning(
-        "Remote Access Tunnel requested for port #{dport} but not enabled in service port list: #{inspect(service_ports)}"
+        "[Socket] Remote Access Tunnel requested for port #{dport} but not enabled in service port list: #{inspect(service_ports)}"
       )
 
       Peridiod.Tunnel.close(tunnel_prn, "dport_not_allowed")
@@ -286,7 +289,7 @@ defmodule Peridiod.Socket do
         socket
       ) do
     {:ok, expires_at, _offset} = DateTime.from_iso8601(expires_at)
-    Logger.debug("Tunnel Server requested extend")
+    Logger.info("[Socket] Tunnel Server requested extend")
     Peridio.RAT.extend_tunnel(tunnel_prn, expires_at)
     {:ok, socket}
   end
@@ -301,7 +304,7 @@ defmodule Peridiod.Socket do
   end
 
   def handle_message(@device_topic, "tunnel_close", %{"tunnel_prn" => tunnel_prn}, socket) do
-    Logger.debug("Tunnel Server requested close")
+    Logger.info("[Socket] Tunnel Server requested close")
     Peridiod.Tunnel.close(tunnel_prn, "server_requested_close")
     {:ok, socket}
   end
@@ -311,7 +314,7 @@ defmodule Peridiod.Socket do
   #
   def handle_message(@console_topic, "restart", _payload, socket) do
     protocol = if socket.assigns.remote_iex, do: "IEx", else: "getty"
-    Logger.warning("[#{inspect(__MODULE__)}] Restarting #{protocol} process from web request")
+    Logger.warning("[Socket] Restarting #{protocol} process from web request")
     _ = push(socket, @console_topic, "up", %{data: "\r*** Restarting #{protocol} ***\r"})
 
     socket =
@@ -371,7 +374,7 @@ defmodule Peridiod.Socket do
   def handle_info({:remote_console, _, {:error, error}}, socket) do
     msg = "\r******* Remote Console stopped: #{inspect(error)} *******\r"
     _ = push(socket, @console_topic, "up", %{data: msg})
-    Logger.warning(msg)
+    Logger.warning("[Socket] Remote console stopped #{inspect(msg)}")
 
     socket =
       socket
@@ -388,7 +391,7 @@ defmodule Peridiod.Socket do
   end
 
   def handle_info(:tunnel_synchronize, socket) do
-    Logger.debug("Tunnel Synchronize")
+    Logger.info("[Socket] Tunnels synchronizing")
     Peridiod.Tunnel.synchronize(socket.assigns.sdk_client, socket.assigns.remote_access_tunnels)
     {:noreply, socket}
   end
@@ -398,7 +401,7 @@ defmodule Peridiod.Socket do
   end
 
   def handle_info(msg, socket) do
-    Logger.warning("[#{inspect(__MODULE__)}] Unhandled handle_info: #{inspect(msg)}")
+    Logger.warning("[Socket] Unhandled handle_info: #{inspect(msg)}")
     {:noreply, socket}
   end
 
@@ -430,7 +433,10 @@ defmodule Peridiod.Socket do
         Distribution.Server.apply_update(info)
 
       error ->
-        Logger.error("Error parsing update data: #{inspect(update)} error: #{inspect(error)}")
+        Logger.error(
+          "[Socket] Error parsing update data: #{inspect(update)} error: #{inspect(error)}"
+        )
+
         :noop
     end
   end
@@ -446,13 +452,13 @@ defmodule Peridiod.Socket do
   end
 
   defp start_remote_console(%{assigns: %{remote_iex: true}} = socket) do
-    Logger.info("Remote Console: Start IEx")
+    Logger.info("[Socket] Remote Console: Starting IEx")
     {:ok, iex_pid} = RemoteConsole.IEx.start_link([])
     assign(socket, remote_console_pid: iex_pid)
   end
 
   defp start_remote_console(%{assigns: %{remote_shell: true}} = socket) do
-    Logger.debug("Remote Console: Start getty")
+    Logger.info("[Socket] Remote Console: Starting shell")
     {:ok, getty_pid} = RemoteConsole.Getty.start_link([])
     assign(socket, remote_console_pid: getty_pid)
   end

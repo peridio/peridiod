@@ -174,7 +174,7 @@ defmodule Peridiod.Update.ServerTest do
     end
   end
 
-  describe "release install cache" do
+  describe "bundle install cache" do
     setup :start_cache
     setup :start_kv
     setup :load_release_metadata_from_manifest
@@ -202,7 +202,7 @@ defmodule Peridiod.Update.ServerTest do
     end
   end
 
-  describe "release install" do
+  describe "bundle install" do
     setup :start_cache
     setup :start_kv
     setup :load_release_metadata_from_manifest

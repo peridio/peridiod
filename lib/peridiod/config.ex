@@ -103,7 +103,7 @@ defmodule Peridiod.Config do
 
   defp resolve_config do
     path = config_path()
-    Logger.debug("using config path: #{path}")
+    Logger.info("[Config] Using config path: #{path}")
 
     with {:ok, file} <- File.read(path),
          {:ok, config} <- Jason.decode(file) do
@@ -325,7 +325,7 @@ defmodule Peridiod.Config do
           [signing_key | signing_keys]
 
         error ->
-          Logger.error("Error loading signing key\n#{key}\nError: #{inspect(error)}")
+          Logger.error("[Config] Error loading signing key\n#{key}\nError: #{inspect(error)}")
           signing_keys
       end
     end)

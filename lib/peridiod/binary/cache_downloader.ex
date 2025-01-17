@@ -24,7 +24,7 @@ defmodule Peridiod.Binary.CacheDownloader do
 
   def init({binary_metadata, opts}) do
     Logger.debug(
-      "Cache Downloader Started: #{inspect(self())}\n#{binary_metadata.prn}\nBytes: #{binary_metadata.size}"
+      "[Cache Downloader #{binary_metadata.prn}] Started, Bytes: #{binary_metadata.size}"
     )
 
     callback = opts.callback
@@ -68,22 +68,24 @@ defmodule Peridiod.Binary.CacheDownloader do
           state.callback,
           {:download_cache, state.binary_metadata, {:progress, percent_downloaded}}
         )
+
         {:noreply,
-          %{
-            state
-            | bytes_downloaded: bytes_downloaded,
-              percent_downloaded: percent_downloaded,
-              hash: hash
-          }}
-        error ->
-          send(state.callback, {:download_cache, state.binary_metadata, {:error, error}})
-          {:stop, :normal, state}
+         %{
+           state
+           | bytes_downloaded: bytes_downloaded,
+             percent_downloaded: percent_downloaded,
+             hash: hash
+         }}
+
+      error ->
+        send(state.callback, {:download_cache, state.binary_metadata, {:error, error}})
+        {:stop, :normal, state}
     end
   end
 
   def handle_info({:download_cache, :complete}, state) do
     Logger.debug(
-      "Cache Downloader finished: #{state.bytes_downloaded}/#{state.binary_metadata.size}"
+      "[Cache Downloader #{state.binary_metadata.prn}] Finished: #{state.bytes_downloaded}/#{state.binary_metadata.size}"
     )
 
     hash = :crypto.hash_final(state.hash)
@@ -114,7 +116,10 @@ defmodule Peridiod.Binary.CacheDownloader do
   end
 
   def handle_info(msg, state) do
-    Logger.debug("Cache Downloader unhandled message: #{inspect(msg)}")
+    Logger.debug(
+      "[Cache Downloader #{state.binary_metadata.prn}] Unhandled message: #{inspect(msg)}"
+    )
+
     {:noreply, state}
   end
 end

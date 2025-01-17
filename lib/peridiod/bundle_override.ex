@@ -60,7 +60,7 @@ defmodule Peridiod.BundleOverride do
           bundle
 
         error ->
-          Logger.error("Error loading bundle from manifest: #{inspect(error)}")
+          Logger.error("[Bundle Override] Error loading bundle from manifest: #{inspect(error)}")
           nil
       end
 

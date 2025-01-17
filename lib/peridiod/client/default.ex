@@ -10,35 +10,35 @@ defmodule Peridiod.Client.Default do
 
   @impl Peridiod.Client
   def handle_fwup_message({:progress, percent}) do
-    Logger.debug("[Peridiod] Update Progress: #{percent}%")
+    Logger.info("[Client] Update Progress: #{percent}%")
   end
 
   def handle_fwup_message({:error, _, message}) do
-    Logger.error("[Peridiod] Update Error: #{message}")
+    Logger.error("[Client] Update Error: #{message}")
   end
 
   def handle_fwup_message({:warning, _, message}) do
-    Logger.warning("[Peridiod] Update Warning: #{message}")
+    Logger.warning("[Client] Update Warning: #{message}")
   end
 
   def handle_fwup_message({:ok, status, message}) do
-    Logger.info("[Peridiod] Update Finished: #{status} #{message}")
+    Logger.info("[Client] Update Finished: #{status} #{message}")
   end
 
   def handle_fwup_message(fwup_message) do
-    Logger.warning("Unknown FWUP message: #{inspect(fwup_message)}")
+    Logger.warning("[Client] Unknown FWUP message: #{inspect(fwup_message)}")
   end
 
   @impl Peridiod.Client
   def handle_error(error) do
-    Logger.warning("[Peridiod] error: #{inspect(error)}")
+    Logger.warning("[Client] error: #{inspect(error)}")
   end
 
   @impl Peridiod.Client
   def reboot() do
     # this function must reboot the system
     unless Peridiod.env_test?() do
-      Logger.warning("[Peridiod] Rebooting System")
+      Logger.warning("[Client] Rebooting System")
       System.cmd("reboot", [], stderr_to_stdout: true)
     end
   end

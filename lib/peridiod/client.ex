@@ -104,7 +104,7 @@ defmodule Peridiod.Client do
 
       wrong ->
         Logger.error(
-          "[Peridiod] Client: #{inspect(mod())}.update_available/1 bad return value: #{inspect(wrong)} Applying update."
+          "[Client] #{inspect(mod())}.update_available/1 bad return value: #{inspect(wrong)} Applying update."
         )
 
         :apply

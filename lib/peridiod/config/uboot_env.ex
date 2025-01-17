@@ -29,7 +29,7 @@ defmodule Peridiod.Config.UBootEnv do
 
   def config(_, base_config) do
     Logger.error(
-      "key_pair_source uboot-env requires private_key and certificate to be passed as key_pair_options"
+      "[Config] key_pair_source uboot-env requires private_key and certificate to be passed as key_pair_options"
     )
 
     base_config
@@ -41,7 +41,10 @@ defmodule Peridiod.Config.UBootEnv do
         cert
 
       {error, _} ->
-        Logger.error("An error occurred while reading the certificate from uboot_env:\n#{error}")
+        Logger.error(
+          "[Config] An error occurred while reading the certificate from uboot_env:\n#{error}"
+        )
+
         ""
     end
   end
@@ -52,7 +55,10 @@ defmodule Peridiod.Config.UBootEnv do
         key
 
       {error, _} ->
-        Logger.error("An error occurred while reading the private key from uboot_env:\n#{error}")
+        Logger.error(
+          "[Config] An error occurred while reading the private key from uboot_env:\n#{error}"
+        )
+
         ""
     end
   end
