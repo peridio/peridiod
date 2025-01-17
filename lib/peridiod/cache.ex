@@ -112,8 +112,9 @@ defmodule Peridiod.Cache do
     reply =
       with :ok <- File.mkdir_p(dir),
            :ok <- File.write(file_path, data, [:append, :binary]) do
+        :ok
       else
-        _error -> {:error, :not_found}
+        error -> error
       end
 
     {:reply, reply, state}
@@ -131,7 +132,8 @@ defmodule Peridiod.Cache do
         :ok
       else
         false ->
-          # File.rm(file_path)
+          File.rm(file_path)
+          File.rm(file_sig_path)
           {:error, :invalid_signature}
 
         error ->
@@ -168,8 +170,10 @@ defmodule Peridiod.Cache do
   end
 
   def handle_call({:rm, file}, _from, state) do
-    path = Path.join([state.path, file])
-    {:reply, File.rm(path), state}
+    file_path = Path.join([state.path, file])
+    file_sig_path = file_path <> ".sig"
+    File.rm(file_sig_path)
+    {:reply, File.rm(file_path), state}
   end
 
   defp do_write(file, content, %{

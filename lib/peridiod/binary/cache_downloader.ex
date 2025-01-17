@@ -40,6 +40,7 @@ defmodule Peridiod.Binary.CacheDownloader do
         fun
       )
 
+    Binary.cache_rm(cache_pid, binary_metadata)
     Process.flag(:trap_exit, true)
 
     {:ok,
@@ -58,23 +59,26 @@ defmodule Peridiod.Binary.CacheDownloader do
     hash = :crypto.hash_update(state.hash, data)
     file = Binary.cache_file(state.binary_metadata)
 
-    Cache.write_stream_update(state.cache_pid, file, data)
+    case Cache.write_stream_update(state.cache_pid, file, data) do
+      :ok ->
+        bytes_downloaded = state.bytes_downloaded + byte_size(data)
+        percent_downloaded = bytes_downloaded / state.binary_metadata.size
 
-    bytes_downloaded = state.bytes_downloaded + byte_size(data)
-    percent_downloaded = bytes_downloaded / state.binary_metadata.size
-
-    send(
-      state.callback,
-      {:download_cache, state.binary_metadata, {:progress, percent_downloaded}}
-    )
-
-    {:noreply,
-     %{
-       state
-       | bytes_downloaded: bytes_downloaded,
-         percent_downloaded: percent_downloaded,
-         hash: hash
-     }}
+        send(
+          state.callback,
+          {:download_cache, state.binary_metadata, {:progress, percent_downloaded}}
+        )
+        {:noreply,
+          %{
+            state
+            | bytes_downloaded: bytes_downloaded,
+              percent_downloaded: percent_downloaded,
+              hash: hash
+          }}
+        error ->
+          send(state.callback, {:download_cache, state.binary_metadata, {:error, error}})
+          {:stop, :normal, state}
+    end
   end
 
   def handle_info({:download_cache, :complete}, state) do
