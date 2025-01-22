@@ -48,6 +48,10 @@ defmodule Peridiod.Update do
     end)
   end
 
+  def reboot(cmd, opts) do
+    System.cmd(cmd, opts, stderr_to_stdout: true)
+  end
+
   def via(nil), do: nil
 
   def via(prn) do

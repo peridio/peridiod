@@ -24,6 +24,9 @@ defmodule Peridiod.Config do
             fwup_env: [],
             fwup_extra_args: [],
             params: %{},
+            reboot_delay: 5_000,
+            reboot_cmd: "reboot",
+            reboot_opts: [],
             remote_shell: false,
             remote_iex: false,
             remote_access_tunnels: %{},
@@ -155,6 +158,9 @@ defmodule Peridiod.Config do
       |> override_if_set(:fwup_public_keys, config_file["fwup"]["public_keys"])
       |> override_if_set(:fwup_env, config_file["fwup"]["env"])
       |> override_if_set(:fwup_extra_args, config_file["fwup"]["extra_args"])
+      |> override_if_set(:reboot_delay, config_file["reboot_delay"])
+      |> override_if_set(:reboot_cmd, config_file["reboot_cmd"])
+      |> override_if_set(:reboot_opts, config_file["reboot_opts"])
       |> override_if_set(:remote_shell, config_file["remote_shell"])
       |> override_if_set(:remote_iex, config_file["remote_iex"])
       |> override_if_set(:key_pair_source, config_file["node"]["key_pair_source"])

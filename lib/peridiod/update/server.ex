@@ -72,6 +72,10 @@ defmodule Peridiod.Update.Server do
     GenServer.call(pid_or_name, {:remove_trusted_signing_key, signing_key})
   end
 
+  def reboot(pid_or_name \\ __MODULE__) do
+    GenServer.call(pid_or_name, :reboot)
+  end
+
   @impl GenServer
   def init(config) do
     trusted_signing_keys =
@@ -145,6 +149,7 @@ defmodule Peridiod.Update.Server do
       progress_message: %{},
       progress_message_interval: progress_message_interval,
       progress_message_timer: nil,
+      reboot_timer: nil,
       update_timer: nil
     }
 
@@ -259,6 +264,11 @@ defmodule Peridiod.Update.Server do
   def handle_call({:remove_trusted_signing_key, signing_key}, _from, state) do
     trusted_signing_keys = MapSet.delete(state.trusted_signing_keys, signing_key)
     {:reply, {:ok, trusted_signing_keys}, %{state | trusted_signing_keys: trusted_signing_keys}}
+  end
+
+  def handle_call(:reboot, _from, state) do
+    state = do_reboot(state)
+    {:reply, :ok, state}
   end
 
   @impl GenServer
@@ -675,7 +685,7 @@ defmodule Peridiod.Update.Server do
       )
 
     try_send(callback, {__MODULE__, :install, bundle_metadata.prn, :complete})
-    maybe_reboot(bundle_metadata, callback)
+    state = maybe_reboot(bundle_metadata, callback, state)
 
     %{
       state
@@ -745,7 +755,7 @@ defmodule Peridiod.Update.Server do
     end
   end
 
-  defp maybe_reboot(%Bundle{binaries: binaries} = bundle_metadata, callback) do
+  defp maybe_reboot(%Bundle{binaries: binaries} = bundle_metadata, callback, state) do
     reboot? =
       Enum.any?(binaries, fn %Binary{custom_metadata: custom_metadata} ->
         case custom_metadata["peridiod"]["reboot_required"] do
@@ -754,13 +764,31 @@ defmodule Peridiod.Update.Server do
         end
       end)
 
-    if reboot? do
-      try_send(callback, {__MODULE__, :install, bundle_metadata.prn, :reboot})
+    case reboot? do
+      true ->
+        try_send(callback, {__MODULE__, :install, bundle_metadata.prn, :reboot})
+        do_reboot(state)
 
-      unless Peridiod.env_test?() do
-        System.cmd("reboot", [], stderr_to_stdout: true)
-      end
+      false ->
+        state
     end
+  end
+
+  defp do_reboot(state) do
+    reboot_timer =
+      case Peridiod.env_test?() do
+        true ->
+          nil
+
+        false ->
+          delay = state.config.reboot_delay
+          cmd = state.config.reboot_cmd
+          opts = state.config.reboot_opts
+          Logger.info("[Update Server] Rebooting in #{delay} ms ")
+          :timer.apply_after(delay, Update, :reboot, [cmd, opts])
+      end
+
+    %{state | reboot_timer: reboot_timer}
   end
 
   defp try_send(nil, _msg), do: :ok
