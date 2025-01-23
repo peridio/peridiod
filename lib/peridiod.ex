@@ -9,6 +9,15 @@ defmodule Peridiod do
     @env == :test
   end
 
+  @spec config :: Peridiod.Config.t()
+  def config() do
+    application_config = Application.get_all_env(:peridiod)
+
+    Peridiod.Config
+    |> struct(application_config)
+    |> Peridiod.Config.new()
+  end
+
   @doc """
   Checks if the device is connected to the Peridio device channel.
   """

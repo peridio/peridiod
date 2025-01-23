@@ -11,8 +11,7 @@ defmodule Peridiod.Application do
   }
 
   def start(_type, _args) do
-    application_config = Application.get_all_env(:peridiod)
-    config = struct(Peridiod.Config, application_config) |> Peridiod.Config.new()
+    config = Peridiod.config()
 
     children = [
       {Cache, config},
