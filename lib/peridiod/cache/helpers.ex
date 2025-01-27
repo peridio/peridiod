@@ -14,7 +14,20 @@ defmodule Peridiod.Cache.Helpers do
       end
 
       def cache_path(prn) when is_binary(prn) do
-        Path.join([@cache_path, prn])
+        Path.join(cache_path(), prn)
+      end
+
+      def cache_path(), do: @cache_path
+
+      def cache_file(metadata) do
+        Path.join(cache_path(metadata), @cache_file)
+      end
+
+      def cache_rm(cache_pid \\ Cache, metadata) do
+        stamp_file = Path.join([cache_path(metadata), @stamp_cached])
+        cache_file_path = cache_file(metadata)
+        Cache.rm(cache_pid, stamp_file)
+        Cache.rm(cache_pid, cache_file_path)
       end
 
       def cached?(cache_pid \\ Cache, metadata) do
@@ -36,6 +49,11 @@ defmodule Peridiod.Cache.Helpers do
         stamp_file = Path.join([cache_path(metadata), @stamp_installed])
         Cache.write(cache_pid, stamp_file, stamp_utc_now())
       end
+
+      defoverridable cache_path: 1, cache_file: 1
     end
   end
+
+  @callback cache_path(any()) :: String.t()
+  @callback cache_file(map()) :: String.t()
 end

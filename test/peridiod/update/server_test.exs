@@ -3,6 +3,7 @@ defmodule Peridiod.Update.ServerTest do
   doctest Peridiod.Update.Server
 
   alias Peridiod.{Binary, Release, Bundle, Cache, Update}
+  alias PeridiodPersistence.KV
 
   describe "binary" do
     setup :start_cache
@@ -200,6 +201,34 @@ defmodule Peridiod.Update.ServerTest do
       assert_receive {Update.Server, :install, ^prn, :complete}
       assert Bundle.installed?(cache_pid, bundle_metadata)
     end
+
+    test "cache cleanup", %{
+      cache_pid: cache_pid,
+      cache_dir: cache_dir,
+      kv_pid: kv_pid,
+      update_server_pid: update_server_pid,
+      release_metadata: %Release{bundle: %{binaries: binaries} = bundle_metadata}
+    } do
+      binary_metadata = List.first(binaries)
+      cache_file = Binary.cache_file(binary_metadata)
+
+      true = Binary.cached?(cache_pid, binary_metadata)
+      true = Cache.exists?(cache_pid, cache_file)
+
+      test_bundle_path = Path.join([cache_dir, "bundle", "1234"])
+      :ok = File.mkdir_p(test_bundle_path)
+
+      signing_key = List.first(binary_metadata.signatures).signing_key
+      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
+      prn = bundle_metadata.prn
+
+      refute Bundle.installed?(cache_pid, bundle_metadata)
+      assert :ok = Update.Server.install_bundle(update_server_pid, bundle_metadata)
+      assert_receive {Update.Server, :install, ^prn, :complete}
+      assert KV.get(kv_pid, "peridio_bun_current") == prn
+      assert KV.get(kv_pid, "peridio_bun_progress") == ""
+      refute File.exists?(test_bundle_path)
+    end
   end
 
   describe "bundle install" do
@@ -219,11 +248,11 @@ defmodule Peridiod.Update.ServerTest do
       false = Binary.cached?(cache_pid, binary_metadata)
       false = Cache.exists?(cache_pid, cache_file)
 
+      prn = release_metadata.bundle.prn
       signing_key = List.first(binary_metadata.signatures).signing_key
       {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
 
       Update.Server.install_bundle(update_server_pid, release_metadata.bundle)
-      prn = release_metadata.bundle.prn
       assert_receive {Update.Server, :install, ^prn, :complete}
     end
 

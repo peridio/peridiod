@@ -34,7 +34,7 @@ defmodule Peridiod.BinaryTest do
       Binary.metadata_to_cache(cache_pid, binary_metadata)
 
       {:ok, from_cache} =
-        Binary.metadata_from_cache(cache_pid, {binary_prn, custom_metadata_hash})
+        Binary.metadata_from_cache(cache_pid, Binary.cache_prn(binary_metadata))
 
       assert %Binary{
                prn: ^binary_prn,
@@ -58,7 +58,7 @@ defmodule Peridiod.BinaryTest do
       assert {:error, :enoent} =
                Binary.metadata_from_cache(
                  cache_pid,
-                 {binary_metadata.prn, binary_metadata.custom_metadata_hash}
+                 Binary.cache_prn(binary_metadata)
                )
     end
 
@@ -73,7 +73,7 @@ defmodule Peridiod.BinaryTest do
       signature_file =
         Path.join([
           cache_dir,
-          Binary.cache_path({binary_metadata.prn, binary_metadata.custom_metadata_hash}),
+          Binary.cache_path(binary_metadata),
           "manifest.sig"
         ])
 
@@ -82,7 +82,7 @@ defmodule Peridiod.BinaryTest do
       assert {:error, :invalid_signature} =
                Binary.metadata_from_cache(
                  cache_pid,
-                 {binary_metadata.prn, binary_metadata.custom_metadata_hash}
+                 Binary.cache_prn(binary_metadata)
                )
     end
 
@@ -98,7 +98,7 @@ defmodule Peridiod.BinaryTest do
       stamp_installed_file =
         Path.join([
           cache_dir,
-          Binary.cache_path({binary_metadata.prn, binary_metadata.custom_metadata_hash}),
+          Binary.cache_path(binary_metadata),
           ".stamp_installed"
         ])
 

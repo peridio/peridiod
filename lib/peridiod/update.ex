@@ -1,6 +1,8 @@
 defmodule Peridiod.Update do
-  alias Peridiod.{Release, BundleOverride, Bundle}
+  alias Peridiod.{Release, BundleOverride, Bundle, Binary, Cache}
   alias PeridiodPersistence.KV
+
+  require Logger
 
   def kv_progress(kv_pid \\ KV, bundle_metadata, via_metadata) do
     via_metadata = via_metadata || %{}
@@ -22,22 +24,22 @@ defmodule Peridiod.Update do
     KV.reinitialize(kv_pid)
 
     KV.get_all_and_update(kv_pid, fn kv ->
-      src_progress = Map.get(kv, "peridio_via_progress", "")
+      via_progress = Map.get(kv, "peridio_via_progress", "")
       bun_progress = Map.get(kv, "peridio_bun_progress", "")
       vsn_progress = Map.get(kv, "peridio_vsn_progress", "")
       bin_progress = Map.get(kv, "peridio_bin_progress", "")
 
-      src_current = Map.get(kv, "peridio_via_current", "")
+      via_current = Map.get(kv, "peridio_via_current", "")
       bun_current = Map.get(kv, "peridio_bun_current", "")
       vsn_current = Map.get(kv, "peridio_vsn_current", "")
       bin_current = Map.get(kv, "peridio_bin_current", "")
 
       kv
-      |> Map.put("peridio_via_previous", src_current)
+      |> Map.put("peridio_via_previous", via_current)
       |> Map.put("peridio_bun_previous", bun_current)
       |> Map.put("peridio_vsn_previous", vsn_current)
       |> Map.put("peridio_bin_previous", bin_current)
-      |> Map.put("peridio_via_current", src_progress)
+      |> Map.put("peridio_via_current", via_progress)
       |> Map.put("peridio_bun_current", bun_progress)
       |> Map.put("peridio_vsn_current", vsn_progress)
       |> Map.put("peridio_bin_current", bin_progress)
@@ -46,6 +48,51 @@ defmodule Peridiod.Update do
       |> Map.put("peridio_vsn_progress", "")
       |> Map.put("peridio_bin_progress", "")
     end)
+  end
+
+  def cache_clean(cache_pid \\ Cache, kv) do
+    Logger.info("[Update] Cache cleanup started")
+    via_current = Map.get(kv, "peridio_via_current") |> kv_sanitize()
+    bun_current = Map.get(kv, "peridio_bun_current") |> kv_sanitize()
+    via_previous = Map.get(kv, "peridio_via_previous") |> kv_sanitize()
+    bun_previous = Map.get(kv, "peridio_bun_previous") |> kv_sanitize()
+
+    previous_binary_prns = binary_prns_for_bundle_prn(cache_pid, bun_previous)
+    current_binary_prns = binary_prns_for_bundle_prn(cache_pid, bun_current)
+
+    relevant_via_prns = [via_current, via_previous] |> Enum.reject(&is_nil/1)
+    relevant_bundle_prns = [bun_current, bun_previous] |> Enum.reject(&is_nil/1)
+    relevant_binary_prns = Enum.uniq(current_binary_prns ++ previous_binary_prns)
+
+    binary_cache_path = Binary.cache_path()
+    release_cache_path = Release.cache_path()
+    override_cache_path = BundleOverride.cache_path()
+    bundle_cache_path = Bundle.cache_path()
+
+    remove_binaries =
+      cache_reject_relevant_prns(cache_pid, binary_cache_path, relevant_binary_prns)
+
+    remove_releases = cache_reject_relevant_prns(cache_pid, release_cache_path, relevant_via_prns)
+
+    remove_overrides =
+      cache_reject_relevant_prns(cache_pid, override_cache_path, relevant_via_prns)
+
+    remove_bundles =
+      cache_reject_relevant_prns(cache_pid, bundle_cache_path, relevant_bundle_prns)
+
+    remove = remove_binaries ++ remove_releases ++ remove_overrides ++ remove_bundles
+
+    Enum.each(remove, fn path ->
+      case Cache.rm_rf(cache_pid, path) do
+        {:ok, _path} ->
+          Logger.info("[Update] Cache cleanup removed #{inspect(path)}")
+
+        {:error, error} ->
+          Logger.error("[Update] Cache cleanup error removing #{path} #{inspect(error)}")
+      end
+    end)
+
+    Logger.info("[Update] Cache cleanup finished")
   end
 
   def reboot(cmd, opts) do
@@ -66,8 +113,8 @@ defmodule Peridiod.Update do
   def sdk_client(sdk_client, via_prn, bundle_prn, version) do
     sdk_client =
       sdk_client
-      |> Map.put(:bundle_prn, sdk_client_sanitize(bundle_prn))
-      |> Map.put(:release_version, sdk_client_sanitize(version))
+      |> Map.put(:bundle_prn, kv_sanitize(bundle_prn))
+      |> Map.put(:release_version, kv_sanitize(version))
 
     case via(via_prn) do
       Release -> Map.put(sdk_client, :release_prn, via_prn)
@@ -75,6 +122,30 @@ defmodule Peridiod.Update do
     end
   end
 
-  defp sdk_client_sanitize(""), do: nil
-  defp sdk_client_sanitize(val), do: val
+  defp kv_sanitize(""), do: nil
+  defp kv_sanitize(val), do: val
+
+  defp binary_prns_for_bundle_prn(_cache_pid, nil) do
+    []
+  end
+
+  defp binary_prns_for_bundle_prn(cache_pid, bundle_prn) do
+    case Bundle.metadata_from_cache(cache_pid, bundle_prn) do
+      {:ok, bundle} -> Enum.map(bundle.binaries, &Binary.cache_prn/1)
+      _ -> []
+    end
+  end
+
+  defp cache_reject_relevant_prns(cache_pid, cache_path, relevant_prns) do
+    reject_prns =
+      case Cache.ls(cache_pid, cache_path) do
+        {:ok, prns} ->
+          Enum.reject(prns, &(&1 in relevant_prns))
+
+        _ ->
+          []
+      end
+
+    Enum.map(reject_prns, &Path.join(cache_path, &1))
+  end
 end

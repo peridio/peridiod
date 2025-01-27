@@ -610,7 +610,11 @@ defmodule Peridiod.Update.Server do
         state.processing_binaries,
         fn binary_metadata, processing_binaries ->
           {:ok, job_pid} =
-            mod.start_child(binary_metadata, %{config: state.config, cache_pid: state.cache_pid})
+            mod.start_child(binary_metadata, %{
+              config: state.config,
+              cache_pid: state.cache_pid,
+              kv_pid: state.kv_pid
+            })
 
           Map.put(processing_binaries, binary_metadata.prn, %{
             job_pid: job_pid,
@@ -674,6 +678,8 @@ defmodule Peridiod.Update.Server do
 
     Bundle.stamp_installed(state.cache_pid, bundle_metadata)
     Update.kv_advance(state.kv_pid)
+
+    Update.cache_clean(state.cache_pid, KV.get_all(state.kv_pid))
     Logger.info("[Update Server] Install complete")
 
     sdk_client =

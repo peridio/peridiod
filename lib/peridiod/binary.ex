@@ -1,12 +1,10 @@
 defmodule Peridiod.Binary do
+  use Peridiod.Cache.Helpers, cache_path: "binary", cache_file: "binary"
+
   alias Peridiod.{Binary, Cache, Signature}
   alias PeridiodPersistence.KV
   import Peridiod.Utils, only: [stamp_utc_now: 0]
 
-  @cache_path "binary"
-  @stamp_cached ".stamp_cached"
-  @stamp_installed ".stamp_installed"
-  @cache_file "binary"
   @kv_bin_installed "peridio_bin_"
   @kv_bin_stores [:previous, :current, :progress]
 
@@ -145,32 +143,16 @@ defmodule Peridiod.Binary do
     trusted
   end
 
-  def cached?(cache_pid \\ Cache, %__MODULE__{} = binary_metadata) do
-    stamp_file = Path.join([cache_path(binary_metadata), @stamp_cached])
-    Cache.exists?(cache_pid, stamp_file)
-  end
-
-  def cache_path({binary_prn, custom_metadata_hash}) do
-    cache_path("#{binary_prn}:#{Base.encode16(custom_metadata_hash, case: :lower)}")
-  end
-
-  def cache_path(%__MODULE__{prn: binary_prn, custom_metadata_hash: custom_metadata_hash}) do
-    cache_path({binary_prn, custom_metadata_hash})
+  def cache_path(%__MODULE__{} = binary_metadata) do
+    cache_prn(binary_metadata) |> cache_path()
   end
 
   def cache_path(path) when is_binary(path) do
-    Path.join([@cache_path, path])
+    Path.join(@cache_path, path)
   end
 
-  def cache_file(%__MODULE__{} = binary_metadata) do
-    Path.join(cache_path(binary_metadata), @cache_file)
-  end
-
-  def cache_rm(cache_pid \\ Cache, %__MODULE__{} = binary_metadata) do
-    stamp_file = Path.join([cache_path(binary_metadata), @stamp_cached])
-    cache_file_path = cache_file(binary_metadata)
-    Cache.rm(cache_pid, stamp_file)
-    Cache.rm(cache_pid, cache_file_path)
+  def cache_prn(%Binary{prn: prn, custom_metadata_hash: custom_metadata_hash}) do
+    "#{prn}:#{Base.encode16(custom_metadata_hash, case: :lower)}"
   end
 
   def custom_metadata_hash(custom_metadata) do
@@ -180,21 +162,6 @@ defmodule Peridiod.Binary do
       |> Jason.encode!()
 
     :crypto.hash(:sha256, ordered_metadata)
-  end
-
-  def installed?(cache_pid \\ Cache, %__MODULE__{} = binary_metadata) do
-    stamp_file = Path.join([cache_path(binary_metadata), @stamp_installed])
-    Cache.exists?(cache_pid, stamp_file)
-  end
-
-  def stamp_cached(cache_pid \\ Cache, %__MODULE__{} = binary_metadata) do
-    stamp_file = Path.join([cache_path(binary_metadata), @stamp_cached])
-    Cache.write(cache_pid, stamp_file, stamp_utc_now())
-  end
-
-  def stamp_installed(cache_pid \\ Cache, %__MODULE__{} = binary_metadata) do
-    stamp_file = Path.join([cache_path(binary_metadata), @stamp_installed])
-    Cache.write(cache_pid, stamp_file, stamp_utc_now())
   end
 
   def valid_signature?(hash, signature, public_key) do
