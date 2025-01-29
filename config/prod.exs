@@ -1,6 +1,6 @@
 import Config
 
-config :logger, level: :warning
+config :logger, level: :info
 
 config :erlexec,
   user: "root",
