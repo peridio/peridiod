@@ -86,7 +86,10 @@ ENV PERIDIO_CONFIG_FILE=/etc/peridiod/peridio.json
 
 RUN mkdir -p /etc/peridiod/hooks
 RUN mkdir -p /boot
-RUN echo "echo \"Reboot Requested\"" > /usr/bin/reboot && chmod +x /usr/bin/reboot
+RUN echo "#!/bin/bash" > /usr/bin/reboot
+RUN echo "echo \"Reboot Requested\"" >> /usr/bin/reboot
+RUN echo "exit 0" >> /usr/bin/reboot
+RUN chmod +x /usr/bin/reboot
 
 COPY --from=build /opt/app/priv/peridio-cert.pem /etc/peridiod/peridio-cert.pem
 COPY --from=build /opt/app/_build/prod/rel/peridiod /opt/peridiod

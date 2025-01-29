@@ -788,10 +788,8 @@ defmodule Peridiod.Update.Server do
 
         false ->
           delay = state.config.reboot_delay
-          cmd = state.config.reboot_cmd
-          opts = state.config.reboot_opts
           Logger.info("[Update Server] Rebooting in #{delay} ms ")
-          :timer.apply_after(delay, Update, :reboot, [cmd, opts])
+          :timer.apply_after(delay, Update, :system_reboot, [state.config])
       end
 
     %{state | reboot_timer: reboot_timer}

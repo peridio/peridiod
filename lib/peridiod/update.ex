@@ -1,5 +1,5 @@
 defmodule Peridiod.Update do
-  alias Peridiod.{Release, BundleOverride, Bundle, Binary, Cache}
+  alias Peridiod.{Release, BundleOverride, Bundle, Binary, Cache, Config}
   alias PeridiodPersistence.KV
 
   require Logger
@@ -95,10 +95,6 @@ defmodule Peridiod.Update do
     Logger.info("[Update] Cache cleanup finished")
   end
 
-  def reboot(cmd, opts) do
-    System.cmd(cmd, opts, stderr_to_stdout: true)
-  end
-
   def via(nil), do: nil
 
   def via(prn) do
@@ -119,6 +115,18 @@ defmodule Peridiod.Update do
     case via(via_prn) do
       Release -> Map.put(sdk_client, :release_prn, via_prn)
       _ -> Map.put(sdk_client, :release_prn, nil)
+    end
+  end
+
+  def system_reboot(%Config{} = config) do
+    with {_, 0} <-
+           System.cmd(config.reboot_sync_cmd, config.reboot_sync_opts, stderr_to_stdout: true),
+         {_, 0} <- System.cmd(config.reboot_cmd, config.reboot_opts, stderr_to_stdout: true) do
+    else
+      {result, code} ->
+        Logger.error(
+          "[Update] Exit code #{inspect(code)} while attempting to reboot the system #{inspect(result)}"
+        )
     end
   end
 

@@ -32,6 +32,8 @@ defmodule Peridiod.Config do
             reboot_delay: 5_000,
             reboot_cmd: "reboot",
             reboot_opts: [],
+            reboot_sync_cmd: "sync",
+            reboot_sync_opts: [],
             remote_shell: false,
             remote_iex: false,
             remote_access_tunnels: %{},
@@ -64,14 +66,21 @@ defmodule Peridiod.Config do
           device_api_sni: charlist(),
           device_api_verify: :verify_peer | :verify_none,
           device_api_ca_certificate_path: Path.t(),
+          key_pair_source: String.t(),
+          key_pair_config: map,
+          kv_pid: pid() | module(),
           fwup_public_keys: [binary()],
           fwup_devpath: Path.t(),
           fwup_env: [{String.t(), String.t()}],
           fwup_extra_args: [String.t()],
-          kv_pid: pid() | module(),
           params: map(),
-          remote_iex: boolean,
+          reboot_delay: non_neg_integer,
+          reboot_cmd: String.t(),
+          reboot_opts: [String.t()],
+          reboot_sync_cmd: String.t(),
+          reboot_sync_opts: [String.t()],
           remote_shell: boolean,
+          remote_iex: boolean,
           remote_access_tunnels: map(),
           update_poll_enabled: boolean,
           update_poll_interval: non_neg_integer(),
@@ -80,6 +89,7 @@ defmodule Peridiod.Config do
           trusted_signing_key_dir: Path.t(),
           trusted_signing_key_threshold: non_neg_integer(),
           socket: any(),
+          socket_enabled?: boolean,
           ssl: [:ssl.tls_client_option()],
           sdk_client: %{}
         }
@@ -171,6 +181,8 @@ defmodule Peridiod.Config do
       |> override_if_set(:reboot_delay, config_file["reboot_delay"])
       |> override_if_set(:reboot_cmd, config_file["reboot_cmd"])
       |> override_if_set(:reboot_opts, config_file["reboot_opts"])
+      |> override_if_set(:reboot_sync_cmd, config_file["reboot_sync_cmd"])
+      |> override_if_set(:reboot_sync_opts, config_file["reboot_sync_opts"])
       |> override_if_set(:remote_shell, config_file["remote_shell"])
       |> override_if_set(:remote_iex, config_file["remote_iex"])
       |> override_if_set(:key_pair_source, config_file["node"]["key_pair_source"])
