@@ -315,6 +315,10 @@ defmodule Peridiod.Binary.Installer do
     {:noreply, state}
   end
 
+  defp installer_progress({:stop, :normal, state}) do
+    {:stop, :normal, state}
+  end
+
   defp installer_progress({:stop, error, state}) do
     Logger.error("[Installer #{state.binary_metadata.prn}] Error #{inspect(error)}")
     try_send(state.callback, {Installer, state.binary_metadata.prn, {:error, error}})
