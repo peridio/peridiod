@@ -232,7 +232,8 @@ defmodule Peridiod.Config do
     sdk_client =
       PeridioSDK.Client.new(
         device_api_host: "https://#{config.device_api_host}",
-        adapter: adapter
+        adapter: adapter,
+        user_agent: user_agent()
       )
 
     Map.put(config, :sdk_client, sdk_client)
@@ -345,5 +346,15 @@ defmodule Peridiod.Config do
           signing_keys
       end
     end)
+  end
+
+  defp user_agent() do
+    {os_family, os_type} = :erlang.system_info(:os_type)
+    arch = :erlang.system_info(:system_architecture)
+    version = Peridiod.version()
+    otp_version = :erlang.system_info(:otp_release) |> to_string()
+    elixir_version = System.version()
+
+    "peridiod/#{version} (#{os_family},#{os_type}; #{arch}) OTP/#{otp_version} Elixir/#{elixir_version}"
   end
 end

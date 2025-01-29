@@ -38,6 +38,15 @@ defmodule Peridiod do
   end
 
   @doc """
+  Return the version of Peridiod
+  """
+  def version() do
+    :peridiod
+    |> Application.spec(:vsn)
+    |> to_string()
+  end
+
+  @doc """
   Current status of the update manager
   """
   @spec status :: Distribution.Server.State.status()
