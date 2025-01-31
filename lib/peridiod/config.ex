@@ -13,7 +13,7 @@ defmodule Peridiod.Config do
             cache_pid: Cache,
             cache_log_enabled: true,
             cache_log_max_bytes: 10_485_760,
-            cache_log_max_files: 5,
+            cache_log_max_files: 0,
             cache_log_compress: true,
             cache_log_level: :debug,
             device_api_host: "device.cremini.peridio.com",
@@ -156,6 +156,7 @@ defmodule Peridiod.Config do
 
     config =
       config
+      |> cache_log_merge_config(config_file)
       |> Map.put(
         :device_api_ca_certificate_path,
         Application.app_dir(:peridiod, "priv/peridio-cert.pem")
@@ -293,6 +294,21 @@ defmodule Peridiod.Config do
       pre_down: "#{priv_dir}/pre-down.sh",
       post_down: "#{priv_dir}/post-down.sh"
     }
+  end
+
+  def cache_log_merge_config(config, config_file) do
+    log_level =
+      case config_file["cache_log_level"] do
+        nil -> config.cache_log_level
+        string -> String.to_atom(string)
+      end
+
+    config
+    |> Map.put(:cache_log_level, log_level)
+    |> override_if_set(:cache_log_enabled, config_file["cache_log_enabled"])
+    |> override_if_set(:cache_log_max_bytes, config_file["cache_log_max_bytes"])
+    |> override_if_set(:cache_log_max_files, config_file["cache_log_max_files"])
+    |> override_if_set(:cache_log_compress, config_file["cache_log_compress"])
   end
 
   def encode_port_range(nil), do: Peridio.RAT.Network.default_port_ranges()
