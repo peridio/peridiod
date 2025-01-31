@@ -44,6 +44,7 @@ defmodule Peridiod.Binary do
         :signatures
       ])
       |> Map.put(:hash, Base.encode16(binary_metadata.hash, case: :lower))
+      |> Map.put(:uri, URI.to_string(binary_metadata.uri))
       |> Jason.Encode.map(opts)
     end
   end
@@ -69,10 +70,10 @@ defmodule Peridiod.Binary do
     signatures =
       Map.get(binary_metadata, "signatures", []) |> Enum.map(&Signature.metadata_from_map/1)
 
-    url =
-      case Map.get(binary_metadata, "url") do
+    uri =
+      case Map.get(binary_metadata, "uri") do
         nil -> nil
-        url -> URI.new!(url)
+        uri -> URI.new!(uri)
       end
 
     custom_metadata = Map.get(binary_metadata, "custom_metadata", %{})
@@ -92,7 +93,7 @@ defmodule Peridiod.Binary do
       version: binary_metadata["version"],
       hash: Base.decode16!(binary_metadata["hash"], case: :mixed),
       size: binary_metadata["size"],
-      uri: url,
+      uri: uri,
       custom_metadata: custom_metadata,
       custom_metadata_hash: custom_metadata_hash,
       target: binary_metadata["target"],
