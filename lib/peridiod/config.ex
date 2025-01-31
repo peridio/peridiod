@@ -39,6 +39,7 @@ defmodule Peridiod.Config do
             remote_access_tunnels: %{},
             update_poll_enabled: false,
             update_poll_interval: 300_000,
+            update_resume_max_boot_count: 10,
             targets: ["portable"],
             trusted_signing_keys: [],
             trusted_signing_key_dir: nil,
@@ -195,6 +196,10 @@ defmodule Peridiod.Config do
       |> override_if_set(:update_poll_enabled, config_file["update_poll_enabled"])
       |> override_if_set(:update_poll_interval, config_file["release_poll_interval"])
       |> override_if_set(:update_poll_interval, config_file["update_poll_interval"])
+      |> override_if_set(
+        :update_resume_max_boot_count,
+        config_file["update_resume_max_boot_count"]
+      )
       |> override_if_set(
         :trusted_signing_key_threshold,
         config_file["trusted_signing_key_threshold"]

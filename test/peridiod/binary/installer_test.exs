@@ -92,6 +92,6 @@ defmodule Peridiod.Binary.InstallerTest do
 
   defp spawn_installer(binary_metadata, opts) do
     opts = Map.put(opts, :callback, self())
-    spawn(fn -> Installer.start_link(binary_metadata, opts) end)
+    Installer.start_link(binary_metadata, opts)
   end
 end

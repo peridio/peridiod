@@ -46,8 +46,8 @@ defmodule Peridiod.Binary.Installer.File do
     end
   end
 
-  def installer_init(_binary_metadata, _opts, _source, _config) do
-    {:error, "installer_opts keys name and path are required"}
+  def install_init(_binary_metadata, _opts, _source, _config) do
+    {:error, "File installer_opts keys name and path are required", nil}
   end
 
   def install_update(_binary_metadata, data, {tmp_dest, _final_dest} = state) do

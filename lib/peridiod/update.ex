@@ -4,6 +4,39 @@ defmodule Peridiod.Update do
 
   require Logger
 
+  def kv_progress_reset_boot_count(kv_pid \\ KV), do: KV.put(kv_pid, "peridio_bc_progress", "0")
+
+  def kv_progress_increment_boot_count(kv_pid \\ KV) do
+    result =
+      KV.get_and_update(kv_pid, "peridio_bc_progress", fn
+        "" ->
+          "1"
+
+        nil ->
+          "1"
+
+        value ->
+          case Integer.parse(value) do
+            {value, _rem} ->
+              new_value = value + 1
+              Logger.info("[Update] Incrementing peridio_bc_progress #{new_value}")
+              new_value |> to_string()
+
+            _ ->
+              Logger.error(
+                "[Update] Error parsing peridio_bc_progress #{inspect(value)} resetting to 1"
+              )
+
+              "1"
+          end
+      end)
+
+    case result do
+      {:ok, %{contents: %{"peridio_bc_progress" => boot_count}}} -> {:ok, boot_count}
+      error -> error
+    end
+  end
+
   def kv_progress(kv_pid \\ KV, bundle_metadata, via_metadata) do
     via_metadata = via_metadata || %{}
 
@@ -16,7 +49,17 @@ defmodule Peridiod.Update do
     KV.put_map(kv_pid, %{
       "peridio_via_progress" => Map.get(via_metadata, :prn, ""),
       "peridio_bun_progress" => bundle_metadata.prn,
-      "peridio_vsn_progress" => version
+      "peridio_vsn_progress" => version,
+      "peridio_bc_progress" => "0"
+    })
+  end
+
+  def kv_progress_reset(kv_pid \\ KV) do
+    KV.put_map(kv_pid, %{
+      "peridio_via_progress" => "",
+      "peridio_bun_progress" => "",
+      "peridio_vsn_progress" => "",
+      "peridio_bc_progress" => "0"
     })
   end
 
@@ -47,6 +90,7 @@ defmodule Peridiod.Update do
       |> Map.put("peridio_bun_progress", "")
       |> Map.put("peridio_vsn_progress", "")
       |> Map.put("peridio_bin_progress", "")
+      |> Map.put("peridio_bc_progress", "0")
     end)
   end
 

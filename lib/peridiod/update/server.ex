@@ -160,6 +160,7 @@ defmodule Peridiod.Update.Server do
   def handle_continue(true, state) do
     Logger.info("[Update Server] Polling enabled")
 
+    send(self(), :resume_update)
     send(self(), :check_for_update)
 
     progress_message_timer =
@@ -173,6 +174,7 @@ defmodule Peridiod.Update.Server do
 
   def handle_continue(false, state) do
     Logger.info("[Update Server] Polling Disabled")
+    send(self(), :resume_update)
     {:noreply, state}
   end
 
@@ -272,6 +274,44 @@ defmodule Peridiod.Update.Server do
   end
 
   @impl GenServer
+  def handle_info(:resume_update, %{progress_bundle: nil} = state) do
+    Logger.info("[Update Server] No update to resume")
+    Update.kv_progress_reset_boot_count(state.kv_pid)
+    {:noreply, state}
+  end
+
+  def handle_info(:resume_update, %{progress_bundle: bundle_metadata} = state) do
+    Logger.info("[Update Server] Resuming bundle install")
+    max_boot_count = state.config.update_resume_max_boot_count
+
+    with {:ok, boot_count} <- Update.kv_progress_increment_boot_count(state.kv_pid),
+         {boot_count, _} <- Integer.parse(boot_count),
+         true <- boot_count < max_boot_count do
+      case do_install_bundle(bundle_metadata, self(), state) do
+        {:ok, state} ->
+          Logger.info("[Update Server] Resuming installing bundle #{bundle_metadata.prn}")
+          {:noreply, state}
+
+        {{:error, error}, state} ->
+          Logger.error(
+            "[Update Server] Error resuming installing bundle #{bundle_metadata.prn} #{inspect(error)}"
+          )
+
+          {:noreply, state}
+      end
+    else
+      false ->
+        Update.kv_progress_reset(state.kv_pid)
+        Logger.error("[Update Server] Resume max boot_count reached. Aborting installation")
+        {:noreply, %{state | progress_bundle: nil, progress_via: nil}}
+
+      _ ->
+        Update.kv_progress_reset(state.kv_pid)
+        Logger.error("[Update Server] Aborting resumption")
+        {:noreply, %{state | progress_bundle: nil, progress_via: nil}}
+    end
+  end
+
   def handle_info(:check_for_update, state) do
     {_, state} =
       state
@@ -388,13 +428,18 @@ defmodule Peridiod.Update.Server do
     {:noreply, %{state | progress_message_timer: timer_ref, progress_message: %{}}}
   end
 
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.warning("[Update Server] Unhandled message #{inspect(msg)}")
     {:noreply, state}
   end
 
   @impl GenServer
   def terminate(reason, state) do
-    Enum.each(state.processing_binaries, &Process.exit(elem(&1, 1).job_pid, reason))
+    Enum.each(state.processing_binaries, fn
+      {_, %{job_pid: pid}} -> Process.exit(pid, reason)
+      _ -> :noop
+    end)
+
     :ok
   end
 
@@ -478,8 +523,6 @@ defmodule Peridiod.Update.Server do
 
         {:no_update, state}
     end
-
-    {:no_update, state}
   end
 
   defp update_response({:ok, %{status: 200, body: %{"status" => "no_update"}}}, state) do
@@ -722,12 +765,15 @@ defmodule Peridiod.Update.Server do
 
       {[_ | _], _} ->
         Logger.error("[Update Server] Install error. stopping release")
-        # Errors
+        Update.kv_progress_reset(state.kv_pid)
+
         %{
           state
           | installing_bundle: nil,
-            current_bundle: nil,
-            current_via: nil
+            processing_binaries: %{},
+            progress_bundle: nil,
+            progress_message: %{},
+            progress_via: nil
         }
     end
   end
@@ -798,7 +844,7 @@ defmodule Peridiod.Update.Server do
   defp try_send(nil, _msg), do: :ok
 
   defp try_send(pid, msg) do
-    if Process.alive?(pid) do
+    if self() != pid and Process.alive?(pid) do
       send(pid, msg)
     end
   end
