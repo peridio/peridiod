@@ -1,5 +1,71 @@
 # peridiod releases
 
+## v3.0.0
+
+Added Support for Bundle Distributions
+
+**Backwards compatible with firmware deployments**
+
+### Added `peridiod` config keys introduced:
+
+* `update_poll_enabled`: true | false
+* `update_poll_interval`: the interval in ms to automatically check for updates
+* `update_resume_max_boot_count`: Max restart / reboots before failing an resumed bundle install. Defaults to `10`
+* `cache_dir`: a writable path where `peridiod` can store release metadata
+* `targets`: A list of string target names for peridiod to install as part of a release update
+* `trusted_signing_keys`: A list of base64 encoded ed25519 public signing key strings
+* `reboot_delay`: Number of milliseconds to wait before rebooting the system Defaults to 5000.
+* `reboot_cmd`: The system reboot command. Defaults `reboot`
+* `reboot_opts`: Extra args to be passed to the reboot command. Defaults `[]`
+* `reboot_sync_cmd`: The system sync command to force filesystem writes. Defaults `sync`
+* `reboot_sync_opts`: Extra args to be passed to the sync command. Defaults `[]`
+* `cache_log_enabled`: Enable writing logs to the cache_dir. Default `true`
+* `cache_log_max_bytes`: Max bytes for log file storage. Default `10485760` (10mb)
+* `cache_log_max_files`: Max number of rotating log files to store. Default `5`
+* `cache_log_compress`: Compress logs on rotation. Default `true`
+* `cache_log_level`: Default `debug` Options `debug` | `info` | `warning` | `error`
+
+More information can be found in the [Peridiod Configuration docs](https://docs.peridio.com/integration/linux/peridiod/configuration)
+
+### U-Boot Environment additions
+
+peridiod releases will track and expose release metadata in the uboot environment under the following new keys.
+
+**If you are using UBoot environment variable whitelisting features in your bootloader it is important that these values be added.**
+
+* `peridio_via_current`: the PRN of the current installed release or bundle override
+* `peridio_via_previous`: the PRN of the previous installed release or bundle override
+* `peridio_via_progress`: the PRN of the release or bundle override in progress
+* `peridio_vsn_current`: the semantic version of the current installed release
+* `peridio_vsn_previous`: the semantic version of the previous installed release
+* `peridio_vsn_progress`: the semantic version of the release in progress
+* `peridio_bin_current`: an concatenated key / value paired encoded string of `<binary_id><custom_metadata_sha256_hash>` internally used to diff installed binaries from bundle to bundle
+* `peridio_bin_previous`: an concatenated key / value paired encoded string of `<binary_id><custom_metadata_sha256_hash>` internally used to diff installed binaries from bundle to bundle
+* `peridio_bin_progress`: an concatenated key / value paired encoded string of `<binary_id><custom_metadata_sha256_hash>` internally used to diff installed binaries from bundle to bundle
+* `peridio_bun_current`: the PRN of the current installed bundle
+* `peridio_bun_previous`: the PRN of the previous installed bundle
+* `peridio_bun_progress`: the PRN of the bundle install in progress
+* `peridio_bc_progress`: Boot / restart counter for peridiod for in progress bundle installation resumption
+* `peridio_bc_current`: Reserved for future use
+
+More information can be found in the [Peridiod Configuration docs](https://docs.peridio.com/integration/linux/peridiod/configuration)
+
+### Installing Bundles and Binaries
+
+Releases allow greater control and flexibility to managing devices in the field. You can package and bundle many binaries with a release enabling workflows for use in embedded products, empowering app stores, and managing connected peripheral device firmware. It offers advanced deployment options for scheduled and phased rollouts.
+
+To use releases, binaries must be configured to use an installer. An Installer is a module that can handle the last mile of deploying your binary onto your device. The following installer modules are currently supported:
+
+  * `fwup`: Binary in the (fwup)[https://github.com/fwup-home/fwup] format.
+  * `file`: Writes individual files to a writeable location on the system.
+  * `deb`: (Debian package manager)[https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html] install format.
+  * `rpm`: (RPM Package manager)[https://rpm.org/] install format.
+  * `opkg`: (OPkg Package manager)[https://openwrt.org/docs/guide-user/additional-software/opkg] installer format.
+  * `swupdate`: (SWUpdate)[https://sbabic.github.io/swupdate/swupdate.html] package format.
+
+
+See the [Peridiod Packaging Updates integration docs](https://docs.peridio.com/integration/linux/peridiod/updates) for more information.
+
 ## v3.0.0-rc.7
 
 * Enhancements
