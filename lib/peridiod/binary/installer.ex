@@ -44,6 +44,7 @@ defmodule Peridiod.Binary.Installer do
 
   def init({binary_metadata, opts}) do
     Logger.info("[Installer #{binary_metadata.prn}] Starting")
+    Process.flag(:trap_exit, true)
 
     case installer_mod(binary_metadata) do
       {:error, reason} ->
@@ -257,6 +258,11 @@ defmodule Peridiod.Binary.Installer do
     }
 
     installer_progress({:noreply, state})
+  end
+
+  def handle_info({:EXIT, _, error}, state) do
+    Logger.debug("[Installer] Handle EXIT")
+    installer_error({:stop, error, state})
   end
 
   def handle_info(msg, state) do
