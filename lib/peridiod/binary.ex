@@ -77,13 +77,7 @@ defmodule Peridiod.Binary do
       end
 
     custom_metadata = Map.get(binary_metadata, "custom_metadata", %{})
-
-    ordered_metadata =
-      custom_metadata
-      |> sort_keys_recursively()
-      |> Jason.encode!()
-
-    custom_metadata_hash = :crypto.hash(:sha256, ordered_metadata)
+    custom_metadata_hash = custom_metadata_hash(custom_metadata)
 
     binary_prn = sanitize_prn(binary_metadata["prn"])
 
@@ -250,10 +244,10 @@ defmodule Peridiod.Binary do
     end)
   end
 
-  defp parse_kv_installed(installed, acc \\ %{})
-  defp parse_kv_installed(nil, _acc), do: %{}
+  def parse_kv_installed(installed, acc \\ %{})
+  def parse_kv_installed(nil, _acc), do: %{}
 
-  defp parse_kv_installed(installed, acc) when is_binary(installed) do
+  def parse_kv_installed(installed, acc) when is_binary(installed) do
     installed
     |> parse_kv_installed_record(acc)
   end
