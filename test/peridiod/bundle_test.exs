@@ -79,4 +79,81 @@ defmodule Peridiod.BundleTest do
                Bundle.metadata_from_cache(cache_pid, bundle_metadata.prn)
     end
   end
+
+  describe "filter uninstalled binaries by target" do
+    setup :start_kv
+    setup :start_cache
+    setup :load_bundle_metadata_from_manifest
+
+    test "ok targets", %{
+      cache_pid: cache_pid,
+      kv_pid: kv_pid,
+      bundle_metadata: bundle_metadata
+    } do
+      binaries_metadata = bundle_metadata.binaries
+      targets = Enum.map(binaries_metadata, & &1.target)
+
+      assert {:ok, [_ | _]} =
+               Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, targets,
+                 cache_pid: cache_pid,
+                 kv_pid: kv_pid
+               )
+    end
+
+    test "ok all targets", %{
+      cache_pid: cache_pid,
+      kv_pid: kv_pid,
+      bundle_metadata: bundle_metadata
+    } do
+      assert {:ok, [_ | _]} =
+               Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, [],
+                 cache_pid: cache_pid,
+                 kv_pid: kv_pid
+               )
+    end
+
+    test "no_targets", %{
+      cache_pid: cache_pid,
+      kv_pid: kv_pid,
+      bundle_metadata: bundle_metadata
+    } do
+      assert {:error, :no_targets} =
+               Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, ["foo"],
+                 cache_pid: cache_pid,
+                 kv_pid: kv_pid
+               )
+    end
+
+    test "kv_installed", %{
+      cache_pid: cache_pid,
+      kv_pid: kv_pid,
+      bundle_metadata: bundle_metadata
+    } do
+      binaries_metadata = bundle_metadata.binaries
+      targets = Enum.map(binaries_metadata, & &1.target)
+      Enum.each(binaries_metadata, &Binary.put_kv_installed(kv_pid, &1, :current))
+
+      assert {:error, :kv_installed} =
+               Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, targets,
+                 cache_pid: cache_pid,
+                 kv_pid: kv_pid
+               )
+    end
+
+    test "cache_installed", %{
+      cache_pid: cache_pid,
+      kv_pid: kv_pid,
+      bundle_metadata: bundle_metadata
+    } do
+      binaries_metadata = bundle_metadata.binaries
+      targets = Enum.map(binaries_metadata, & &1.target)
+      Enum.each(binaries_metadata, &Binary.stamp_installed(cache_pid, &1))
+
+      assert {:error, :cache_installed} =
+               Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, targets,
+                 cache_pid: cache_pid,
+                 kv_pid: kv_pid
+               )
+    end
+  end
 end

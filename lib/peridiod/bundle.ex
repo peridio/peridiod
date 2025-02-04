@@ -2,6 +2,7 @@ defmodule Peridiod.Bundle do
   use Peridiod.Cache.Helpers, cache_path: "bundle"
 
   alias Peridiod.{Binary, Cache, Bundle}
+  alias PeridiodPersistence.KV
 
   defstruct prn: nil,
             binaries: nil
@@ -104,5 +105,23 @@ defmodule Peridiod.Bundle do
 
   def filter_binaries_by_targets(%__MODULE__{binaries: binaries}, targets) do
     Enum.filter(binaries, &(&1.target in [nil, "" | targets]))
+  end
+
+  def filter_uninstalled_binaries_by_target(%__MODULE__{} = bundle_metadata, targets, opts) do
+    cache_pid = opts[:cache_pid] || Cache
+    kv_pid = opts[:kv_pid] || KV
+
+    with {_, [_ | _] = binaries_metadata} <-
+           {:no_targets, Bundle.filter_binaries_by_targets(bundle_metadata, targets)},
+         {_, [_ | _] = binaries_metadata} <-
+           {:kv_installed,
+            Enum.reject(binaries_metadata, &Binary.kv_installed?(kv_pid, &1, :current))},
+         {_, [_ | _] = binaries_metadata} <-
+           {:cache_installed, Enum.reject(binaries_metadata, &Binary.installed?(cache_pid, &1))} do
+      {:ok, binaries_metadata}
+    else
+      {reason, _binaries_metadata} ->
+        {:error, reason}
+    end
   end
 end

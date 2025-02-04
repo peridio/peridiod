@@ -566,20 +566,36 @@ defmodule Peridiod.Update.Server do
 
   defp do_install_bundle(bundle_metadata, callback, %{installing_bundle: nil} = state) do
     binaries_metadata =
-      with {_, [_] = binaries_metadata} <-
-             {"there are no binaries for supported targets #{inspect(state.targets)}",
-              Bundle.filter_binaries_by_targets(bundle_metadata, state.targets)},
-           {_, [_] = binaries_metadata} <-
-             {"binaries already reported installed in peridio_kv_installed",
-              Enum.reject(binaries_metadata, &Binary.kv_installed?(state.kv_pid, &1, :current))},
-           {_, [_] = binaries_metadata} <-
-             {"binaries already reported installed in cache data",
-              Enum.reject(binaries_metadata, &Binary.installed?(state.cache_pid, &1))} do
-        binaries_metadata
-      else
-        {reason, binaries_metadata} ->
-          Logger.info("[Update Server] No binaries to install because #{reason}")
+      Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, state.targets,
+        cache_pid: state.cache_pid,
+        kv_pid: state.kv_pid
+      )
+
+    binaries_metadata =
+      case binaries_metadata do
+        {:ok, binaries_metadata} ->
           binaries_metadata
+
+        {:error, :no_targets} ->
+          Logger.info(
+            "[Update Server] No binaries to install because there are no binaries for supported targets #{inspect(state.targets)}"
+          )
+
+          []
+
+        {:error, :kv_installed} ->
+          Logger.info(
+            "[Update Server] No binaries to install because binaries already reported installed in peridio_kv_installed"
+          )
+
+          []
+
+        {:error, :cache_installed} ->
+          Logger.info(
+            "[Update Server] No binaries to install because binaries already reported installed in cache data"
+          )
+
+          []
       end
 
     trusted? = binaries_trusted?(binaries_metadata, state)
