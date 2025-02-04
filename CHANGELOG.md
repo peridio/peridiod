@@ -1,5 +1,10 @@
 # peridiod releases
 
+## v3.0.1
+
+* Bug fixes
+  * [Bundles] Fix issue with bundle update resolution where all binaries may be installed instead of only binaries that are not installed.
+
 ## v3.0.0
 
 Added Support for Bundle Distributions
