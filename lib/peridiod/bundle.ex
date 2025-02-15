@@ -1,7 +1,7 @@
 defmodule Peridiod.Bundle do
   use Peridiod.Cache.Helpers, cache_path: "bundle"
 
-  alias Peridiod.{Binary, Cache, Bundle}
+  alias Peridiod.{Binary, Cache, Bundle, BundleOverride, Release}
   alias PeridiodPersistence.KV
 
   defstruct prn: nil,
@@ -122,6 +122,17 @@ defmodule Peridiod.Bundle do
     else
       {reason, _binaries_metadata} ->
         {:error, reason}
+    end
+  end
+
+  def via(nil), do: nil
+
+  def via(prn) do
+    cond do
+      String.contains?(prn, "release") -> Release
+      String.contains?(prn, "bundle_override") -> BundleOverride
+      String.contains?(prn, "bundle") -> Bundle
+      true -> nil
     end
   end
 end

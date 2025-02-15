@@ -1,1 +1,2 @@
-  -start_epmd false -erl_epmd_port 6789
+-start_epmd false -erl_epmd_port 6789
+-kernel inet_res "[{lookup, [dns, file, native]}]"

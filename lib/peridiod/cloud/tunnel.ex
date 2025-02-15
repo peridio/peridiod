@@ -1,4 +1,4 @@
-defmodule Peridiod.Tunnel do
+defmodule Peridiod.Cloud.Tunnel do
   # Cloud -> Device: Request to open a tunnel
   # Device -> Cloud: Response public key, available cidrs, and available ports
   # Cloud -> Device: Response interface / peer information
@@ -187,7 +187,7 @@ defmodule Peridiod.Tunnel do
     ]
 
     on_exit = fn reason ->
-      Peridiod.Tunnel.close_request(client, tunnel_prn, reason)
+      Peridiod.Cloud.Tunnel.close_request(client, tunnel_prn, reason)
     end
 
     RAT.open_tunnel(tunnel_prn, interface, peer,

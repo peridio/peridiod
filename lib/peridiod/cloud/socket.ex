@@ -1,8 +1,8 @@
-defmodule Peridiod.Socket do
+defmodule Peridiod.Cloud.Socket do
   use Slipstream
   require Logger
 
-  alias Peridiod.{Client, Distribution, RemoteConsole, Utils, Update}
+  alias Peridiod.{Client, Distribution, RemoteConsole, Utils, Cloud}
   alias Peridiod.Binary.Installer.Fwup
   alias PeridiodPersistence.KV
 
@@ -31,6 +31,10 @@ defmodule Peridiod.Socket do
 
   def start_link(config) do
     GenServer.start_link(__MODULE__, config, name: __MODULE__)
+  end
+
+  def stop() do
+    try_cast(__MODULE__, :stop)
   end
 
   def reconnect() do
@@ -62,8 +66,10 @@ defmodule Peridiod.Socket do
 
   @impl Slipstream
   def init(config) do
+    tls_opts = Cloud.get_tls_opts()
+
     opts = [
-      mint_opts: [protocols: [:http1], transport_opts: config.ssl],
+      mint_opts: [protocols: [:http1], transport_opts: tls_opts],
       uri: config.socket[:url],
       rejoin_after_msec: [@rejoin_after],
       reconnect_after_msec: config.socket[:reconnect_after_msec]
@@ -84,18 +90,10 @@ defmodule Peridiod.Socket do
         false -> params
       end
 
-    current_via_prn = KV.get("peridio_via_current") || KV.get("peridio_rel_current")
-    current_bundle_prn = KV.get("peridio_bun_current")
-    current_version = KV.get("peridio_vsn_current")
-
-    sdk_client =
-      Update.sdk_client(config.sdk_client, current_via_prn, current_bundle_prn, current_version)
-
     socket =
       new_socket()
       |> assign(params: params)
       |> assign(device_api_host: config.device_api_host)
-      |> assign(sdk_client: sdk_client)
       |> assign(remote_iex: config.remote_iex)
       |> assign(remote_shell: config.remote_shell)
       |> assign(remote_access_tunnels: config.remote_access_tunnels)
@@ -126,8 +124,8 @@ defmodule Peridiod.Socket do
 
   @impl Slipstream
   def handle_join(@device_topic, reply, socket) do
-    Logger.info("[Socket] Joined Device channel")
-    Peridiod.Connection.connected()
+    Logger.info("[Cloud Socket] Joined Device channel")
+    Cloud.Connection.connected()
     _ = handle_join_reply(reply)
     send(self(), :tunnel_synchronize)
     {:ok, socket}
@@ -135,7 +133,7 @@ defmodule Peridiod.Socket do
 
   def handle_join(@console_topic, _reply, socket) do
     protocol = if socket.assigns.remote_iex, do: "IEx", else: "getty"
-    Logger.info("[Socket] Joined Console channel: #{protocol}")
+    Logger.info("[Cloud Socket] Joined Console channel: #{protocol}")
     {:ok, socket}
   end
 
@@ -186,12 +184,16 @@ defmodule Peridiod.Socket do
     {:noreply, socket}
   end
 
+  def handle_cast(:stop, socket) do
+    {:stop, :normal, disconnect(socket)}
+  end
+
   @impl Slipstream
   ##
   # Device API messages
   #
   def handle_message(@device_topic, "reboot", _params, socket) do
-    Logger.warning("[Socket] Reboot Request")
+    Logger.warning("[Cloud Socket] Reboot Request")
     _ = push(socket, @device_topic, "rebooting", %{})
 
     System.cmd("reboot", [], stderr_to_stdout: true)
@@ -219,7 +221,7 @@ defmodule Peridiod.Socket do
 
       error ->
         Logger.error(
-          "[Socket] Error parsing update data: #{inspect(update)} error: #{inspect(error)}"
+          "[Cloud Socket] Error parsing update data: #{inspect(update)} error: #{inspect(error)}"
         )
 
         {:ok, socket}
@@ -233,10 +235,10 @@ defmodule Peridiod.Socket do
         %{assigns: %{remote_access_tunnels: %{enabled: false}}} = socket
       ) do
     Logger.warning(
-      "[Socket] Remote Access Tunnel requested but not enabled on the device: #{inspect(payload)}"
+      "[Cloud Socket] Remote Access Tunnel requested but not enabled on the device: #{inspect(payload)}"
     )
 
-    Peridiod.Tunnel.close(tunnel_prn, "feature_not_enabled")
+    Cloud.Tunnel.close(tunnel_prn, "feature_not_enabled")
     {:ok, socket}
   end
 
@@ -249,8 +251,10 @@ defmodule Peridiod.Socket do
     service_ports = socket.assigns.remote_access_tunnels.service_ports
 
     if dport in service_ports do
-      case Peridiod.Tunnel.create(
-             socket.assigns.sdk_client,
+      device_client = Cloud.get_client()
+
+      case Cloud.Tunnel.create(
+             device_client,
              tunnel_prn,
              dport,
              socket.assigns.remote_access_tunnels
@@ -260,14 +264,14 @@ defmodule Peridiod.Socket do
 
         error ->
           Logger.error("[Socket] Tunnel Open Error: #{inspect(error)}")
-          Peridiod.Tunnel.close(tunnel_prn, "server_error_create")
+          Cloud.Tunnel.close(tunnel_prn, "server_error_create")
       end
     else
       Logger.warning(
-        "[Socket] Remote Access Tunnel requested for port #{dport} but not enabled in service port list: #{inspect(service_ports)}"
+        "[Cloud Socket] Remote Access Tunnel requested for port #{dport} but not enabled in service port list: #{inspect(service_ports)}"
       )
 
-      Peridiod.Tunnel.close(tunnel_prn, "dport_not_allowed")
+      Cloud.Tunnel.close(tunnel_prn, "dport_not_allowed")
     end
 
     {:ok, socket}
@@ -289,7 +293,7 @@ defmodule Peridiod.Socket do
         socket
       ) do
     {:ok, expires_at, _offset} = DateTime.from_iso8601(expires_at)
-    Logger.info("[Socket] Tunnel Server requested extend")
+    Logger.info("[Cloud Socket] Tunnel Server requested extend")
     Peridio.RAT.extend_tunnel(tunnel_prn, expires_at)
     {:ok, socket}
   end
@@ -304,8 +308,8 @@ defmodule Peridiod.Socket do
   end
 
   def handle_message(@device_topic, "tunnel_close", %{"tunnel_prn" => tunnel_prn}, socket) do
-    Logger.info("[Socket] Tunnel Server requested close")
-    Peridiod.Tunnel.close(tunnel_prn, "server_requested_close")
+    Logger.info("[Cloud Socket] Tunnel Server requested close")
+    Cloud.Tunnel.close(tunnel_prn, "server_requested_close")
     {:ok, socket}
   end
 
@@ -314,7 +318,7 @@ defmodule Peridiod.Socket do
   #
   def handle_message(@console_topic, "restart", _payload, socket) do
     protocol = if socket.assigns.remote_iex, do: "IEx", else: "getty"
-    Logger.warning("[Socket] Restarting #{protocol} process from web request")
+    Logger.warning("[Cloud Socket] Restarting #{protocol} process from web request")
     _ = push(socket, @console_topic, "up", %{data: "\r*** Restarting #{protocol} ***\r"})
 
     socket =
@@ -374,7 +378,7 @@ defmodule Peridiod.Socket do
   def handle_info({:remote_console, _, {:error, error}}, socket) do
     msg = "\r******* Remote Console stopped: #{inspect(error)} *******\r"
     _ = push(socket, @console_topic, "up", %{data: msg})
-    Logger.warning("[Socket] Remote console stopped #{inspect(msg)}")
+    Logger.warning("[Cloud Socket] Remote console stopped #{inspect(msg)}")
 
     socket =
       socket
@@ -391,8 +395,9 @@ defmodule Peridiod.Socket do
   end
 
   def handle_info(:tunnel_synchronize, socket) do
-    Logger.info("[Socket] Tunnels synchronizing")
-    Peridiod.Tunnel.synchronize(socket.assigns.sdk_client, socket.assigns.remote_access_tunnels)
+    Logger.info("[Cloud Socket] Tunnels synchronizing")
+    device_client = Cloud.get_client()
+    Cloud.Tunnel.synchronize(device_client, socket.assigns.remote_access_tunnels)
     {:noreply, socket}
   end
 
@@ -401,14 +406,14 @@ defmodule Peridiod.Socket do
   end
 
   def handle_info(msg, socket) do
-    Logger.warning("[Socket] Unhandled handle_info: #{inspect(msg)}")
+    Logger.warning("[Cloud Socket] Unhandled handle_info: #{inspect(msg)}")
     {:noreply, socket}
   end
 
   @impl Slipstream
   def handle_topic_close(topic, reason, socket) when reason != :left do
     if topic == @device_topic do
-      _ = Peridiod.Connection.disconnected()
+      _ = Cloud.Connection.disconnected()
       _ = Client.handle_error(reason)
     end
 
@@ -423,7 +428,7 @@ defmodule Peridiod.Socket do
 
   @impl Slipstream
   def terminate(_reason, socket) do
-    _ = Peridiod.Connection.disconnected()
+    _ = Cloud.Connection.disconnected()
     disconnect(socket)
   end
 
@@ -434,7 +439,7 @@ defmodule Peridiod.Socket do
 
       error ->
         Logger.error(
-          "[Socket] Error parsing update data: #{inspect(update)} error: #{inspect(error)}"
+          "[Cloud Socket] Error parsing update data: #{inspect(update)} error: #{inspect(error)}"
         )
 
         :noop
@@ -452,13 +457,13 @@ defmodule Peridiod.Socket do
   end
 
   defp start_remote_console(%{assigns: %{remote_iex: true}} = socket) do
-    Logger.info("[Socket] Remote Console: Starting IEx")
+    Logger.info("[Cloud Socket] Remote Console: Starting IEx")
     {:ok, iex_pid} = RemoteConsole.IEx.start_link([])
     assign(socket, remote_console_pid: iex_pid)
   end
 
   defp start_remote_console(%{assigns: %{remote_shell: true}} = socket) do
-    Logger.info("[Socket] Remote Console: Starting shell")
+    Logger.info("[Cloud Socket] Remote Console: Starting shell")
     {:ok, getty_pid} = RemoteConsole.Getty.start_link([])
     assign(socket, remote_console_pid: getty_pid)
   end

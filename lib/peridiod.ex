@@ -1,5 +1,5 @@
 defmodule Peridiod do
-  alias Peridiod.Socket
+  alias Peridiod.Cloud.Socket
   alias Peridiod.Distribution
 
   @env Mix.env()

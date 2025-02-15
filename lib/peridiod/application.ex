@@ -6,8 +6,7 @@ defmodule Peridiod.Application do
   alias Peridiod.{
     Config,
     Cache,
-    Connection,
-    Socket,
+    Cloud,
     Distribution,
     Update,
     Binary
@@ -17,11 +16,17 @@ defmodule Peridiod.Application do
     config = Peridiod.config()
     configure_logger(config)
 
+    peridio_net_mon_config = Application.get_all_env(:peridio_net_mon)
+
     children = [
       {Cache, config},
+      {Peridio.NetMon.Supervisor, peridio_net_mon_config},
+      {Cloud.NetworkMonitor, config.network_monitor},
       Binary.Installer.Supervisor,
       Binary.StreamDownloader.Supervisor,
       Binary.CacheDownloader.Supervisor,
+      {Cloud, config},
+      {Cloud.Update, config},
       {Update.Server, config}
     ]
 
@@ -30,8 +35,8 @@ defmodule Peridiod.Application do
         true ->
           children ++
             [
-              Connection,
-              {Socket, config},
+              Cloud.Connection,
+              {Cloud.Socket, config},
               {Distribution.Server, config}
             ]
 

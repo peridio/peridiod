@@ -20,11 +20,20 @@ defmodule Peridiod.Update.Server do
 
   require Logger
 
-  alias Peridiod.{Binary, SigningKey, Socket, Release, Bundle, BundleOverride, Update}
+  alias Peridiod.{
+    Binary,
+    SigningKey,
+    Cloud.Socket,
+    Release,
+    Bundle,
+    BundleOverride,
+    Update,
+    Cloud
+  }
+
   alias Peridiod.Binary.{Installer, CacheDownloader}
   alias PeridiodPersistence.KV
 
-  @update_poll_interval 30 * 60 * 1000
   @progress_message_interval 1500
 
   @doc false
@@ -37,12 +46,6 @@ defmodule Peridiod.Update.Server do
     GenServer.stop(pid_or_name)
   end
 
-  @spec check_for_update(pid() | atom()) ::
-          :updating | :no_update | :device_quarantined | {:error, reason :: any}
-  def check_for_update(pid_or_name \\ __MODULE__) do
-    GenServer.call(pid_or_name, :check_for_update)
-  end
-
   @spec current_bundle(pid() | atom()) :: {BundleOverride.t() | Release.t()}
   def current_bundle(pid_or_name \\ __MODULE__) do
     GenServer.call(pid_or_name, :current_bundle)
@@ -52,8 +55,8 @@ defmodule Peridiod.Update.Server do
     GenServer.call(pid_or_name, {:cache_bundle, bundle_metadata})
   end
 
-  def install_bundle(pid_or_name \\ __MODULE__, %Bundle{} = bundle_metadata) do
-    GenServer.call(pid_or_name, {:install_bundle, bundle_metadata})
+  def install_bundle(pid_or_name \\ __MODULE__, bundle_or_via_metadata) do
+    GenServer.call(pid_or_name, {:install_bundle, bundle_or_via_metadata})
   end
 
   def cache_binary(pid_or_name \\ __MODULE__, %Binary{} = binary_metadata) do
@@ -84,7 +87,6 @@ defmodule Peridiod.Update.Server do
 
     cache_pid = config.cache_pid
     kv_pid = config.kv_pid
-    poll_interval = config.update_poll_interval || @update_poll_interval
     progress_message_interval = @progress_message_interval
 
     current_via_prn =
@@ -101,13 +103,6 @@ defmodule Peridiod.Update.Server do
       "" -> nil
       val -> val
     end
-
-    current_version =
-      case KV.get("peridio_vsn_current") do
-        nil -> KV.get_active("peridio_version")
-        "" -> nil
-        val -> val
-      end
 
     progress_via_prn =
       case KV.get("peridio_via_progress") do
@@ -128,13 +123,8 @@ defmodule Peridiod.Update.Server do
     progress_via = load_metadata_from_cache(progress_via_prn, cache_pid)
     progress_bundle = load_metadata_from_cache(progress_bundle_prn, cache_pid)
 
-    sdk_client =
-      Update.sdk_client(config.sdk_client, current_via_prn, current_bundle_prn, current_version)
-
     state = %{
       config: config,
-      sdk_client: sdk_client,
-      poll_interval: poll_interval,
       targets: config.targets,
       trusted_signing_keys: trusted_signing_keys,
       trusted_signing_key_threshold: config.trusted_signing_key_threshold,
@@ -153,39 +143,7 @@ defmodule Peridiod.Update.Server do
       update_timer: nil
     }
 
-    {:ok, state, {:continue, config.update_poll_enabled}}
-  end
-
-  @impl GenServer
-  def handle_continue(true, state) do
-    Logger.info("[Update Server] Polling enabled")
-
-    send(self(), :resume_update)
-    send(self(), :check_for_update)
-
-    progress_message_timer =
-      Process.send_after(self(), :send_progress_message, state.progress_message_interval)
-
-    update_timer = Process.send_after(self(), :check_for_update, state.poll_interval)
-
-    {:noreply,
-     %{state | progress_message_timer: progress_message_timer, update_timer: update_timer}}
-  end
-
-  def handle_continue(false, state) do
-    Logger.info("[Update Server] Polling Disabled")
-    send(self(), :resume_update)
-    {:noreply, state}
-  end
-
-  @impl GenServer
-  def handle_call(:check_for_update, _from, state) do
-    {resp, state} =
-      state
-      |> update_check()
-      |> update_response(state)
-
-    {:reply, resp, state}
+    {:ok, state}
   end
 
   def handle_call(:current_bundle, _from, state) do
@@ -199,11 +157,11 @@ defmodule Peridiod.Update.Server do
   end
 
   def handle_call(
-        {:install_bundle, %Bundle{} = bundle_metadata},
+        {:install_bundle, bundle_or_via_metadata},
         {from, _ref},
         state
       ) do
-    {reply, state} = do_install_bundle(bundle_metadata, from, state)
+    {reply, state} = do_install_bundle(bundle_or_via_metadata, from, state)
     {:reply, reply, state}
   end
 
@@ -310,17 +268,6 @@ defmodule Peridiod.Update.Server do
         Logger.error("[Update Server] Aborting resumption")
         {:noreply, %{state | progress_bundle: nil, progress_via: nil}}
     end
-  end
-
-  def handle_info(:check_for_update, state) do
-    {_, state} =
-      state
-      |> update_check()
-      |> update_response(state)
-
-    update_timer = Process.send_after(self(), :check_for_update, state.poll_interval)
-
-    {:noreply, %{state | update_timer: update_timer}}
   end
 
   def handle_info({:download_cache, binary_metadata, {:progress, download_percent}}, state) do
@@ -443,111 +390,6 @@ defmodule Peridiod.Update.Server do
     :ok
   end
 
-  defp update_check(%{sdk_client: client}) do
-    Logger.info("[Update Server] Checking for update")
-
-    PeridioSDK.DeviceAPI.Devices.update(client, [
-      "manifest.binary_prn",
-      "manifest.custom_metadata",
-      "manifest.hash",
-      "manifest.target",
-      "manifest.url",
-      "manifest.signatures",
-      "manifest.size",
-      "manifest.artifact.prn",
-      "manifest.artifact.name",
-      "manifest.artifact_version.prn",
-      "manifest.artifact_version.version",
-      "bundle.prn",
-      "release.prn",
-      "release.version",
-      "release.version_requirement",
-      "bundle_override"
-    ])
-  end
-
-  # Update to new Release
-  defp update_response(
-         {:ok, %{status: 200, body: %{"status" => "update", "release" => _release} = body}},
-         state
-       ) do
-    {:ok, release_metadata} = Release.metadata_from_manifest(body)
-    Release.metadata_to_cache(state.cache_pid, release_metadata)
-
-    state = %{state | progress_via: release_metadata}
-
-    case do_install_bundle(release_metadata.bundle, self(), state) do
-      {:ok, state} ->
-        Logger.info(
-          "[Update Server] Installing Bundle #{release_metadata.bundle.prn} from Release #{release_metadata.prn}"
-        )
-
-        {:updating,
-         %{state | progress_via: release_metadata, progress_bundle: release_metadata.bundle}}
-
-      {{:error, error}, state} ->
-        Logger.error(
-          "[Update Server] Error installing bundle #{release_metadata.bundle.prn} #{inspect(error)}"
-        )
-
-        {:no_update, state}
-    end
-  end
-
-  defp update_response(
-         {:ok,
-          %{
-            status: 200,
-            body: %{"status" => "update", "bundle_override" => _bundle_override} = body
-          }},
-         state
-       ) do
-    {:ok, override_metadata} = BundleOverride.metadata_from_manifest(body)
-    BundleOverride.metadata_to_cache(state.cache_pid, override_metadata)
-
-    state = %{state | progress_via: override_metadata}
-
-    case do_install_bundle(override_metadata.bundle, self(), state) do
-      {:ok, state} ->
-        Logger.info(
-          "[Update Server] Installing Bundle #{override_metadata.bundle.prn} from BundleOverride #{override_metadata.prn}"
-        )
-
-        {:updating,
-         %{state | progress_via: override_metadata, progress_bundle: override_metadata.bundle}}
-
-      {{:error, error}, state} ->
-        Logger.error(
-          "[Update Server] Error installing bundle #{override_metadata.bundle.prn} #{inspect(error)}"
-        )
-
-        {:no_update, state}
-    end
-  end
-
-  defp update_response({:ok, %{status: 200, body: %{"status" => "no_update"}}}, state) do
-    Logger.info("[Update Server] no update")
-    {:no_update, state}
-  end
-
-  defp update_response({:ok, %{status: 200, body: %{"status" => "device_quarantined"}}}, state) do
-    Logger.info("[Update Server] Device Quarantined")
-    Logger.info("[Update Server] no update")
-    {:device_quarantined, state}
-  end
-
-  defp update_response({_, %{status: status_code, body: body}}, state) do
-    Logger.info("[Update Server] Non 200 response from server")
-    Logger.info("[Update Server] Status code: #{inspect(status_code)}")
-    Logger.info("[Update Server] Response: #{inspect(body)}")
-    {{:error, body}, state}
-  end
-
-  defp update_response({:error, reason}, state) do
-    Logger.error("[Update Server] error checking for update #{inspect(reason)}")
-    {{:error, reason}, state}
-  end
-
   defp load_trusted_signing_keys([]) do
     Logger.warning("""
       Trusted signing keys are unspecified
@@ -564,7 +406,37 @@ defmodule Peridiod.Update.Server do
     MapSet.new(keys)
   end
 
-  defp do_install_bundle(bundle_metadata, callback, %{installing_bundle: nil} = state) do
+  defp do_install_bundle(%Release{} = via_metadata, callback, state) do
+    do_install_bundle(via_metadata.bundle, via_metadata, callback, state)
+  end
+
+  defp do_install_bundle(%BundleOverride{} = via_metadata, callback, state) do
+    do_install_bundle(via_metadata.bundle, via_metadata, callback, state)
+  end
+
+  defp do_install_bundle(%Bundle{} = bundle_metadata, callback, state) do
+    do_install_bundle(bundle_metadata, nil, callback, state)
+  end
+
+  defp do_install_bundle(
+         _bundle,
+         _via,
+         _callback,
+         %{installing_bundle: {bundle_metadata, _, _}} = state
+       ) do
+    Logger.error(
+      "[Update Server] Error installing while bundle #{bundle_metadata.prn} is being installed"
+    )
+
+    {{:error, {:installing_bundle, bundle_metadata}}, state}
+  end
+
+  defp do_install_bundle(
+         bundle_metadata,
+         via_metadata,
+         callback,
+         %{installing_bundle: nil} = state
+       ) do
     binaries_metadata =
       Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, state.targets,
         cache_pid: state.cache_pid,
@@ -614,7 +486,13 @@ defmodule Peridiod.Update.Server do
 
           _ ->
             state = do_binaries_jobs(binaries_metadata, Installer.Supervisor, callback, state)
-            state = %{state | installing_bundle: {bundle_metadata, binaries_metadata, callback}}
+
+            state = %{
+              state
+              | installing_bundle: {bundle_metadata, binaries_metadata, callback},
+                progress_via: via_metadata
+            }
+
             {:ok, state}
         end
 
@@ -622,18 +500,6 @@ defmodule Peridiod.Update.Server do
         Logger.error("[Update Server] unable to install binaries with untrusted signatures")
         {{:error, :untrusted_signatures}, state}
     end
-  end
-
-  defp do_install_bundle(
-         _bundle_metadata,
-         _callback,
-         %{installing_bundle: {bundle_metadata, _, _}} = state
-       ) do
-    Logger.error(
-      "[Update Server] Error installing while bundle #{bundle_metadata.prn} is being installed"
-    )
-
-    {{:error, {:installing_bundle, bundle_metadata}}, state}
   end
 
   defp do_cache_bundle(bundle_metadata, callback, state) do
@@ -741,13 +607,11 @@ defmodule Peridiod.Update.Server do
     Update.cache_clean(state.cache_pid, KV.get_all(state.kv_pid))
     Logger.info("[Update Server] Install complete")
 
-    sdk_client =
-      Update.sdk_client(
-        state.sdk_client,
-        Map.get(via_metadata, :prn),
-        bundle_metadata.prn,
-        version
-      )
+    Cloud.update_client_headers(
+      bundle_prn: bundle_metadata.prn,
+      via_prn: Map.get(via_metadata, :prn),
+      release_version: version
+    )
 
     try_send(callback, {__MODULE__, :install, bundle_metadata.prn, :complete})
     state = maybe_reboot(bundle_metadata, callback, state)
@@ -758,8 +622,7 @@ defmodule Peridiod.Update.Server do
         current_bundle: state.progress_bundle,
         current_via: via_metadata,
         progress_bundle: nil,
-        progress_via: nil,
-        sdk_client: sdk_client
+        progress_via: nil
     }
   end
 
@@ -799,7 +662,7 @@ defmodule Peridiod.Update.Server do
   defp load_metadata_from_cache(nil, _cache_pid), do: nil
 
   defp load_metadata_from_cache(prn, cache_pid) do
-    case Update.via(prn) do
+    case Bundle.via(prn) do
       Release ->
         case Release.metadata_from_cache(cache_pid, prn) do
           {:ok, release} -> release
