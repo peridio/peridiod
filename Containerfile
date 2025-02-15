@@ -18,6 +18,7 @@ RUN apk add --no-cache \
     libsodium-dev \
     autoconf \
     libtool \
+    libmnl-dev \
     libarchive-dev \
     confuse-dev \
     xdelta3 \

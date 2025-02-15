@@ -1,4 +1,4 @@
-defmodule Peridiod.Connection do
+defmodule Peridiod.Cloud.Connection do
   @moduledoc """
   Agent used to keep the simple state of the devices connection
   to [peridio.com](https://www.peridio.com).
