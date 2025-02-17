@@ -14,7 +14,8 @@ RUN dnf groupinstall -y 'Development Tools' && \
   ncurses-devel \
   openssl-devel \
   git \
-  unzip
+  unzip \
+  libmnl-devel
 
 SHELL ["/bin/bash", "-lc"]
 

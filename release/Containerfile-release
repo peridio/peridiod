@@ -21,7 +21,8 @@ RUN apk add --no-cache \
     unzip \
     zip \
     make \
-    git
+    git \
+    libmnl-dev
 
 RUN mix archive.install github hexpm/hex branch latest --force
 RUN /usr/local/bin/mix local.rebar --force
