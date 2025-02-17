@@ -14,7 +14,8 @@ RUN dnf groupinstall -y 'Development Tools' && \
     libstdc++-static \
     gcc-c++ \
     wget \
-    perl
+    perl \
+    libmnl-devel
 
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \

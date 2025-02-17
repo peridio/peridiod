@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
     && apt-get install -y \
-    git make build-essential
+    git make build-essential libmnl-dev
 
 RUN mix archive.install github hexpm/hex branch latest --force
 RUN mix local.rebar --force
