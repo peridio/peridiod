@@ -11,7 +11,8 @@ defmodule Peridiod.Cloud.NetworkMonitor do
   If a network interface
   """
 
-  defstruct interfaces: []
+  defstruct interfaces: %{},
+            priorities: []
 
   defmodule InterfaceInfo do
     defstruct status: nil,
@@ -23,19 +24,19 @@ defmodule Peridiod.Cloud.NetworkMonitor do
     do: config(%{interface_priority: interface_priority})
 
   def config(%{interface_priority: interface_priority}) do
-    {interfaces, _weight_counter} =
-      Enum.reduce(interface_priority, {%{}, 0}, fn
-        %{} = kv, {acc, weight} ->
+    {interfaces, priorities, _weight_counter} =
+      Enum.reduce(interface_priority, {%{}, [], 0}, fn
+        %{} = kv, {acc, priorities, weight} ->
           [ifname] = Map.keys(kv)
           acc = Map.put(acc, ifname, %InterfaceInfo{opts: Map.get(kv, ifname), weight: weight})
-          {acc, weight + 1}
+          {acc, [ifname | priorities], weight + 1}
 
-        ifname, {acc, weight} when is_binary(ifname) ->
+        ifname, {acc, priorities, weight} when is_binary(ifname) ->
           acc = Map.put(acc, ifname, %InterfaceInfo{weight: weight})
-          {acc, weight + 1}
+          {acc, [ifname | priorities], weight + 1}
       end)
 
-    %__MODULE__{interfaces: interfaces}
+    %__MODULE__{interfaces: interfaces, priorities: Enum.reverse(priorities)}
   end
 
   def config(_) do
@@ -46,13 +47,14 @@ defmodule Peridiod.Cloud.NetworkMonitor do
     GenServer.start_link(__MODULE__, opts, genserver_opts)
   end
 
-  def init(%__MODULE__{interfaces: interfaces}) do
+  def init(%__MODULE__{interfaces: interfaces, priorities: priorities}) do
     setup_monitor_priority(interfaces)
     interfaces = interfaces_initial_state(interfaces)
 
     {:ok,
      %{
        interfaces: interfaces,
+       priorities: priorities,
        bound_to_interface: nil
      }}
   end
@@ -83,10 +85,8 @@ defmodule Peridiod.Cloud.NetworkMonitor do
           state
       ) do
     interfaces = update_in(state.interfaces, [ifname, Access.key(:status)], fn _ -> :internet end)
-    new_priority = Enum.find_index(state.interfaces, fn {name, _interface} -> ifname == name end)
-
-    current_priority =
-      Enum.find_index(state.interfaces, fn {name, _interface} -> bound == name end)
+    new_priority = Enum.find_index(state.priorities, &(&1 == ifname))
+    current_priority = Enum.find_index(state.priorities, &(&1 == bound))
 
     bound_to_interface =
       if current_priority > new_priority do
@@ -95,35 +95,46 @@ defmodule Peridiod.Cloud.NetworkMonitor do
         Cloud.Socket.stop()
         bound
       else
+        Logger.info("[Cloud Monitor] Keeping bound interface #{bound}")
         bound
       end
 
     {:noreply, %{state | bound_to_interface: bound_to_interface, interfaces: interfaces}}
   end
 
+  def handle_info(
+        {NetMon, ["interface", ifname, "connection"], _, :internet, _timestamps},
+        %{bound_to_interface: {ifname, interface}} = state
+      ) do
+    Logger.info("[Cloud Monitor] Already bound #{ifname}")
+    interfaces = Map.put(state.interfaces, ifname, %{interface | status: :internet})
+    {:noreply, %{state | interfaces: interfaces}}
+  end
+
   # Lost connection to current bound device
   def handle_info(
-        {NetMon, ["interface", ifname, "connection"], :internet, status, _timestamps},
+        {NetMon, ["interface", ifname, "connection"], _, status, _timestamps},
         %{bound_to_interface: {ifname, interface}} = state
       ) do
     Logger.info("[Cloud Monitor] Connection lost with current interface #{ifname}")
     interfaces = Map.put(state.interfaces, ifname, %{interface | status: status})
 
     next_interface =
-      Enum.find(interfaces, fn
-        {_ifname, %{status: :internet}} -> true
-        {_ifname, _interface} -> false
+      Enum.find(state.priorities, fn
+        ifname ->
+          Enum.find(interfaces, &(elem(&1, 0) == ifname and elem(&1, 1).status == :internet))
       end)
 
     bound_to_interface = update_bind_to_device(next_interface)
     Cloud.Socket.stop()
-    {:noreply, %{bound_to_interface: bound_to_interface, interfaces: interfaces}}
+    {:noreply, %{state | bound_to_interface: bound_to_interface, interfaces: interfaces}}
   end
 
   def handle_info(
         {NetMon, ["interface", ifname, "connection"], _, status, _timestamps},
         state
       ) do
+    Logger.info("[Cloud Monitor] Updating interface #{ifname}")
     interfaces = update_in(state.interfaces, [ifname, Access.key(:status)], fn _ -> status end)
     state = %{state | interfaces: interfaces}
     {:noreply, state}

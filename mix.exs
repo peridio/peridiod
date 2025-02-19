@@ -9,7 +9,7 @@ defmodule Peridiod.MixProject do
       version: @version,
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
-      # aliases: [test: "test --no-start"],
+      aliases: [test: "test --no-start"],
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: [

@@ -85,8 +85,9 @@ defmodule Peridiod.Cloud do
     {:reply, state.tls_opts, state}
   end
 
-  def handle_call({:update_tls_opts, opts}, _from, state) do
-    {:reply, :ok, %{state | tls_opts: opts}}
+  def handle_call({:update_tls_opts, tls_opts}, _from, state) do
+    client = do_update_client_transport_opts(state.client, tls_opts)
+    {:reply, :ok, %{state | tls_opts: tls_opts, client: client}}
   end
 
   def handle_info(_msg, state) do
@@ -107,6 +108,10 @@ defmodule Peridiod.Cloud do
       Release -> Map.put(client, :release_prn, via_prn)
       _ -> Map.put(client, :release_prn, nil)
     end
+  end
+
+  defp do_update_client_transport_opts(%{adapter: {mod, opts}} = client, tls_opts) do
+    %{client | adapter: {mod, Keyword.put(opts, :transport_opts, tls_opts)}}
   end
 
   defp sanitize(""), do: nil
