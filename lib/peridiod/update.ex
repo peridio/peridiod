@@ -139,29 +139,6 @@ defmodule Peridiod.Update do
     Logger.info("[Update] Cache cleanup finished")
   end
 
-  def via(nil), do: nil
-
-  def via(prn) do
-    cond do
-      String.contains?(prn, "release") -> Release
-      String.contains?(prn, "bundle_override") -> BundleOverride
-      String.contains?(prn, "bundle") -> Bundle
-      true -> nil
-    end
-  end
-
-  def sdk_client(sdk_client, via_prn, bundle_prn, version) do
-    sdk_client =
-      sdk_client
-      |> Map.put(:bundle_prn, kv_sanitize(bundle_prn))
-      |> Map.put(:release_version, kv_sanitize(version))
-
-    case via(via_prn) do
-      Release -> Map.put(sdk_client, :release_prn, via_prn)
-      _ -> Map.put(sdk_client, :release_prn, nil)
-    end
-  end
-
   def system_reboot(%Config{} = config) do
     with {_, 0} <-
            System.cmd(config.reboot_sync_cmd, config.reboot_sync_opts, stderr_to_stdout: true),

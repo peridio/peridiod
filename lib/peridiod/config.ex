@@ -2,7 +2,7 @@ defmodule Peridiod.Config do
   use Peridiod.Log
 
   alias PeridiodPersistence.KV
-  alias Peridiod.{Backoff, Cache, SigningKey}
+  alias Peridiod.{Backoff, Cache, SigningKey, Cloud}
   alias __MODULE__
 
   require Logger
@@ -28,6 +28,7 @@ defmodule Peridiod.Config do
             fwup_devpath: "/dev/mmcblk0",
             fwup_env: [],
             fwup_extra_args: [],
+            network_monitor: %{},
             params: %{},
             reboot_delay: 5_000,
             reboot_cmd: "reboot",
@@ -46,8 +47,7 @@ defmodule Peridiod.Config do
             trusted_signing_key_threshold: 1,
             socket: [],
             socket_enabled?: true,
-            ssl: [],
-            sdk_client: nil
+            ssl: []
 
   @type public_key :: :public_key.public_key()
   @type private_key :: :public_key.private_key()
@@ -74,6 +74,7 @@ defmodule Peridiod.Config do
           fwup_devpath: Path.t(),
           fwup_env: [{String.t(), String.t()}],
           fwup_extra_args: [String.t()],
+          network_monitor: NetworkMonitor.t(),
           params: map(),
           reboot_delay: non_neg_integer,
           reboot_cmd: String.t(),
@@ -91,8 +92,7 @@ defmodule Peridiod.Config do
           trusted_signing_key_threshold: non_neg_integer(),
           socket: any(),
           socket_enabled?: boolean,
-          ssl: [:ssl.tls_client_option()],
-          sdk_client: %{}
+          ssl: [:ssl.tls_client_option()]
         }
 
   @spec new(Config.t()) :: Config.t()
@@ -187,6 +187,7 @@ defmodule Peridiod.Config do
       |> override_if_set(:reboot_sync_opts, config_file["reboot_sync_opts"])
       |> override_if_set(:remote_shell, config_file["remote_shell"])
       |> override_if_set(:remote_iex, config_file["remote_iex"])
+      |> override_if_set(:network_monitor, config_file["network_monitor"])
       |> override_if_set(:key_pair_source, config_file["node"]["key_pair_source"])
       |> override_if_set(:key_pair_config, config_file["node"]["key_pair_config"])
       |> override_if_set(:socket_enabled?, config_file["socket_enabled?"])
@@ -213,11 +214,13 @@ defmodule Peridiod.Config do
         value when is_atom(value) -> value
       end
 
+    network_monitor = Cloud.NetworkMonitor.config(config.network_monitor)
     trusted_signing_keys = Map.get(config, :trusted_signing_keys) |> load_trusted_signing_keys()
-    config = Map.put(config, :trusted_signing_keys, trusted_signing_keys)
 
     config =
       config
+      |> Map.put(:trusted_signing_keys, trusted_signing_keys)
+      |> Map.put(:network_monitor, network_monitor)
       |> Map.put(:socket,
         url: "wss://#{config.device_api_host}:#{config.device_api_port}/socket/websocket"
       )
@@ -227,34 +230,22 @@ defmodule Peridiod.Config do
         cacertfile: config.device_api_ca_certificate_path
       )
 
-    config =
-      case config.key_pair_source do
-        "file" ->
-          Peridiod.Config.File.config(config.key_pair_config, config)
+    case config.key_pair_source do
+      "file" ->
+        Peridiod.Config.File.config(config.key_pair_config, config)
 
-        "pkcs11" ->
-          Peridiod.Config.PKCS11.config(config.key_pair_config, config)
+      "pkcs11" ->
+        Peridiod.Config.PKCS11.config(config.key_pair_config, config)
 
-        "uboot-env" ->
-          Peridiod.Config.UBootEnv.config(config.key_pair_config, config)
+      "uboot-env" ->
+        Peridiod.Config.UBootEnv.config(config.key_pair_config, config)
 
-        "env" ->
-          Peridiod.Config.Env.config(config.key_pair_config, config)
+      "env" ->
+        Peridiod.Config.Env.config(config.key_pair_config, config)
 
-        type ->
-          error("Unknown key pair type: #{type}")
-      end
-
-    adapter = {Tesla.Adapter.Mint, timeout: 10_000, transport_opts: config.ssl}
-
-    sdk_client =
-      PeridioSDK.Client.new(
-        device_api_host: "https://#{config.device_api_host}",
-        adapter: adapter,
-        user_agent: user_agent()
-      )
-
-    Map.put(config, :sdk_client, sdk_client)
+      type ->
+        error("Unknown key pair type: #{type}")
+    end
   end
 
   defp override_if_set(%{} = config, _key, value) when is_nil(value), do: config
@@ -379,15 +370,5 @@ defmodule Peridiod.Config do
           signing_keys
       end
     end)
-  end
-
-  defp user_agent() do
-    {os_family, os_type} = :erlang.system_info(:os_type)
-    arch = :erlang.system_info(:system_architecture)
-    version = Peridiod.version()
-    otp_version = :erlang.system_info(:otp_release) |> to_string()
-    elixir_version = System.version()
-
-    "peridiod/#{version} (#{os_family},#{os_type}; #{arch}) OTP/#{otp_version} Elixir/#{elixir_version}"
   end
 end
