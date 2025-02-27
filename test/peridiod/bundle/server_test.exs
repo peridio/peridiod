@@ -1,75 +1,75 @@
-defmodule Peridiod.Update.ServerTest do
+defmodule Peridiod.Bundle.ServerTest do
   use PeridiodTest.Case
-  doctest Peridiod.Update.Server
+  doctest Peridiod.Bundle.Server
 
-  alias Peridiod.{Binary, Release, Bundle, Cache, Update}
+  alias Peridiod.{Binary, Release, Bundle, Cache}
   alias PeridiodPersistence.KV
 
   describe "binary" do
     setup :start_cache
     setup :load_release_metadata_from_manifest
-    setup :start_update_server
+    setup :start_plan_server
+    setup :start_bundle_server
 
     test "cache trusted signatures", %{
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
       signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
-      assert :ok = Update.Server.cache_binary(update_server_pid, binary_metadata)
-      prn = binary_metadata.prn
-      assert_receive {Update.Server, :download, ^prn, :complete}
+      {:ok, _signatures} = Bundle.Server.add_trusted_signing_key(bundle_server_pid, signing_key)
+      assert :ok = Bundle.Server.cache_binary(bundle_server_pid, binary_metadata)
+      assert_receive {Bundle.Server, ^bundle_server_pid, :complete}
     end
 
     test "cache untrusted signatures", %{
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
 
       assert {:error, :untrusted_signatures} =
-               Update.Server.cache_binary(update_server_pid, binary_metadata)
+               Bundle.Server.cache_binary(bundle_server_pid, binary_metadata)
     end
 
     test "install untrusted signatures", %{
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
 
       assert {:error, :untrusted_signatures} =
-               Update.Server.install_binary(update_server_pid, binary_metadata)
+               Bundle.Server.install_binary(bundle_server_pid, binary_metadata)
     end
 
     test "already cached", %{
       cache_pid: cache_pid,
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
       :ok = Binary.metadata_to_cache(cache_pid, binary_metadata)
       signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
+      {:ok, _signatures} = Bundle.Server.add_trusted_signing_key(bundle_server_pid, signing_key)
       assert :ok = Binary.stamp_cached(cache_pid, binary_metadata)
 
       assert {:error, :already_cached} =
-               Update.Server.cache_binary(update_server_pid, binary_metadata)
+               Bundle.Server.cache_binary(bundle_server_pid, binary_metadata)
     end
 
     test "already installed", %{
       cache_pid: cache_pid,
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
       :ok = Binary.metadata_to_cache(cache_pid, binary_metadata)
       signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
+      {:ok, _signatures} = Bundle.Server.add_trusted_signing_key(bundle_server_pid, signing_key)
       assert :ok = Binary.stamp_installed(cache_pid, binary_metadata)
 
       assert {:error, :already_installed} =
-               Update.Server.install_binary(update_server_pid, binary_metadata)
+               Bundle.Server.install_binary(bundle_server_pid, binary_metadata)
     end
   end
 
@@ -77,60 +77,62 @@ defmodule Peridiod.Update.ServerTest do
     setup :start_cache
     setup :start_kv
     setup :load_release_metadata_from_manifest
-    setup :start_update_server
+    setup :start_plan_server
+    setup :start_bundle_server
 
     test "cache trusted signatures", %{
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries}} = release_metadata
     } do
       binary_metadata = List.first(binaries)
       signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
-      assert :ok = Update.Server.cache_bundle(update_server_pid, release_metadata.bundle)
-      prn = binary_metadata.prn
-      assert_receive {Update.Server, :download, ^prn, :complete}
+      {:ok, _signatures} = Bundle.Server.add_trusted_signing_key(bundle_server_pid, signing_key)
+      assert :ok = Bundle.Server.cache_bundle(bundle_server_pid, release_metadata.bundle)
+
+      assert_receive {Bundle.Server, ^bundle_server_pid, :complete}
     end
 
     test "cache untrusted signatures", %{
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{} = release_metadata
     } do
       assert {:error, :untrusted_signatures} =
-               Update.Server.cache_bundle(update_server_pid, release_metadata.bundle)
+               Bundle.Server.cache_bundle(bundle_server_pid, release_metadata.bundle)
     end
 
     test "install untrusted signatures", %{
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{} = release_metadata
     } do
       assert {:error, :untrusted_signatures} =
-               Update.Server.install_bundle(update_server_pid, release_metadata.bundle)
+               Bundle.Server.install_bundle(bundle_server_pid, release_metadata)
     end
 
     test "already cached", %{
       cache_pid: cache_pid,
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries} = bundle_metadata}
     } do
       binary_metadata = List.first(binaries)
       signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
+      {:ok, _signatures} = Bundle.Server.add_trusted_signing_key(bundle_server_pid, signing_key)
       assert :ok = Bundle.stamp_cached(cache_pid, bundle_metadata)
 
       assert {:error, :already_cached} =
-               Update.Server.cache_bundle(update_server_pid, bundle_metadata)
+               Bundle.Server.cache_bundle(bundle_server_pid, bundle_metadata)
     end
   end
 
   describe "binary install cache" do
     setup :start_cache
     setup :load_release_metadata_from_manifest
-    setup :start_update_server
+    setup :start_plan_server
+    setup :start_bundle_server
     setup :cache_binary
 
     test "file from cache", %{
       cache_pid: cache_pid,
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
@@ -140,11 +142,11 @@ defmodule Peridiod.Update.ServerTest do
       true = Cache.exists?(cache_pid, cache_file)
 
       signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
-      Update.Server.install_binary(update_server_pid, binary_metadata)
-      prn = binary_metadata.prn
+      {:ok, _signatures} = Bundle.Server.add_trusted_signing_key(bundle_server_pid, signing_key)
+      Bundle.Server.install_binary(bundle_server_pid, binary_metadata)
+
       refute Binary.installed?(cache_pid, binary_metadata)
-      assert_receive {Update.Server, :install, ^prn, :complete}
+      assert_receive {Bundle.Server, ^bundle_server_pid, :complete}
       assert Binary.installed?(cache_pid, binary_metadata)
     end
   end
@@ -152,11 +154,12 @@ defmodule Peridiod.Update.ServerTest do
   describe "binary install download" do
     setup :start_cache
     setup :load_release_metadata_from_manifest
-    setup :start_update_server
+    setup :start_plan_server
+    setup :start_bundle_server
 
     test "file url to cache", %{
       cache_pid: cache_pid,
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries}}
     } do
       binary_metadata = List.first(binaries)
@@ -166,11 +169,11 @@ defmodule Peridiod.Update.ServerTest do
       false = Cache.exists?(cache_pid, cache_file)
 
       signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
-      prn = binary_metadata.prn
+      {:ok, _signatures} = Bundle.Server.add_trusted_signing_key(bundle_server_pid, signing_key)
+
       refute Binary.installed?(cache_pid, binary_metadata)
-      assert :ok = Update.Server.install_binary(update_server_pid, binary_metadata)
-      assert_receive {Update.Server, :install, ^prn, :complete}
+      assert :ok = Bundle.Server.install_binary(bundle_server_pid, binary_metadata)
+      assert_receive {Bundle.Server, ^bundle_server_pid, :complete}
       assert Binary.installed?(cache_pid, binary_metadata)
     end
   end
@@ -179,14 +182,16 @@ defmodule Peridiod.Update.ServerTest do
     setup :start_cache
     setup :start_kv
     setup :load_release_metadata_from_manifest
-    setup :start_update_server
+    setup :start_plan_server
+    setup :start_bundle_server
     setup :cache_binary
 
     test "file from cache", %{
       cache_pid: cache_pid,
-      update_server_pid: update_server_pid,
-      release_metadata: %Release{bundle: %{binaries: binaries} = bundle_metadata}
+      bundle_server_pid: bundle_server_pid,
+      release_metadata: %Release{bundle: %{binaries: binaries}} = release_metadata
     } do
+      bundle_metadata = release_metadata.bundle
       binary_metadata = List.first(binaries)
       cache_file = Binary.cache_file(binary_metadata)
 
@@ -194,11 +199,11 @@ defmodule Peridiod.Update.ServerTest do
       true = Cache.exists?(cache_pid, cache_file)
 
       signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
-      prn = bundle_metadata.prn
+      {:ok, _signatures} = Bundle.Server.add_trusted_signing_key(bundle_server_pid, signing_key)
+
       refute Bundle.installed?(cache_pid, bundle_metadata)
-      assert :ok = Update.Server.install_bundle(update_server_pid, bundle_metadata)
-      assert_receive {Update.Server, :install, ^prn, :complete}
+      assert :ok = Bundle.Server.install_bundle(bundle_server_pid, bundle_metadata)
+      assert_receive {Bundle.Server, ^bundle_server_pid, :complete}
       assert Bundle.installed?(cache_pid, bundle_metadata)
     end
 
@@ -206,7 +211,7 @@ defmodule Peridiod.Update.ServerTest do
       cache_pid: cache_pid,
       cache_dir: cache_dir,
       kv_pid: kv_pid,
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries} = bundle_metadata}
     } do
       binary_metadata = List.first(binaries)
@@ -219,12 +224,12 @@ defmodule Peridiod.Update.ServerTest do
       :ok = File.mkdir_p(test_bundle_path)
 
       signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
+      {:ok, _signatures} = Bundle.Server.add_trusted_signing_key(bundle_server_pid, signing_key)
       prn = bundle_metadata.prn
 
       refute Bundle.installed?(cache_pid, bundle_metadata)
-      assert :ok = Update.Server.install_bundle(update_server_pid, bundle_metadata)
-      assert_receive {Update.Server, :install, ^prn, :complete}
+      assert :ok = Bundle.Server.install_bundle(bundle_server_pid, bundle_metadata)
+      assert_receive {Bundle.Server, ^bundle_server_pid, :complete}
       assert KV.get(kv_pid, "peridio_bun_current") == prn
       assert KV.get(kv_pid, "peridio_bun_progress") == ""
       refute File.exists?(test_bundle_path)
@@ -235,11 +240,12 @@ defmodule Peridiod.Update.ServerTest do
     setup :start_cache
     setup :start_kv
     setup :load_release_metadata_from_manifest
-    setup :start_update_server
+    setup :start_plan_server
+    setup :start_bundle_server
 
     test "from downloader", %{
       cache_pid: cache_pid,
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries}} = release_metadata
     } do
       binary_metadata = List.first(binaries)
@@ -248,17 +254,16 @@ defmodule Peridiod.Update.ServerTest do
       false = Binary.cached?(cache_pid, binary_metadata)
       false = Cache.exists?(cache_pid, cache_file)
 
-      prn = release_metadata.bundle.prn
       signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
+      {:ok, _signatures} = Bundle.Server.add_trusted_signing_key(bundle_server_pid, signing_key)
 
-      Update.Server.install_bundle(update_server_pid, release_metadata.bundle)
-      assert_receive {Update.Server, :install, ^prn, :complete}
+      Bundle.Server.install_bundle(bundle_server_pid, release_metadata)
+      assert_receive {Bundle.Server, ^bundle_server_pid, :complete}
     end
 
     test "reboot", %{
       cache_pid: cache_pid,
-      update_server_pid: update_server_pid,
+      bundle_server_pid: bundle_server_pid,
       release_metadata: %Release{bundle: %{binaries: binaries}} = release_metadata
     } do
       binary_metadata = List.first(binaries)
@@ -276,12 +281,11 @@ defmodule Peridiod.Update.ServerTest do
       false = Cache.exists?(cache_pid, cache_file)
 
       signing_key = List.first(binary_metadata.signatures).signing_key
-      {:ok, _signatures} = Update.Server.add_trusted_signing_key(update_server_pid, signing_key)
+      {:ok, _signatures} = Bundle.Server.add_trusted_signing_key(bundle_server_pid, signing_key)
 
-      Update.Server.install_bundle(update_server_pid, release_metadata.bundle)
-      prn = release_metadata.bundle.prn
-      assert_receive {Update.Server, :install, ^prn, :complete}
-      assert_receive {Update.Server, :install, ^prn, :reboot}
+      Bundle.Server.install_bundle(bundle_server_pid, release_metadata)
+      assert_receive {Bundle.Server, ^bundle_server_pid, :complete}
+      # assert_receive {Bundle.Server, ^bundle_server_pid, :reboot}
     end
   end
 

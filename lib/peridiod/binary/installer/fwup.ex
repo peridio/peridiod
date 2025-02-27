@@ -21,50 +21,43 @@ defmodule Peridiod.Binary.Installer.Fwup do
 
   @exec "fwup"
 
-  use Peridiod.Binary.Installer.Behaviour
+  use Peridiod.Binary.Installer
 
   alias PeridiodPersistence.KV
-  alias Peridiod.Binary.StreamDownloader
   alias Peridiod.Utils
   alias __MODULE__
 
   require Logger
 
-  def install_downloader(_binary_metadata, _opts) do
-    StreamDownloader
-  end
+  def execution_model(), do: :parallel
+  def interfaces(), do: [:stream]
 
-  def install_init(
-        _binary_metadata,
-        opts,
-        _source,
-        config
-      ) do
+  def stream_init(_binary_metadata, opts) do
     case Utils.exec_installed?(@exec) do
       false ->
         {:error,
          "Unable to locate executable #{@exec} which is required to install with the FWUP installer"}
 
       true ->
-        do_init(opts, config)
+        do_init(opts)
     end
   end
 
-  def install_update(_binary_metadata, data, state) do
+  def stream_update(_binary_metadata, data, state) do
     _ = Fwup.Stream.send_chunk(state.fwup, data)
     {:ok, state}
   end
 
-  def install_finish(_binary_metadata, :valid_signature, _hash, state) do
+  def stream_finish(_binary_metadata, :valid_signature, _hash, state) do
     {:noreply, state}
   end
 
-  def install_finish(_binary_metadata, :invalid_signature, _hash, state) do
+  def stream_finish(_binary_metadata, :invalid_signature, _hash, state) do
     Process.exit(state.fwup, :normal)
     {:error, :invalid_signature, state}
   end
 
-  def install_info({:fwup, message}, state) do
+  def stream_info({:fwup, message}, state) do
     case message do
       {:ok, 0, _message} ->
         Logger.info("[Installer fwup] Finished")
@@ -144,14 +137,14 @@ defmodule Peridiod.Binary.Installer.Fwup do
     String.trim(version_string)
   end
 
-  defp do_init(opts, config) do
+  defp do_init(opts) do
     devpath =
-      opts["devpath"] || config.fwup_devpath || KV.get("peridio_disk_devpath") ||
-        KV.get("nerves_fw_devpath")
+      opts["devpath"] || opts[:fwup_devpath] || KV.get(opts[:kv_pid], "peridio_disk_devpath") ||
+        KV.get(opts[:kv_pid], "nerves_fw_devpath")
 
-    env = opts["env"] || config.fwup_env
-    extra_args = opts["extra_args"] || config.fwup_extra_args
-    public_keys = config.fwup_public_keys
+    env = opts["env"] || opts.fwup_env
+    extra_args = opts["extra_args"] || opts.fwup_extra_args
+    public_keys = opts.fwup_public_keys
     task = opts["task"] || "upgrade"
 
     fwup_config = %Fwup.Config{

@@ -1,11 +1,55 @@
 defmodule Peridiod.Binary.Installer do
+  defmacro __using__(_opts) do
+    quote do
+      @behaviour Peridiod.Binary.Installer.Behaviour
+
+      def execution_model(), do: :sequential
+
+      def path_install(%Peridiod.Binary{}, _file_path, _opts) do
+        {:error, :not_implemented}
+      end
+
+      def stream_init(%Peridiod.Binary{}, _opts) do
+        {:error, :not_implemented}
+      end
+
+      def stream_update(%Peridiod.Binary{}, {:error, reason}, state) do
+        {:error, reason, state}
+      end
+
+      def stream_update(%Peridiod.Binary{}, _data, state) do
+        {:ok, state}
+      end
+
+      def stream_finish(%Peridiod.Binary{}, :invalid_signature, state) do
+        {:error, :invalid_signature, state}
+      end
+
+      def stream_info(_msg, installer_state) do
+        {:ok, installer_state}
+      end
+
+      def stream_error(%Peridiod.Binary{}, error, installer_state) do
+        {:error, error, installer_state}
+      end
+
+      defoverridable execution_model: 0,
+                     path_install: 3,
+                     stream_init: 2,
+                     stream_update: 3,
+                     stream_finish: 3,
+                     stream_info: 2,
+                     stream_error: 3
+    end
+  end
+
   use GenServer
 
   require Logger
 
   alias PeridiodPersistence.KV
   alias Peridiod.{Binary, Cache}
-  alias Peridiod.Binary.{Installer, CacheDownloader, StreamDownloader}
+  alias Peridiod.Binary.Installer
 
   defmodule State do
     defstruct cache_pid: Cache,
@@ -18,19 +62,15 @@ defmodule Peridiod.Binary.Installer do
               installer_opts: %{},
               installer_state: nil,
               kv_pid: KV,
-              status: :initializing,
-              source: nil,
-              bytes_streamed: 0,
-              download_percent: 0.0,
-              install_percent: 0.0
+              source: nil
   end
 
-  def child_spec(%Binary{prn: binary_prn} = binary_metadata, opts) do
+  def child_spec(%Binary{prn: binary_prn} = binary_metadata, mod, opts) do
     opts = Map.put(opts, :callback, self())
 
     %{
       id: Module.concat(__MODULE__, binary_prn),
-      start: {__MODULE__, :start_link, [binary_metadata, opts]},
+      start: {__MODULE__, :start_link, [binary_metadata, mod, opts]},
       restart: :transient,
       shutdown: 5000,
       type: :worker,
@@ -38,158 +78,83 @@ defmodule Peridiod.Binary.Installer do
     }
   end
 
-  def start_link(%Binary{} = binary_metadata, opts) do
-    GenServer.start_link(__MODULE__, {binary_metadata, opts})
+  def start_link(%Binary{} = binary_metadata, mod, opts) do
+    GenServer.start_link(__MODULE__, {binary_metadata, mod, opts})
   end
 
-  def init({binary_metadata, opts}) do
+  def execution_model(installer_mod), do: installer_mod.execution_model()
+  def interfaces(installer_mod), do: installer_mod.interfaces()
+
+  def path_install(pid, path) do
+    GenServer.cast(pid, {:path_install, path})
+  end
+
+  def stream_init(pid) do
+    GenServer.cast(pid, :stream_init)
+  end
+
+  def stream_update(pid, bytes) do
+    GenServer.cast(pid, {:stream_update, bytes})
+  end
+
+  def stream_finish(pid, validity, hash) do
+    GenServer.cast(pid, {:stream_finish, validity, hash})
+  end
+
+  def stream_error(pid, error) do
+    GenServer.cast(pid, {:stream_error, error})
+  end
+
+  def init({binary_metadata, mod, opts}) do
     Logger.info("[Installer #{binary_metadata.prn}] Starting")
     Process.flag(:trap_exit, true)
 
-    case installer_mod(binary_metadata) do
-      {:error, reason} ->
-        Logger.error("[Installer #{binary_metadata.prn}] Error #{reason}")
-        {:stop, :normal, nil}
+    cache_pid = Map.get(opts, :cache_pid, Cache)
+    kv_pid = Map.get(opts, :kv_pid, KV)
+    callback = opts.callback
 
-      installer_mod ->
-        installer_opts = binary_metadata.custom_metadata["peridiod"]["installer_opts"] || %{}
-        cache_enabled? = Map.get(installer_opts, "cache_enabled", true)
-        cache_pid = Map.get(opts, :cache_pid, Cache)
-        kv_pid = Map.get(opts, :kv_pid, KV)
-        callback = opts.callback
-        config = Map.put(opts.config, :cache_pid, cache_pid)
-
-        {:ok,
-         %State{
-           callback: callback,
-           cache_pid: cache_pid,
-           kv_pid: kv_pid,
-           config: config,
-           installer_mod: installer_mod,
-           installer_opts: installer_opts,
-           binary_metadata: binary_metadata
-         }, {:continue, cache_enabled?}}
-    end
+    {:ok,
+     %State{
+       callback: callback,
+       cache_pid: cache_pid,
+       kv_pid: kv_pid,
+       installer_mod: mod,
+       installer_opts: opts,
+       binary_metadata: binary_metadata
+     }}
   end
 
-  def handle_continue(true, %{binary_metadata: %{uri: uri}} = state) when not is_nil(uri) do
-    case Binary.cached?(state.cache_pid, state.binary_metadata) do
-      true ->
-        Logger.info("[Installer #{state.binary_metadata.prn}] Installing from Cache")
-        do_install_from_cache(state)
-        {:noreply, %{state | status: :installing, source: :cache, download_percent: 1.0}}
-
-      false ->
-        Logger.info("[Installer #{state.binary_metadata.prn}] Install from download")
-
-        do_install_from_download(state)
-        {:noreply, %{state | status: :installing, source: :download}}
-    end
-  end
-
-  def handle_continue(false, %{binary_metadata: %{url: nil}} = state) do
-    Logger.error("[Installer #{state.binary_metadata.prn}] No Cache / URL to Install")
-
-    try_send(
-      state.callback,
-      {Installer, state.binary_metadata.prn, {:error, "no url to install"}}
-    )
-
-    {:stop, :normal, state}
-  end
-
-  def handle_continue(false, state) do
-    Logger.info("[Installer #{state.binary_metadata.prn}] Installing from download")
-    do_install_from_download(state)
-    {:noreply, %{state | status: :installing, source: :download}}
-  end
-
-  # Streaming from Cache
-  def handle_info({:cache_install, :start}, state) do
-    apply(state.installer_mod, :install_init, [
+  def handle_cast({:path_install, path}, state) do
+    apply(state.installer_mod, :path_install, [
       state.binary_metadata,
-      state.installer_opts,
-      :cache,
-      state.config
-    ])
-    |> installer_resp(%{state | bytes_streamed: 0})
-    |> installer_progress()
-  end
-
-  def handle_info({:cache_install, :update, {:stream, data}}, state) do
-    bytes_streamed = state.bytes_streamed + byte_size(data)
-    install_percent = bytes_streamed / state.binary_metadata.size
-    state = %{state | install_percent: install_percent, bytes_streamed: bytes_streamed}
-
-    apply(state.installer_mod, :install_update, [
-      state.binary_metadata,
-      data,
-      state.installer_state
-    ])
-    |> installer_resp(state)
-    |> installer_progress()
-  end
-
-  def handle_info({:cache_install, :update, {:eof, verified_status, hash}}, state) do
-    state = %{state | install_percent: 1.0, bytes_streamed: 0}
-
-    apply(state.installer_mod, :install_finish, [
-      state.binary_metadata,
-      verified_status,
-      hash,
-      state.installer_state
+      path,
+      state.installer_opts
     ])
     |> installer_resp(state)
     |> installer_complete()
   end
 
-  def handle_info({:download_stream, :start}, state) do
-    state = %{state | hash_accumulator: :crypto.hash_init(:sha256)}
-
-    apply(state.installer_mod, :install_init, [
+  def handle_cast(:stream_init, state) do
+    apply(state.installer_mod, :stream_init, [
       state.binary_metadata,
-      state.installer_opts,
-      :download,
-      state.config
+      state.installer_opts
     ])
     |> installer_resp(state)
     |> installer_progress()
   end
 
-  def handle_info({:download_cache, :start}, state) do
-    apply(state.installer_mod, :install_init, [
+  def handle_cast({:stream_update, bytes}, state) do
+    apply(state.installer_mod, :stream_update, [
       state.binary_metadata,
-      state.installer_opts,
-      :download,
-      state.config
+      bytes,
+      state.installer_state
     ])
     |> installer_resp(state)
     |> installer_progress()
   end
 
-  def handle_info({:download_stream, :complete}, state) do
-    hash = :crypto.hash_final(state.hash_accumulator)
-    state = %{state | install_percent: 1.0, hash_accumulator: hash, bytes_streamed: 0}
-    [signature] = state.binary_metadata.signatures
-
-    expected_hash = state.binary_metadata.hash
-    valid_hash? = expected_hash == hash
-
-    valid_signature? =
-      Binary.valid_signature?(
-        Base.encode16(hash, case: :lower),
-        signature.signature,
-        signature.signing_key.public_der
-      )
-
-    validity =
-      case {valid_hash?, valid_signature?} do
-        {true, true} -> :valid_signature
-        {true, false} -> :invalid_signature
-        {false, _} -> :invalid_hash
-      end
-
-    apply(state.installer_mod, :install_finish, [
+  def handle_cast({:stream_finish, validity, hash}, state) do
+    apply(state.installer_mod, :stream_finish, [
       state.binary_metadata,
       validity,
       hash,
@@ -199,65 +164,14 @@ defmodule Peridiod.Binary.Installer do
     |> installer_complete()
   end
 
-  def handle_info({:download_cache, _binary_metadata, :complete}, state) do
-    apply(state.installer_mod, :install_finish, [
-      state.binary_metadata,
-      :valid_signature,
-      nil,
-      state.installer_state
-    ])
-    |> installer_resp(state)
-    |> installer_complete()
-  end
-
-  def handle_info({:download_stream, {:error, reason}}, state) do
-    apply(state.installer_mod, :install_error, [
+  def handle_cast({:stream_error, reason}, state) do
+    apply(state.installer_mod, :stream_error, [
       state.binary_metadata,
       reason,
       state.installer_state
     ])
     |> installer_resp(state)
     |> installer_error()
-  end
-
-  def handle_info({:download_cache, _binary_metadata, {:error, reason}}, state) do
-    apply(state.installer_mod, :install_error, [
-      state.binary_metadata,
-      reason,
-      state.installer_state
-    ])
-    |> installer_resp(state)
-    |> installer_error()
-  end
-
-  def handle_info({:download_stream, {:data, data}}, state) do
-    hash = :crypto.hash_update(state.hash_accumulator, data)
-    bytes_streamed = state.bytes_streamed + byte_size(data)
-    install_percent = bytes_streamed / state.binary_metadata.size
-
-    state = %{
-      state
-      | install_percent: install_percent,
-        hash_accumulator: hash,
-        bytes_streamed: bytes_streamed
-    }
-
-    apply(state.installer_mod, :install_update, [
-      state.binary_metadata,
-      data,
-      state.installer_state
-    ])
-    |> installer_resp(state)
-    |> installer_progress()
-  end
-
-  def handle_info({:download_cache, _binary_metadata, {:progress, percent_downloaded}}, state) do
-    state = %{
-      state
-      | install_percent: percent_downloaded
-    }
-
-    installer_progress({:noreply, state})
   end
 
   def handle_info({:EXIT, _, error}, state) do
@@ -266,7 +180,7 @@ defmodule Peridiod.Binary.Installer do
   end
 
   def handle_info(msg, state) do
-    apply(state.installer_mod, :install_info, [
+    apply(state.installer_mod, :stream_info, [
       msg,
       state.installer_state
     ])
@@ -306,18 +220,6 @@ defmodule Peridiod.Binary.Installer do
   end
 
   defp installer_progress({:noreply, state}) do
-    download_percent =
-      case state.source do
-        :cache -> 1.0
-        :download -> state.install_percent
-      end
-
-    try_send(
-      state.callback,
-      {Installer, state.binary_metadata.prn,
-       {:progress, {download_percent, state.install_percent}}}
-    )
-
     {:noreply, state}
   end
 
@@ -337,82 +239,52 @@ defmodule Peridiod.Binary.Installer do
     {:stop, :normal, state}
   end
 
-  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "cache"}}}),
+  def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "cache"}}}),
     do: Installer.Cache
 
-  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "fwup"}}}),
+  def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "fwup"}}}),
     do: Installer.Fwup
 
-  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "file"}}}),
+  def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "file"}}}),
     do: Installer.File
 
-  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "deb"}}}),
+  def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "deb"}}}),
     do: Installer.Deb
 
-  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "rpm"}}}),
+  def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "rpm"}}}),
     do: Installer.Rpm
 
-  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "opkg"}}}),
+  def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "opkg"}}}),
     do: Installer.Opkg
 
-  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "swupdate"}}}),
+  def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "swupdate"}}}),
     do: Installer.SWUpdate
 
-  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => installer}}}) do
+  def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => installer}}}) do
     {:error, "The specified installer: #{inspect(installer)} is not a supported installer module"}
   end
 
-  defp installer_mod(%Binary{custom_metadata: %{"peridiod" => _}}) do
+  def mod(%Binary{custom_metadata: %{"peridiod" => _}}) do
     {:error, "Installer key missing from custom_metadata"}
   end
 
-  defp installer_mod(_binary_metadata) do
+  def mod(_binary_metadata) do
     {:error, "custom_metadata is missing peridiod configuration settings"}
   end
 
-  defp do_install_from_cache(state) do
-    cache_file = Binary.cache_file(state.binary_metadata)
-    send(self(), {:cache_install, :start})
-    installer_pid = self()
-
-    Task.start(fn ->
-      Cache.read_stream(state.cache_pid, cache_file)
-      |> Enum.map(&send(installer_pid, {:cache_install, :update, &1}))
-    end)
+  def opts(%Binary{custom_metadata: %{"peridiod" => %{"installer_opts" => opts}}}) do
+    opts
   end
 
-  defp do_install_from_download(state) do
-    downloader_mod =
-      apply(state.installer_mod, :install_downloader, [
-        state.binary_metadata,
-        state.installer_opts
-      ])
-
-    do_install_from_download_mod(downloader_mod, state)
+  def opts(_binary_metadata) do
+    %{}
   end
 
-  defp do_install_from_download_mod(StreamDownloader, state) do
-    pid = self()
-    send(self(), {:download_stream, :start})
-    fun = &send(pid, {:download_stream, &1})
-
-    {:ok, _downloader} =
-      StreamDownloader.Supervisor.start_child(
-        state.binary_metadata.prn,
-        state.binary_metadata.uri,
-        fun
-      )
+  def config_opts(Installer.Fwup, config) do
+    Map.take(config, [:fwup_devpath, :fwup_env, :fwup_public_keys, :fwup_extra_args])
   end
 
-  defp do_install_from_download_mod(CacheDownloader, state) do
-    send(self(), {:download_cache, :start})
-
-    {:ok, _downloader} =
-      CacheDownloader.Supervisor.start_child(
-        state.binary_metadata,
-        %{config: state.config, cache_pid: state.cache_pid}
-      )
-  end
+  def config_opts(_mod, _config), do: %{}
 
   defp try_send(nil, _msg), do: :ok
 

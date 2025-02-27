@@ -2,7 +2,7 @@ defmodule PeridiodTest.Case do
   use ExUnit.CaseTemplate
 
   alias PeridiodPersistence.KV
-  alias Peridiod.{Cache, Release, Bundle, Update}
+  alias Peridiod.{Cloud, Cache, Release, Bundle, Plan}
   alias PeridiodTest.StaticRouter
   alias Peridiod.TestFixtures
 
@@ -60,7 +60,7 @@ defmodule PeridiodTest.Case do
     Map.put(context, :kv_pid, kv_pid)
   end
 
-  def start_update_server(%{cache_pid: cache_pid} = context) do
+  def start_bundle_server(%{cache_pid: cache_pid} = context) do
     application_config = Application.get_all_env(:peridiod)
     config = struct(Peridiod.Config, application_config) |> Peridiod.Config.new()
     config = Map.put(config, :cache_pid, cache_pid)
@@ -72,7 +72,25 @@ defmodule PeridiodTest.Case do
         config
       end
 
-    {:ok, pid} = Update.Server.start_link(config, [])
-    Map.put(context, :update_server_pid, pid)
+    config =
+      if plan_server_pid = context[:plan_server_pid] do
+        Map.put(config, :plan_server_pid, plan_server_pid)
+      else
+        config
+      end
+
+    {:ok, _pid} = Cloud.start_link(config, [])
+    {:ok, pid} = Bundle.Server.start_link(config, [])
+    Map.put(context, :bundle_server_pid, pid)
+  end
+
+  def start_plan_server(context) do
+    {:ok, pid} = Plan.Server.start_link(nil, [])
+    Map.put(context, :plan_server_pid, pid)
+  end
+
+  def step_opts(ctx) do
+    step_opts = Map.take(ctx, [:cache_pid, :kv_pid])
+    Map.put(ctx, :step_opts, Enum.into(step_opts, []))
   end
 end

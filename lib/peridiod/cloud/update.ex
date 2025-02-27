@@ -3,7 +3,7 @@ defmodule Peridiod.Cloud.Update do
 
   require Logger
 
-  alias Peridiod.{Cloud, Update, BundleOverride, Release}
+  alias Peridiod.{Cloud, Bundle, BundleOverride, Release}
 
   @update_poll_interval 30 * 60 * 1000
 
@@ -95,7 +95,7 @@ defmodule Peridiod.Cloud.Update do
          {:ok, %{status: 200, body: %{"status" => "update", "release" => _release} = body}}
        ) do
     with {:ok, release_metadata} <- Release.metadata_from_manifest(body),
-         :ok <- Update.Server.install_bundle(release_metadata) do
+         :ok <- Bundle.Server.install_bundle(release_metadata) do
       :updating
     end
   end
@@ -108,7 +108,7 @@ defmodule Peridiod.Cloud.Update do
           }}
        ) do
     with {:ok, override_metadata} <- BundleOverride.metadata_from_manifest(body),
-         :ok <- Update.Server.install_bundle(override_metadata) do
+         :ok <- Bundle.Server.install_bundle(override_metadata) do
       :updating
     end
   end

@@ -8,8 +8,9 @@ defmodule Peridiod.Application do
     Cache,
     Cloud,
     Distribution,
-    Update,
-    Binary
+    Bundle,
+    Binary,
+    Plan
   }
 
   def start(_type, _args) do
@@ -19,15 +20,17 @@ defmodule Peridiod.Application do
     peridio_net_mon_config = Application.get_all_env(:peridio_net_mon)
 
     children = [
+      Cloud.Event,
+      {Cloud, config},
       {Cache, config},
       {Peridio.NetMon.Supervisor, peridio_net_mon_config},
       {Cloud.NetworkMonitor, config.network_monitor},
       Binary.Installer.Supervisor,
-      Binary.StreamDownloader.Supervisor,
-      Binary.CacheDownloader.Supervisor,
-      {Cloud, config},
+      Binary.Downloader.Supervisor,
+      Plan.Server,
+      Plan.Step.Supervisor,
       {Cloud.Update, config},
-      {Update.Server, config}
+      {Bundle.Server, config}
     ]
 
     children =

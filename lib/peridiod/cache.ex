@@ -1,6 +1,8 @@
 defmodule Peridiod.Cache do
   use GenServer
 
+  import Peridiod.Crypto
+
   @hash_algorithm :sha256
   @stream_chunk_size 4096
 
@@ -243,33 +245,5 @@ defmodule Peridiod.Cache do
       end,
       fn _hash -> :ok end
     )
-  end
-
-  defp hash(file_path, algorithm) do
-    File.stream!(file_path, [], @stream_chunk_size)
-    |> Enum.reduce(hash_init(algorithm), &hash_update(&2, &1))
-    |> hash_final()
-    |> Base.encode16(case: :lower)
-  end
-
-  defp hash_init(algorithm) do
-    :crypto.hash_init(algorithm)
-  end
-
-  defp hash_update(hash_acc, binary) do
-    :crypto.hash_update(hash_acc, binary)
-  end
-
-  defp hash_final(hash_acc) do
-    :crypto.hash_final(hash_acc)
-  end
-
-  defp sign(hash, algorithm, private_key) do
-    :public_key.sign(hash, algorithm, private_key)
-    |> Base.encode16(case: :upper)
-  end
-
-  defp verified?(hash, algorithm, signature, public_key) do
-    :public_key.verify(hash, algorithm, signature, public_key)
   end
 end

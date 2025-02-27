@@ -8,8 +8,8 @@ defmodule Peridiod.Binary.Installer.Supervisor do
     DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  def start_child(%Binary{} = binary_metadata, opts \\ %{}) do
-    child_spec = Installer.child_spec(binary_metadata, opts)
+  def start_installer(%Binary{} = binary_metadata, mod, opts \\ %{}) do
+    child_spec = Installer.child_spec(binary_metadata, mod, opts)
     DynamicSupervisor.start_child(__MODULE__, child_spec)
   end
 

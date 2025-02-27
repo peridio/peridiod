@@ -107,22 +107,12 @@ defmodule Peridiod.Bundle do
     Enum.filter(binaries, &(&1.target in [nil, "" | targets]))
   end
 
-  def filter_uninstalled_binaries_by_target(%__MODULE__{} = bundle_metadata, targets, opts) do
-    cache_pid = opts[:cache_pid] || Cache
+  def split_uninstalled_binaries_by_target(%__MODULE__{} = bundle_metadata, targets, opts) do
     kv_pid = opts[:kv_pid] || KV
 
-    with {_, [_ | _] = binaries_metadata} <-
-           {:no_targets, Bundle.filter_binaries_by_targets(bundle_metadata, targets)},
-         {_, [_ | _] = binaries_metadata} <-
-           {:kv_installed,
-            Enum.reject(binaries_metadata, &Binary.kv_installed?(kv_pid, &1, :current))},
-         {_, [_ | _] = binaries_metadata} <-
-           {:cache_installed, Enum.reject(binaries_metadata, &Binary.installed?(cache_pid, &1))} do
-      {:ok, binaries_metadata}
-    else
-      {reason, _binaries_metadata} ->
-        {:error, reason}
-    end
+    bundle_metadata
+    |> Bundle.filter_binaries_by_targets(targets)
+    |> Enum.split_with(&Binary.kv_installed?(kv_pid, &1, :current))
   end
 
   def via(nil), do: nil

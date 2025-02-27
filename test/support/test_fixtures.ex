@@ -67,6 +67,14 @@ defmodule Peridiod.TestFixtures do
     }
   }
 
+  @custom_metadata_swupdate %{
+    "peridiod" => %{
+      "installer" => "swupdate",
+      "installer_opts" => %{},
+      "reboot_required" => true
+    }
+  }
+
   @custom_metadata_cache %{
     "peridiod" => %{
       "installer" => "cache",
@@ -170,6 +178,9 @@ defmodule Peridiod.TestFixtures do
 
   def binary_manifest_fwup(),
     do: @trusted_release_binary |> Map.put("custom_metadata", @custom_metadata_fwup)
+
+  def binary_manifest_swupdate(),
+    do: @trusted_release_binary |> Map.put("custom_metadata", @custom_metadata_swupdate)
 
   def binary_manifest_cache(),
     do: @trusted_release_binary |> Map.put("custom_metadata", @custom_metadata_cache)

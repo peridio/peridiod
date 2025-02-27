@@ -1,6 +1,6 @@
-defmodule Peridiod.Binary.StreamDownloader.RetryConfig do
+defmodule Peridiod.Binary.Downloader.RetryConfig do
   @moduledoc """
-  Configuration structure for how the StreamDownloader server will
+  Configuration structure for how the Downloader server will
   handle disconnects, errors, timeouts etc
   """
 

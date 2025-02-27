@@ -15,41 +15,45 @@ defmodule Peridiod.Binary.Installer.Cache do
   ```
   """
 
-  use Peridiod.Binary.Installer.Behaviour
+  use Peridiod.Binary.Installer
 
   alias Peridiod.{Binary, Cache}
-  alias Peridiod.Binary.CacheDownloader
 
-  require Logger
+  def execution_model(), do: :parallel
+  def interfaces(), do: [:stream]
 
-  def install_downloader(_binary_metadata, _opts) do
-    CacheDownloader
+  def stream_init(_binary_metadata, opts) do
+    {:ok, opts}
   end
 
-  def install_init(
-        _binary_metadata,
-        opts,
-        _source,
-        config
-      ) do
-    {:ok, {opts, config}}
+  def stream_update(binary_metadata, data, opts) do
+    file = Binary.cache_file(binary_metadata)
+
+    case Cache.write_stream_update(opts[:cache_pid], file, data) do
+      :ok ->
+        {:ok, opts}
+
+      error ->
+        {:error, error, opts}
+    end
   end
 
-  def install_finish(binary_metadata, :valid_signature, _hash, {_opts, config}) do
-    cache_file_path = Binary.cache_file(binary_metadata)
+  def stream_finish(binary_metadata, :valid_signature, _hash, opts) do
+    file = Binary.cache_file(binary_metadata)
 
-    case Cache.exists?(config.cache_pid, cache_file_path) do
+    case Cache.exists?(opts[:cache_pid], file) do
       true ->
+        Binary.stamp_cached(opts[:cache_pid], binary_metadata)
         {:stop, :normal, nil}
 
       false ->
-        Binary.cache_rm(config.cache_pid, binary_metadata)
+        Binary.cache_rm(opts[:cache_pid], binary_metadata)
         {:error, :invalid_cache, nil}
     end
   end
 
-  def install_finish(binary_metadata, invalid, _hash, {_opts, config}) do
-    Binary.cache_rm(config.cache_pid, binary_metadata)
+  def stream_finish(binary_metadata, invalid, _hash, opts) do
+    Binary.cache_rm(opts[:cache_pid], binary_metadata)
     {:error, invalid, nil}
   end
 end
