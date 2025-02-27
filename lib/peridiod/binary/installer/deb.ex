@@ -18,21 +18,13 @@ defmodule Peridiod.Binary.Installer.Deb do
 
   @exec "apt"
 
-  use Peridiod.Binary.Installer.Behaviour
+  use Peridiod.Binary.Installer
+  alias Peridiod.Utils
 
-  alias Peridiod.{Binary, Utils, Cache}
-  alias Peridiod.Binary.CacheDownloader
+  def execution_model(), do: :sequential
+  def interfaces(), do: [:path]
 
-  def install_downloader(_binary_metadata, _opts) do
-    CacheDownloader
-  end
-
-  def install_init(
-        _binary_metadata,
-        opts,
-        _source,
-        config
-      ) do
+  def path_install(_binary_metadata, path, opts) do
     case Utils.exec_installed?(@exec) do
       false ->
         {:error,
@@ -40,27 +32,15 @@ defmodule Peridiod.Binary.Installer.Deb do
          nil}
 
       true ->
-        {:ok, {opts, config}}
+        extra_args = opts["extra_args"] || []
+
+        case System.cmd(@exec, ["install", "-y", path] ++ extra_args) do
+          {_result, 0} ->
+            {:stop, :normal, nil}
+
+          {error, _} ->
+            {:error, error, nil}
+        end
     end
-  end
-
-  def install_finish(binary_metadata, :valid_signature, _hash, {opts, config}) do
-    extra_args = opts["extra_args"] || []
-    cache_file_path = Binary.cache_file(binary_metadata)
-    cache_file = Cache.abs_path(config.cache_pid, cache_file_path)
-
-    case System.cmd(@exec, ["install", "-y", cache_file] ++ extra_args) do
-      {_result, 0} ->
-        {:stop, :normal, nil}
-
-      {error, _} ->
-        Binary.cache_rm(config.cache_pid, binary_metadata)
-        {:error, error, nil}
-    end
-  end
-
-  def install_finish(binary_metadata, invalid, _hash, {_opts, config}) do
-    Binary.cache_rm(config.cache_pid, binary_metadata)
-    {:error, invalid, nil}
   end
 end

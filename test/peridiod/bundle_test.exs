@@ -93,8 +93,8 @@ defmodule Peridiod.BundleTest do
       binaries_metadata = bundle_metadata.binaries
       targets = Enum.map(binaries_metadata, & &1.target)
 
-      assert {:ok, [_ | _]} =
-               Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, targets,
+      assert {[], [_ | _]} =
+               Bundle.split_uninstalled_binaries_by_target(bundle_metadata, targets,
                  cache_pid: cache_pid,
                  kv_pid: kv_pid
                )
@@ -105,8 +105,8 @@ defmodule Peridiod.BundleTest do
       kv_pid: kv_pid,
       bundle_metadata: bundle_metadata
     } do
-      assert {:ok, [_ | _]} =
-               Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, [],
+      assert {[], [_ | _]} =
+               Bundle.split_uninstalled_binaries_by_target(bundle_metadata, [],
                  cache_pid: cache_pid,
                  kv_pid: kv_pid
                )
@@ -117,8 +117,8 @@ defmodule Peridiod.BundleTest do
       kv_pid: kv_pid,
       bundle_metadata: bundle_metadata
     } do
-      assert {:error, :no_targets} =
-               Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, ["foo"],
+      assert {[], []} =
+               Bundle.split_uninstalled_binaries_by_target(bundle_metadata, ["foo"],
                  cache_pid: cache_pid,
                  kv_pid: kv_pid
                )
@@ -133,24 +133,8 @@ defmodule Peridiod.BundleTest do
       targets = Enum.map(binaries_metadata, & &1.target)
       Enum.each(binaries_metadata, &Binary.put_kv_installed(kv_pid, &1, :current))
 
-      assert {:error, :kv_installed} =
-               Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, targets,
-                 cache_pid: cache_pid,
-                 kv_pid: kv_pid
-               )
-    end
-
-    test "cache_installed", %{
-      cache_pid: cache_pid,
-      kv_pid: kv_pid,
-      bundle_metadata: bundle_metadata
-    } do
-      binaries_metadata = bundle_metadata.binaries
-      targets = Enum.map(binaries_metadata, & &1.target)
-      Enum.each(binaries_metadata, &Binary.stamp_installed(cache_pid, &1))
-
-      assert {:error, :cache_installed} =
-               Bundle.filter_uninstalled_binaries_by_target(bundle_metadata, targets,
+      assert {[_ | _], []} =
+               Bundle.split_uninstalled_binaries_by_target(bundle_metadata, targets,
                  cache_pid: cache_pid,
                  kv_pid: kv_pid
                )

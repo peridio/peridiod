@@ -1,15 +1,14 @@
-defmodule Peridiod.Binary.CacheDownloader.Supervisor do
+defmodule Peridiod.Plan.Step.Supervisor do
   use DynamicSupervisor
 
-  alias Peridiod.Binary.CacheDownloader
-  alias Peridiod.Binary
+  alias Peridiod.Plan.Step
 
   def start_link(init_arg) do
     DynamicSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
 
-  def start_child(%Binary{} = binary_metadata, opts \\ %{}) do
-    child_spec = CacheDownloader.child_spec(binary_metadata, opts)
+  def start_child({step_mod, step_opts}) do
+    child_spec = Step.child_spec({step_mod, step_opts})
     DynamicSupervisor.start_child(__MODULE__, child_spec)
   end
 

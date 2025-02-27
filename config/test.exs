@@ -13,3 +13,5 @@ config :peridiod_persistence,
 config :peridiod,
   cache_dir: Path.expand("../test/workspace/cache", __DIR__),
   socket_enabled?: false
+
+config :ex_unit, assert_receive_timeout: 1_000

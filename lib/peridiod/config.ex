@@ -2,7 +2,7 @@ defmodule Peridiod.Config do
   use Peridiod.Log
 
   alias PeridiodPersistence.KV
-  alias Peridiod.{Backoff, Cache, SigningKey, Cloud}
+  alias Peridiod.{Cloud, Cache, SigningKey, Plan}
   alias __MODULE__
 
   require Logger
@@ -30,6 +30,7 @@ defmodule Peridiod.Config do
             fwup_extra_args: [],
             network_monitor: %{},
             params: %{},
+            plan_server_pid: Plan.Server,
             reboot_delay: 5_000,
             reboot_cmd: "reboot",
             reboot_opts: [],
@@ -76,6 +77,7 @@ defmodule Peridiod.Config do
           fwup_extra_args: [String.t()],
           network_monitor: NetworkMonitor.t(),
           params: map(),
+          plan_server_pid: pid() | module(),
           reboot_delay: non_neg_integer,
           reboot_cmd: String.t(),
           reboot_opts: [String.t()],
@@ -339,7 +341,7 @@ defmodule Peridiod.Config do
         # Default retry interval
         # 1 second minimum delay that doubles up to 60 seconds. Up to 50% of
         # the delay is added to introduce jitter into the retry attempts.
-        Backoff.delay_list(1000, 60000, 0.50)
+        Cloud.Backoff.delay_list(1000, 60000, 0.50)
       end)
 
     %{config | socket: socket}

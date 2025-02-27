@@ -1,12 +1,12 @@
-defmodule Peridiod.Update do
-  alias Peridiod.{Release, BundleOverride, Bundle, Binary, Cache, Config}
+defmodule Peridiod.State do
+  alias Peridiod.{Release, BundleOverride, Bundle, Binary, Cache}
   alias PeridiodPersistence.KV
 
   require Logger
 
-  def kv_progress_reset_boot_count(kv_pid \\ KV), do: KV.put(kv_pid, "peridio_bc_progress", "0")
+  def progress_reset_boot_count(kv_pid \\ KV), do: KV.put(kv_pid, "peridio_bc_progress", "0")
 
-  def kv_progress_increment_boot_count(kv_pid \\ KV) do
+  def progress_increment_boot_count(kv_pid \\ KV) do
     result =
       KV.get_and_update(kv_pid, "peridio_bc_progress", fn
         "" ->
@@ -19,12 +19,12 @@ defmodule Peridiod.Update do
           case Integer.parse(value) do
             {value, _rem} ->
               new_value = value + 1
-              Logger.info("[Update] Incrementing peridio_bc_progress #{new_value}")
+              Logger.info("[State] Incrementing peridio_bc_progress #{new_value}")
               new_value |> to_string()
 
             _ ->
               Logger.error(
-                "[Update] Error parsing peridio_bc_progress #{inspect(value)} resetting to 1"
+                "[State] Error parsing peridio_bc_progress #{inspect(value)} resetting to 1"
               )
 
               "1"
@@ -37,7 +37,7 @@ defmodule Peridiod.Update do
     end
   end
 
-  def kv_progress(kv_pid \\ KV, bundle_metadata, via_metadata) do
+  def progress(kv_pid \\ KV, bundle_metadata, via_metadata) do
     via_metadata = via_metadata || %{}
 
     version =
@@ -54,16 +54,17 @@ defmodule Peridiod.Update do
     })
   end
 
-  def kv_progress_reset(kv_pid \\ KV) do
+  def progress_reset(kv_pid \\ KV) do
     KV.put_map(kv_pid, %{
       "peridio_via_progress" => "",
       "peridio_bun_progress" => "",
+      "peridio_bin_progress" => "",
       "peridio_vsn_progress" => "",
       "peridio_bc_progress" => "0"
     })
   end
 
-  def kv_advance(kv_pid \\ KV) do
+  def advance(kv_pid \\ KV) do
     KV.reinitialize(kv_pid)
 
     KV.get_all_and_update(kv_pid, fn kv ->
@@ -95,11 +96,11 @@ defmodule Peridiod.Update do
   end
 
   def cache_clean(cache_pid \\ Cache, kv) do
-    Logger.info("[Update] Cache cleanup started")
-    via_current = Map.get(kv, "peridio_via_current") |> kv_sanitize()
-    bun_current = Map.get(kv, "peridio_bun_current") |> kv_sanitize()
-    via_previous = Map.get(kv, "peridio_via_previous") |> kv_sanitize()
-    bun_previous = Map.get(kv, "peridio_bun_previous") |> kv_sanitize()
+    Logger.info("[State] Cache cleanup started")
+    via_current = Map.get(kv, "peridio_via_current") |> sanitize()
+    bun_current = Map.get(kv, "peridio_bun_current") |> sanitize()
+    via_previous = Map.get(kv, "peridio_via_previous") |> sanitize()
+    bun_previous = Map.get(kv, "peridio_bun_previous") |> sanitize()
 
     previous_binary_prns = binary_prns_for_bundle_prn(cache_pid, bun_previous)
     current_binary_prns = binary_prns_for_bundle_prn(cache_pid, bun_current)
@@ -129,30 +130,18 @@ defmodule Peridiod.Update do
     Enum.each(remove, fn path ->
       case Cache.rm_rf(cache_pid, path) do
         {:ok, _path} ->
-          Logger.info("[Update] Cache cleanup removed #{inspect(path)}")
+          Logger.info("[State] Cache cleanup removed #{inspect(path)}")
 
         {:error, error} ->
-          Logger.error("[Update] Cache cleanup error removing #{path} #{inspect(error)}")
+          Logger.error("[State] Cache cleanup error removing #{path} #{inspect(error)}")
       end
     end)
 
-    Logger.info("[Update] Cache cleanup finished")
+    Logger.info("[State] Cache cleanup finished")
   end
 
-  def system_reboot(%Config{} = config) do
-    with {_, 0} <-
-           System.cmd(config.reboot_sync_cmd, config.reboot_sync_opts, stderr_to_stdout: true),
-         {_, 0} <- System.cmd(config.reboot_cmd, config.reboot_opts, stderr_to_stdout: true) do
-    else
-      {result, code} ->
-        Logger.error(
-          "[Update] Exit code #{inspect(code)} while attempting to reboot the system #{inspect(result)}"
-        )
-    end
-  end
-
-  defp kv_sanitize(""), do: nil
-  defp kv_sanitize(val), do: val
+  defp sanitize(""), do: nil
+  defp sanitize(val), do: val
 
   defp binary_prns_for_bundle_prn(_cache_pid, nil) do
     []
