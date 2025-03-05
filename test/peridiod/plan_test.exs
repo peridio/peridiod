@@ -100,7 +100,8 @@ defmodule Peridiod.PlanTest do
 
       assert [
                {Step.Cache, %{metadata: ^bundle_metadata, action: :stamp_installed}},
-               {Step.SystemState, %{action: :advance}}
+               {Step.SystemState, %{action: :advance}},
+               {Step.SystemReboot, _}
              ] = plan.on_finish
     end
 
