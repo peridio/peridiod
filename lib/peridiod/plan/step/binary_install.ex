@@ -1,6 +1,8 @@
 defmodule Peridiod.Plan.Step.BinaryInstall do
   use Peridiod.Plan.Step
 
+  require Logger
+
   alias Peridiod.{Binary, Cache, Cloud, Crypto}
   alias Peridiod.Binary.{Downloader, Installer}
 
@@ -32,6 +34,7 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
             installer_mod,
             installer_opts
           )
+        Process.link(pid)
 
         {:ok,
          %{
@@ -186,12 +189,40 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
     end
   end
 
-  defp validate_source_interface(:cache, [:file], %{
+  defp validate_source_interface(:cache, [:path], %{
          cache_pid: cache_pid,
          binary_metadata: binary_metadata
        }) do
-    binary_cache_file = Binary.cache_file(binary_metadata)
+    expand_cache_path(binary_metadata, cache_pid)
+  end
 
+  defp validate_source_interface(:cache, [:stream], %{
+    cache_pid: cache_pid,
+    binary_metadata: binary_metadata
+  }) do
+    case expand_cache_path(binary_metadata, cache_pid) do
+      {:ok, path} ->
+        {:ok, %URI{scheme: "file", path: path}}
+      error ->
+        error
+    end
+  end
+
+  defp validate_source_interface(:cache, [_ | _], %{
+    cache_pid: cache_pid,
+    binary_metadata: binary_metadata
+  }) do
+    expand_cache_path(binary_metadata, cache_pid)
+  end
+
+  defp validate_source_interface(%URI{scheme: "file", path: path}, [:path], _opts),
+    do: {:ok, path}
+
+  defp validate_source_interface(%URI{}, [:path], _opts), do: {:error, :unsupported_interface}
+  defp validate_source_interface(%URI{} = source, [_ | _], _opts), do: {:ok, source}
+
+  defp expand_cache_path(binary_metadata, cache_pid) do
+    binary_cache_file = Binary.cache_file(binary_metadata)
     case Cache.exists?(cache_pid, binary_cache_file) do
       true ->
         source = Cache.abs_path(cache_pid, binary_cache_file)
@@ -201,12 +232,4 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
         {:error, :cache_file_missing}
     end
   end
-
-  defp validate_source_interface(:cache, [_ | _], _opts), do: {:ok, :cache}
-
-  defp validate_source_interface(%URI{scheme: "file", path: path}, [:path], _opts),
-    do: {:ok, path}
-
-  defp validate_source_interface(%URI{}, [:path], _opts), do: {:error, :unsupported_interface}
-  defp validate_source_interface(%URI{} = source, [_ | _], _opts), do: {:ok, source}
 end

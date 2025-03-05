@@ -71,7 +71,7 @@ defmodule Peridiod.Binary.Installer do
     %{
       id: Module.concat(__MODULE__, binary_prn),
       start: {__MODULE__, :start_link, [binary_metadata, mod, opts]},
-      restart: :transient,
+      restart: :temporary,
       shutdown: 5000,
       type: :worker,
       modules: [__MODULE__]

@@ -1,6 +1,8 @@
 defmodule Peridiod.Plan.Step.Supervisor do
   use DynamicSupervisor
 
+  require Logger
+
   alias Peridiod.Plan.Step
 
   def start_link(init_arg) do
@@ -8,6 +10,7 @@ defmodule Peridiod.Plan.Step.Supervisor do
   end
 
   def start_child({step_mod, step_opts}) do
+    Logger.info("[Step Supervisor] Starting Step #{step_mod}")
     child_spec = Step.child_spec({step_mod, step_opts})
     DynamicSupervisor.start_child(__MODULE__, child_spec)
   end

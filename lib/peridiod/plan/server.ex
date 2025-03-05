@@ -77,13 +77,20 @@ defmodule Peridiod.Plan.Server do
   end
 
   # Execute next steps
-  def handle_info({Step, pid, :complete}, %{sequence: [step | tail], status: :ok} = state) do
+  def handle_info({Step, pid, :complete}, %{processing: [pid], sequence: [step | tail], status: :ok} = state) do
+    Logger.info("[Step Server] Phase complete, executing next phase")
     state = pop_processing(pid, state)
     processing = state.processing ++ execute(step)
     {:noreply, %{state | processing: processing, sequence: tail}}
   end
 
+  def handle_info({Step, pid, :complete}, %{processing: [_ | _], sequence: [_ | _], status: :ok} = state) do
+    Logger.info("[Step Server] Step finished")
+    {:noreply, pop_processing(pid, state)}
+  end
+
   def handle_info({Step, pid, :complete}, %{sequence: [], status: :ok} = state) do
+    Logger.info("[Step Server] Final Step finished")
     {:noreply, pop_processing(pid, state)}
   end
 
@@ -112,15 +119,9 @@ defmodule Peridiod.Plan.Server do
 
   def handle_info({Step, pid, {:error, error}}, state) do
     Logger.error("[Plan Server] Error processing step #{inspect(error)}")
-
-    Logger.warning(
-      "[Plan Server] Waiting #{trunc(state.error_timeout / 1000)}s for in-flight steps to clear before forcefully transitioning to on_error"
-    )
-
-    try_send(state.callback, {:error, error})
     state = pop_processing(pid, state)
-    error_timer = Process.send_after(self(), :force_error_phase, state.error_timeout)
-    {:noreply, %{state | error_timer: error_timer, status: :error}}
+    try_send(state.callback, {:error, error})
+    {:noreply, transition_to_error(state)}
   end
 
   def handle_info(:force_error_phase, state) do
@@ -130,12 +131,34 @@ defmodule Peridiod.Plan.Server do
     {:noreply, %{state | processing: []}}
   end
 
+  def handle_info({:DOWN, _ref, :process, _pid, :normal}, state) do
+    {:noreply, state}
+  end
+
+  def handle_info({:DOWN, _ref, :process, pid, error}, state) do
+    Logger.error("[Plan Server] Step exited abnormally")
+    state = pop_processing(pid, state)
+    try_send(state.callback, {:error, error})
+    {:noreply, transition_to_error(state)}
+  end
+
   def handle_info(message, state) do
     Logger.warning(
       "[Plan Server] Unhandled message #{inspect(message, structs: false, limit: :infinity, printable_limit: :infinity)} #{inspect(state, structs: false, limit: :infinity, printable_limit: :infinity)}"
     )
 
     {:noreply, state}
+  end
+
+  defp transition_to_error(%{processing: []} = state) do
+    phase_change(:error, state)
+  end
+  defp transition_to_error(state) do
+    Logger.warning(
+      "[Plan Server] Waiting #{trunc(state.error_timeout / 1000)}s for in-flight steps to clear before forcefully transitioning to on_error"
+    )
+    error_timer = Process.send_after(self(), :force_error_phase, state.error_timeout)
+    %{state | error_timer: error_timer, status: :error}
   end
 
   defp phase_change(:init, %{plan: %{on_init: []}} = state),
@@ -201,6 +224,7 @@ defmodule Peridiod.Plan.Server do
 
   defp execute(step) do
     {:ok, pid} = Step.Supervisor.start_child(step)
+    Process.monitor(pid)
     Step.execute(pid)
     [pid]
   end

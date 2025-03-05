@@ -23,13 +23,15 @@ defmodule Peridiod.Plan.Step do
 
   use GenServer
 
+  require Logger
+
   def child_spec({step_mod, step_opts}) do
     step_opts = Map.put_new(step_opts, :callback, self())
 
     %{
       id: step_mod.id(step_opts),
       start: {__MODULE__, :start_link, [{step_mod, step_opts}]},
-      restart: :transient,
+      restart: :temporary,
       shutdown: 5000,
       type: :worker
     }
@@ -71,7 +73,13 @@ defmodule Peridiod.Plan.Step do
   end
 
   def handle_info({:EXIT, _pid, :normal}, state) do
+    Logger.error("[Step] child process exited normally")
     {:stop, :normal, state}
+  end
+
+  def handle_info({:EXIT, _pid, reason}, state) do
+    Logger.error("[Step] child process exited abnormally")
+    {:stop, {:error, reason}, state}
   end
 
   def handle_info(msg, state) do

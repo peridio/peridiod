@@ -89,10 +89,13 @@ defmodule Peridiod.PlanTest do
 
       assert [
                [
-                 {Step.BinaryInstall, %{binary_metadata: ^parallel_binary_metadata}},
-                 {Step.BinaryInstall, %{binary_metadata: ^sequential_binary_metadata}}
+                 {Step.BinaryCache, %{binary_metadata: ^sequential_binary_metadata}}
                ],
-               [{Step.BinaryInstall, %{binary_metadata: ^sequential_binary_metadata}}]
+               [
+                 {Step.BinaryInstall, %{binary_metadata: ^parallel_binary_metadata}},
+                 {Step.BinaryInstall, %{binary_metadata: ^sequential_binary_metadata, source: :cache}}
+               ],
+               [{Step.BinaryInstall, %{binary_metadata: ^sequential_binary_metadata, source: :cache}}]
              ] = plan.run
 
       assert [

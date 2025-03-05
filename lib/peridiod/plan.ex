@@ -2,6 +2,8 @@ defmodule Peridiod.Plan do
   alias Peridiod.{Bundle, Binary, Binary.Installer}
   alias Peridiod.Plan.Step
 
+  require Logger
+
   defstruct callback: nil,
             run: [[]],
             on_init: [],
@@ -191,24 +193,49 @@ defmodule Peridiod.Plan do
   defp binary_install_steps(binaries, opts) do
     config = opts[:config] || Peridiod.config()
 
-    Enum.map(binaries, fn binary_metadata ->
-      installer_mod = Installer.mod(binary_metadata)
-      installer_opts = Installer.opts(binary_metadata)
-      installer_config_opts = Installer.config_opts(installer_mod, config)
-      installer_opts = Map.merge(installer_config_opts, installer_opts)
-      source = if Binary.cached?(binary_metadata), do: :cache, else: binary_metadata.uri
+    {cache_steps, steps} =
+      Enum.reduce(binaries, {[], []}, fn
+        binary_metadata, {cache_steps, steps} ->
+          installer_mod = Installer.mod(binary_metadata)
+          installer_opts = Installer.opts(binary_metadata)
+          installer_config_opts = Installer.config_opts(installer_mod, config)
+          installer_opts = Map.merge(installer_config_opts, installer_opts)
 
-      step_opts =
-        %{}
-        |> Map.put(:binary_metadata, binary_metadata)
-        |> Map.put(:cache_pid, opts[:cache_pid])
-        |> Map.put(:kv_pid, opts[:kv_pid])
-        |> Map.put(:installer_mod, installer_mod)
-        |> Map.put(:installer_opts, installer_opts)
-        |> Map.put(:source, source)
+          {source, cache_steps} =
+            case {Binary.cached?(binary_metadata), installer_mod.interfaces()} do
+              {false, [:path]} ->
+                Logger.info("[Plan] Binary not cached, adding cache step")
+                {:cache,
+                 [
+                   {Step.BinaryCache,
+                    %{cache_pid: opts[:cache_pid], binary_metadata: binary_metadata}}
+                 | cache_steps]}
 
-      {Step.BinaryInstall, step_opts}
-    end)
+              {true, _} ->
+                Logger.info("[Plan] Binary already cached")
+                {:cache, cache_steps}
+
+              _ ->
+                Logger.info("[Plan] Binary download from uri")
+                {binary_metadata.uri, cache_steps}
+            end
+
+          step_opts =
+            %{}
+            |> Map.put(:binary_metadata, binary_metadata)
+            |> Map.put(:cache_pid, opts[:cache_pid])
+            |> Map.put(:kv_pid, opts[:kv_pid])
+            |> Map.put(:installer_mod, installer_mod)
+            |> Map.put(:installer_opts, installer_opts)
+            |> Map.put(:source, source)
+
+          steps = [{Step.BinaryInstall, step_opts} | steps]
+          {cache_steps, steps}
+      end)
+    case cache_steps do
+      [] -> Enum.reverse(steps)
+      cache_steps -> [Enum.reverse(cache_steps) |> Enum.uniq(), Enum.reverse(steps)]
+    end
   end
 
   defp binary_installed_steps(installed_binaries, opts) do
@@ -218,6 +245,10 @@ defmodule Peridiod.Plan do
     )
   end
 
+  defp binary_install_chunk_sequential([cache_steps, steps])
+    when is_list(cache_steps) and is_list(steps) do
+  [cache_steps | binary_install_chunk_sequential(steps)]
+  end
   defp binary_install_chunk_sequential(steps) do
     Enum.chunk_while(
       steps,
