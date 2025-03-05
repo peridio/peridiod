@@ -11,9 +11,9 @@ defmodule Peridiod.Plan.Step.SystemReboot do
         reboot_cmd: reboot_cmd,
         reboot_opts: reboot_opts,
         reboot_delay: reboot_delay,
-        sync_cmd: sync_cmd,
-        sync_opts: sync_opts
-      }) do
+        reboot_sync_cmd: sync_cmd,
+        reboot_sync_opts: sync_opts
+      } = opts) do
     {:ok,
      %{
        timer_ref: nil,
@@ -21,16 +21,19 @@ defmodule Peridiod.Plan.Step.SystemReboot do
        reboot_opts: reboot_opts,
        reboot_delay: reboot_delay,
        sync_cmd: sync_cmd,
-       sync_opts: sync_opts
+       sync_opts: sync_opts,
+       callback: opts[:callback]
      }}
   end
 
   def execute(state) do
+    Logger.info("[Step System Reboot] System will reboot in #{trunc(state.reboot_delay/1000)}")
     timer_ref = Process.send_after(self(), :reboot, state.reboot_delay)
     {:noreply, %{state | timer_ref: timer_ref}}
   end
 
   def handle_info(:reboot, state) do
+    Logger.info("[Step System Reboot] System rebooting now")
     with false <- Peridiod.env_test?(),
          {_, 0} <-
            System.cmd(state.sync_cmd, state.sync_opts, stderr_to_stdout: true),
@@ -45,6 +48,7 @@ defmodule Peridiod.Plan.Step.SystemReboot do
         {:error, result, state}
 
       true ->
+        send(state.callback, :reboot)
         {:stop, :normal, state}
     end
   end

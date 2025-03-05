@@ -11,6 +11,7 @@ defmodule Peridiod.Plan do
             on_finish: []
 
   def resolve_install_bundle(%Bundle{} = bundle_metadata, opts) do
+    config = opts[:config] || Peridiod.config()
     callback = opts[:callback]
     cache_pid = opts[:cache_pid]
     kv_pid = opts[:kv_pid]
@@ -21,6 +22,8 @@ defmodule Peridiod.Plan do
       binaries_metadata
       |> binary_install_steps(opts)
       |> binary_install_chunk_sequential()
+
+    maybe_reboot = reboot_step(steps, config)
 
     on_init =
       [
@@ -49,7 +52,7 @@ defmodule Peridiod.Plan do
          cache_pid: cache_pid
        }},
       {Step.SystemState, %{action: :advance, kv_pid: kv_pid, cache_pid: cache_pid}}
-    ]
+    | maybe_reboot]
 
     on_error = [
       {Step.SystemState, %{action: :progress_reset, kv_pid: kv_pid, cache_pid: cache_pid}}
@@ -65,6 +68,7 @@ defmodule Peridiod.Plan do
   end
 
   def resolve_install_bundle(%{bundle: %Bundle{} = bundle_metadata} = via_metadata, opts) do
+    config = opts[:config] || Peridiod.config()
     callback = opts[:callback]
     cache_pid = opts[:cache_pid]
     kv_pid = opts[:kv_pid]
@@ -75,6 +79,8 @@ defmodule Peridiod.Plan do
       binaries_metadata
       |> binary_install_steps(opts)
       |> binary_install_chunk_sequential()
+
+    maybe_reboot = reboot_step(steps, config)
 
     on_init =
       [
@@ -108,7 +114,7 @@ defmodule Peridiod.Plan do
       {Step.Cache,
        %{metadata: via_metadata, action: :stamp_installed, kv_pid: kv_pid, cache_pid: cache_pid}},
       {Step.SystemState, %{action: :advance, kv_pid: kv_pid, cache_pid: cache_pid}}
-    ]
+    | maybe_reboot]
 
     on_error = [
       {Step.SystemState, %{action: :progress_reset, kv_pid: kv_pid, cache_pid: cache_pid}}
@@ -267,5 +273,16 @@ defmodule Peridiod.Plan do
         acc -> {:cont, Enum.reverse(acc), []}
       end
     )
+  end
+
+  defp reboot_step(steps, config) do
+    steps = List.flatten(steps)
+    case Enum.any?(steps, & elem(&1, 1).binary_metadata.custom_metadata["peridiod"]["reboot_required"] == true) do
+      true ->
+        reboot_opts = Map.take(config, [:reboot_cmd, :reboot_opts, :reboot_delay, :reboot_sync_cmd, :reboot_sync_opts])
+        [{Step.SystemReboot, reboot_opts}]
+      false ->
+        []
+    end
   end
 end

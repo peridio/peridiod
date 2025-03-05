@@ -147,14 +147,15 @@ defmodule Peridiod.Plan.StepTest do
         reboot_cmd: "",
         reboot_opts: [],
         reboot_delay: 0,
-        sync_cmd: "",
-        sync_opts: [],
+        reboot_sync_cmd: "",
+        reboot_sync_opts: [],
         callback: self()
       }
 
       {:ok, step_pid} = Step.start_link({step_mod, step_opts})
       Step.execute(step_pid)
 
+      assert_receive :reboot
       assert_receive {Step, ^step_pid, :complete}
     end
   end
