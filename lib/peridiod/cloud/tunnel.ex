@@ -4,8 +4,11 @@ defmodule Peridiod.Cloud.Tunnel do
   # Cloud -> Device: Response interface / peer information
   require Logger
 
+  alias Peridiod.Cloud
   alias Peridio.RAT
   alias Peridio.RAT.{Network, WireGuard}
+
+  @routing_table 555
 
   def create(client, tunnel_prn, dport, rat_config) do
     opts =
@@ -138,6 +141,44 @@ defmodule Peridiod.Cloud.Tunnel do
     end
   end
 
+  def update_bind_interface(ifname, rat_config) do
+    interface_confs =
+      WireGuard.list_interfaces(data_dir: rat_config.data_dir)
+
+    table = if ifname, do: :off, else: :auto
+
+    interface_confs
+    |> Enum.each(&WireGuard.teardown_interface(&1.interface.id, data_dir: rat_config.data_dir))
+
+    interface_confs =
+      interface_confs
+      |> Enum.map(&update_in(&1, [Access.key(:interface), Access.key(:table)], fn _ -> table end))
+      |> Enum.map(fn(quick_config) ->
+        [{_, dport}] = WireGuard.QuickConfig.get_in_extra(quick_config, ["Peridio", "DPort"])
+        hooks = hooks(
+          rat_config,
+          quick_config.interface,
+          quick_config.peer,
+          dport,
+          ifname
+        )
+
+        extra = Enum.reject(quick_config.extra, & elem(&1, 0) == "Interface")
+        %{quick_config | extra: [{"Interface", hooks} | extra]}
+      end)
+
+    interface_confs
+    |> Enum.each(
+      &WireGuard.configure_wireguard(&1.interface, &1.peer,
+        extra: &1.extra,
+        data_dir: rat_config.data_dir
+      )
+    )
+
+    interface_confs
+    |> Enum.each(&WireGuard.bring_up_interface(&1.interface.id, data_dir: rat_config.data_dir))
+  end
+
   def configure_request(client, opts, interface, tunnel_prn) do
     tunnel_opts = %{
       cidr_blocks: Network.available_cidrs(opts[:ipv4_cidrs]),
@@ -176,15 +217,15 @@ defmodule Peridiod.Cloud.Tunnel do
       |> List.to_tuple()
       |> Network.IP.new()
 
-    interface = Map.put(interface, :ip_address, ip_address)
-    args = [interface.id, opts[:dport]] |> Enum.join(" ")
 
-    hooks = [
-      {"PreUp", "#{rat_config.hooks.pre_up} #{args}"},
-      {"PostUp", "#{rat_config.hooks.post_up} #{args}"},
-      {"PreDown", "#{rat_config.hooks.pre_down} #{args}"},
-      {"PostDown", "#{rat_config.hooks.post_down} #{args}"}
-    ]
+    wan_ifname = Cloud.NetworkMonitor.get_bound_interface()
+    table = if wan_ifname, do: :off, else: :auto
+    interface =
+      interface
+      |> Map.put(:ip_address, ip_address)
+      |> Map.put(:table, table)
+
+    hooks = hooks(rat_config, interface, peer, opts[:dport], wan_ifname)
 
     on_exit = fn reason ->
       Peridiod.Cloud.Tunnel.close_request(client, tunnel_prn, reason)
@@ -194,8 +235,23 @@ defmodule Peridiod.Cloud.Tunnel do
       expires_at: expires_at,
       hooks: hooks,
       on_exit: on_exit,
-      data_dir: rat_config.data_dir
+      data_dir: rat_config.data_dir,
+      extra: [{"Peridio", [{"DPort", opts[:dport]}]}]
     )
+  end
+
+  defp hooks(rat_config, interface, peer, dport, wan_ifname) do
+    routing_table = rat_config[:routing_table] || @routing_table
+    args =
+      [interface.id, dport, interface.ip_address, "#{peer.ip_address}/32", wan_ifname, peer.endpoint, routing_table]
+      |> Enum.join(" ")
+
+    [
+      {"PreUp", "#{rat_config.hooks.pre_up} #{args}"},
+      {"PostUp", "#{rat_config.hooks.post_up} #{args}"},
+      {"PreDown", "#{rat_config.hooks.pre_down} #{args}"},
+      {"PostDown", "#{rat_config.hooks.post_down} #{args}"}
+    ]
   end
 
   defimpl Jason.Encoder, for: Range do

@@ -14,7 +14,7 @@ defmodule Peridiod.Cloud.Update do
   @spec check_for_update(pid() | atom()) ::
           :updating | :no_update | :device_quarantined | {:error, reason :: any}
   def check_for_update(pid_or_name \\ __MODULE__) do
-    GenServer.call(pid_or_name, :check_for_update)
+    GenServer.call(pid_or_name, :check_for_update, 10_000)
   end
 
   def init(config) do
@@ -43,21 +43,13 @@ defmodule Peridiod.Cloud.Update do
   end
 
   def handle_call(:check_for_update, _from, state) do
-    client = Cloud.get_client()
-
-    resp =
-      update_check(client)
-      |> update_response()
+    resp = do_check_for_update()
 
     {:reply, resp, state}
   end
 
   def handle_info(:check_for_update, state) do
-    client = Cloud.get_client()
-
-    update_check(client)
-    |> update_response()
-
+    _ = do_check_for_update()
     update_timer = Process.send_after(self(), :check_for_update, state.poll_interval)
 
     {:noreply, %{state | update_timer: update_timer}}
@@ -135,4 +127,33 @@ defmodule Peridiod.Cloud.Update do
     Logger.error("[Cloud Server] error checking for update #{inspect(reason)}")
     {:error, reason}
   end
+
+  defp do_check_for_update() do
+    client = Cloud.get_client()
+
+    update_check(client)
+    |> update_response()
+    |> check_response()
+  end
+
+  defp check_response({:error, %{reason: :nxdomain}} = error) do
+    case Cloud.get_device_api_ip_cache() do
+      [] ->
+        Logger.warning("[Cloud Server] DNS Cache Empty")
+        error
+
+      addresses ->
+        address = Enum.random(addresses)
+        Logger.warning("[Cloud Server] Using IP Address #{address}")
+
+        client =
+          Cloud.get_client()
+          |> Map.put(:device_api_host, "https://#{address}")
+
+        update_check(client)
+        |> update_response()
+    end
+  end
+
+  defp check_response(resp), do: resp
 end

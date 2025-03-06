@@ -14,6 +14,10 @@ defmodule Peridiod.Cloud do
     GenServer.call(pid_or_name, :get_client)
   end
 
+  def get_device_api_ip_cache(pid_or_name \\ __MODULE__) do
+    GenServer.call(pid_or_name, :get_device_api_ip_cache)
+  end
+
   def update_client_headers(pid_or_name \\ __MODULE__, opts) do
     GenServer.call(pid_or_name, {:update_client_headers, opts})
   end
@@ -24,6 +28,10 @@ defmodule Peridiod.Cloud do
 
   def update_tls_opts(pid_or_name \\ __MODULE__, opts) do
     GenServer.call(pid_or_name, {:update_tls_opts, opts})
+  end
+
+  def bind_tunnel_interface(pid_or_name \\ __MODULE__, ifname) do
+    GenServer.cast(pid_or_name, {:bind_tunnel_interface, ifname})
   end
 
   defdelegate check_for_update(), to: Cloud.Update
@@ -53,6 +61,8 @@ defmodule Peridiod.Cloud do
         val -> val
       end
 
+    ifname = Cloud.NetworkMonitor.get_bound_interface()
+
     client =
       PeridioSDK.Client.new(
         device_api_host: "https://#{config.device_api_host}",
@@ -65,15 +75,29 @@ defmodule Peridiod.Cloud do
         release_version: release_version
       )
 
+    tls_opts = if ifname, do: Keyword.put(config.ssl, :bind_to_device, ifname), else: config.ssl
+    client = do_update_client_transport_opts(client, tls_opts)
+
     {:ok,
      %{
        client: client,
-       tls_opts: config.ssl
+       tls_opts: tls_opts,
+       device_api_host: config.device_api_host,
+       device_api_ip_cache: [],
+       rat_config: config.remote_access_tunnels
      }}
   end
 
   def handle_call(:get_client, _from, state) do
-    {:reply, state.client, state}
+    send(self(), :update_dns_ip_cache)
+    ifname = Cloud.NetworkMonitor.get_bound_interface()
+    tls_opts = add_bound_interface(ifname, state.tls_opts)
+    client = do_update_client_transport_opts(state.client, tls_opts)
+    {:reply, client, state}
+  end
+
+  def handle_call(:get_device_api_ip_cache, _from, state) do
+    {:reply, state.device_api_ip_cache, state}
   end
 
   def handle_call({:update_client_headers, opts}, _from, state) do
@@ -82,7 +106,9 @@ defmodule Peridiod.Cloud do
   end
 
   def handle_call(:get_tls_opts, _from, state) do
-    {:reply, state.tls_opts, state}
+    ifname = Cloud.NetworkMonitor.get_bound_interface()
+    tls_opts = add_bound_interface(ifname, state.tls_opts)
+    {:reply, tls_opts, state}
   end
 
   def handle_call({:update_tls_opts, tls_opts}, _from, state) do
@@ -90,8 +116,29 @@ defmodule Peridiod.Cloud do
     {:reply, :ok, %{state | tls_opts: tls_opts, client: client}}
   end
 
+  def handle_cast({:bind_tunnel_interface, ifname}, state) do
+    Logger.info("[Cloud] Re-binding Active Tunnels")
+    Cloud.Tunnel.update_bind_interface(ifname, state.rat_config)
+    {:noreply, state}
+  end
+
+  def handle_info(:update_dns_ip_cache, state) do
+    Logger.info("[Cloud] Update DNS IP Cache")
+    {:noreply, update_dns_ip_cache(state)}
+  end
+
   def handle_info(_msg, state) do
     {:noreply, state}
+  end
+
+  defp update_dns_ip_cache(state) do
+    addresses =
+      state.device_api_host
+      |> to_charlist()
+      |> :inet_res.lookup(:in, :a, timeout: 1000)
+      |> Enum.map(&Peridio.NetMon.IP.ip_to_string/1)
+
+    %{state | device_api_ip_cache: addresses}
   end
 
   defp do_update_client_headers(client, headers) do
@@ -126,4 +173,7 @@ defmodule Peridiod.Cloud do
 
     "peridiod/#{version} (#{os_family},#{os_type}; #{arch}) OTP/#{otp_version} Elixir/#{elixir_version}"
   end
+
+  defp add_bound_interface(nil, tls_opts), do: Keyword.delete(tls_opts, :bind_to_device)
+  defp add_bound_interface(ifname, tls_opts), do: Keyword.put(tls_opts, :bind_to_device, ifname)
 end

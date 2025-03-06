@@ -47,6 +47,10 @@ defmodule Peridiod.Cloud.NetworkMonitor do
     GenServer.start_link(__MODULE__, opts, genserver_opts)
   end
 
+  def get_bound_interface(pid_or_name \\ __MODULE__) do
+    GenServer.call(pid_or_name, :get_bound_interface)
+  end
+
   def init(%__MODULE__{interfaces: interfaces, priorities: priorities}) do
     setup_monitor_priority(interfaces)
     interfaces = interfaces_initial_state(interfaces)
@@ -55,40 +59,39 @@ defmodule Peridiod.Cloud.NetworkMonitor do
      %{
        interfaces: interfaces,
        priorities: priorities,
-       bound_to_interface: nil
+       bound_interface: nil
      }}
   end
 
-  def setup_monitor_priority(interfaces) do
-    Enum.each(interfaces, &do_monitor_interface/1)
+  def handle_call(:get_bound_interface, _from, %{bound_interface: nil} = state) do
+    {:reply, nil, state}
   end
 
-  def interfaces_initial_state(interfaces) do
-    interfaces
-    |> Enum.reduce(%{}, &init_interface_status/2)
+  def handle_call(:get_bound_interface, _from, %{bound_interface: {ifname, _}} = state) do
+    {:reply, ifname, state}
   end
 
   # A Priority interface is online, lets bind to it
   def handle_info(
         {NetMon, ["interface", ifname, "connection"], _, :internet, _timestamps},
-        %{bound_to_interface: nil} = state
+        %{bound_interface: nil} = state
       ) do
     interfaces = update_in(state.interfaces, [ifname, Access.key(:status)], fn _ -> :internet end)
-    bound_to_interface = update_bind_to_device({ifname, Map.get(interfaces, ifname)})
+    bound_interface = update_bind_to_device({ifname, Map.get(interfaces, ifname)})
     Cloud.Socket.stop()
-    {:noreply, %{state | bound_to_interface: bound_to_interface, interfaces: interfaces}}
+    {:noreply, %{state | bound_interface: bound_interface, interfaces: interfaces}}
   end
 
   def handle_info(
         {NetMon, ["interface", ifname, "connection"], _, :internet, _timestamps},
-        %{bound_to_interface: {bound, %{opts: %{"disconnect_on_higher_priority" => true}}}} =
+        %{bound_interface: {bound, %{opts: %{"disconnect_on_higher_priority" => true}}}} =
           state
       ) do
     interfaces = update_in(state.interfaces, [ifname, Access.key(:status)], fn _ -> :internet end)
     new_priority = Enum.find_index(state.priorities, &(&1 == ifname))
     current_priority = Enum.find_index(state.priorities, &(&1 == bound))
 
-    bound_to_interface =
+    bound_interface =
       if current_priority > new_priority do
         Logger.info("[Cloud Monitor] Disconnecting from #{bound} for higher priority #{ifname}")
         bound = update_bind_to_device({ifname, interfaces[ifname]})
@@ -99,12 +102,12 @@ defmodule Peridiod.Cloud.NetworkMonitor do
         bound
       end
 
-    {:noreply, %{state | bound_to_interface: bound_to_interface, interfaces: interfaces}}
+    {:noreply, %{state | bound_interface: bound_interface, interfaces: interfaces}}
   end
 
   def handle_info(
         {NetMon, ["interface", ifname, "connection"], _, :internet, _timestamps},
-        %{bound_to_interface: {ifname, interface}} = state
+        %{bound_interface: {ifname, interface}} = state
       ) do
     Logger.info("[Cloud Monitor] Already bound #{ifname}")
     interfaces = Map.put(state.interfaces, ifname, %{interface | status: :internet})
@@ -114,7 +117,7 @@ defmodule Peridiod.Cloud.NetworkMonitor do
   # Lost connection to current bound device
   def handle_info(
         {NetMon, ["interface", ifname, "connection"], _, status, _timestamps},
-        %{bound_to_interface: {ifname, interface}} = state
+        %{bound_interface: {ifname, interface}} = state
       ) do
     Logger.info("[Cloud Monitor] Connection lost with current interface #{ifname}")
     interfaces = Map.put(state.interfaces, ifname, %{interface | status: status})
@@ -125,9 +128,9 @@ defmodule Peridiod.Cloud.NetworkMonitor do
           Enum.find(interfaces, &(elem(&1, 0) == ifname and elem(&1, 1).status == :internet))
       end)
 
-    bound_to_interface = update_bind_to_device({next_interface, interfaces[next_interface]})
+    bound_interface = update_bind_to_device({next_interface, interfaces[next_interface]})
     Cloud.Socket.stop()
-    {:noreply, %{state | bound_to_interface: bound_to_interface, interfaces: interfaces}}
+    {:noreply, %{state | bound_interface: bound_interface, interfaces: interfaces}}
   end
 
   def handle_info(
@@ -145,6 +148,15 @@ defmodule Peridiod.Cloud.NetworkMonitor do
     {:noreply, state}
   end
 
+  def setup_monitor_priority(interfaces) do
+    Enum.each(interfaces, &do_monitor_interface/1)
+  end
+
+  def interfaces_initial_state(interfaces) do
+    interfaces
+    |> Enum.reduce(%{}, &init_interface_status/2)
+  end
+
   defp do_monitor_interface({ifname, _interface}) do
     NetMon.subscribe(["interface", ifname, "connection"])
     NetMon.Connectivity.InternetChecker.start_link(ifname)
@@ -157,23 +169,15 @@ defmodule Peridiod.Cloud.NetworkMonitor do
 
   defp update_bind_to_device({nil, _}) do
     Logger.info("[Cloud Monitor] Network interface unbound")
-
-    tls_opts =
-      Cloud.get_tls_opts()
-      |> Keyword.drop([:bind_to_device])
-
-    Cloud.update_tls_opts(tls_opts)
+    rat_config = Peridiod.config().remote_access_tunnels
+    Cloud.Tunnel.update_bind_interface(nil, rat_config)
     nil
   end
 
   defp update_bind_to_device({ifname, interface}) do
     Logger.info("[Cloud Monitor] Network interface binding to #{ifname}")
-
-    tls_opts =
-      Cloud.get_tls_opts()
-      |> Keyword.put(:bind_to_device, ifname)
-
-    Cloud.update_tls_opts(tls_opts)
+    rat_config = Peridiod.config().remote_access_tunnels
+    Cloud.Tunnel.update_bind_interface(ifname, rat_config)
     {ifname, interface}
   end
 end

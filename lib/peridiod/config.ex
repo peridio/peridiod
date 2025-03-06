@@ -265,6 +265,7 @@ defmodule Peridiod.Config do
       |> override_if_set(:post_down, rat_config_file["hooks"]["post_down"])
 
     %{
+      routing_table: rat_config_file["routing_table"] || rat_config[:routing_table] || 555,
       enabled: rat_config_file["enabled"] || rat_config[:enabled] || false,
       data_dir: rat_config_file["data_dir"] || rat_config[:data_dir] || System.tmp_dir!(),
       port_range:

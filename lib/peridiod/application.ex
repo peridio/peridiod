@@ -7,7 +7,6 @@ defmodule Peridiod.Application do
     Config,
     Cache,
     Cloud,
-    Distribution,
     Bundle,
     Binary,
     Plan
@@ -17,35 +16,15 @@ defmodule Peridiod.Application do
     config = Peridiod.config()
     configure_logger(config)
 
-    peridio_net_mon_config = Application.get_all_env(:peridio_net_mon)
-
     children = [
-      Cloud.Event,
-      {Cloud, config},
       {Cache, config},
-      {Peridio.NetMon.Supervisor, peridio_net_mon_config},
-      {Cloud.NetworkMonitor, config.network_monitor},
+      {Cloud.Supervisor, config},
+      {Bundle.Server, config},
       Binary.Installer.Supervisor,
       Binary.Downloader.Supervisor,
       Plan.Server,
-      Plan.Step.Supervisor,
-      {Cloud.Update, config},
-      {Bundle.Server, config}
+      Plan.Step.Supervisor
     ]
-
-    children =
-      case config.socket_enabled? do
-        true ->
-          children ++
-            [
-              Cloud.Connection,
-              {Cloud.Socket, config},
-              {Distribution.Server, config}
-            ]
-
-        false ->
-          children
-      end
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Peridiod.Supervisor)
   end

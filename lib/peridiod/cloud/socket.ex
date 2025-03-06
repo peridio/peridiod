@@ -66,15 +66,6 @@ defmodule Peridiod.Cloud.Socket do
 
   @impl Slipstream
   def init(config) do
-    tls_opts = Cloud.get_tls_opts()
-
-    opts = [
-      mint_opts: [protocols: [:http1], transport_opts: tls_opts],
-      uri: config.socket[:url],
-      rejoin_after_msec: [@rejoin_after],
-      reconnect_after_msec: config.socket[:reconnect_after_msec]
-    ]
-
     peridio_uuid =
       KV.get_active("peridio_uuid") || KV.get_active("nerves_fw_uuid")
 
@@ -93,13 +84,17 @@ defmodule Peridiod.Cloud.Socket do
     socket =
       new_socket()
       |> assign(params: params)
+      |> assign(socket_opts: config.socket)
       |> assign(device_api_host: config.device_api_host)
+      |> assign(device_api_ip: nil)
+      |> assign(device_api_port: config.device_api_port)
       |> assign(remote_iex: config.remote_iex)
       |> assign(remote_shell: config.remote_shell)
       |> assign(remote_access_tunnels: config.remote_access_tunnels)
       |> assign(remote_console_pid: nil)
       |> assign(remote_console_timer: nil)
-      |> connect!(opts)
+      |> assign(mode: :host)
+      |> connect!(opts(config.device_api_host, config.device_api_port, config.socket))
 
     Process.flag(:trap_exit, true)
 
@@ -251,7 +246,7 @@ defmodule Peridiod.Cloud.Socket do
     service_ports = socket.assigns.remote_access_tunnels.service_ports
 
     if dport in service_ports do
-      device_client = Cloud.get_client()
+      device_client = api_client(socket)
 
       case Cloud.Tunnel.create(
              device_client,
@@ -396,7 +391,7 @@ defmodule Peridiod.Cloud.Socket do
 
   def handle_info(:tunnel_synchronize, socket) do
     Logger.info("[Cloud Socket] Tunnels synchronizing")
-    device_client = Cloud.get_client()
+    device_client = api_client(socket)
     Cloud.Tunnel.synchronize(device_client, socket.assigns.remote_access_tunnels)
     {:noreply, socket}
   end
@@ -421,9 +416,56 @@ defmodule Peridiod.Cloud.Socket do
   end
 
   @impl Slipstream
+  def handle_disconnect({:error, %{reason: :nxdomain} = reason}, socket) do
+    Logger.warning("[Cloud Socket] DNS resolution error")
+    _ = Client.handle_error(reason)
+
+    case Cloud.get_device_api_ip_cache() do
+      [] ->
+        Logger.info("[Cloud Socket] DNS cache empty, attempting reconnect with hostname")
+        reconnect(socket)
+
+      addresses ->
+        address = Enum.random(addresses)
+        Logger.info("[Cloud Socket] Attempting reconnect with IP #{address}")
+
+        new_socket =
+          new_socket()
+          |> Map.put(:assigns, socket.assigns)
+          |> assign(:mode, :ip)
+          |> assign(:device_api_ip, address)
+          |> connect!(opts(address, socket.assigns.device_api_port, socket.assigns.socket_opts))
+
+        {:noreply, new_socket}
+    end
+  end
+
   def handle_disconnect(reason, socket) do
     _ = Client.handle_error(reason)
-    reconnect(socket)
+
+    case socket.assigns.mode do
+      :ip ->
+        Logger.info(
+          "[Cloud Socket] Switching back to device api host #{socket.assigns.device_api_host}"
+        )
+
+        new_socket =
+          new_socket()
+          |> Map.put(:assigns, socket.assigns)
+          |> assign(:mode, :host)
+          |> connect!(
+            opts(
+              socket.assigns.device_api_host,
+              socket.assigns.device_api_port,
+              socket.assigns.socket_opts
+            )
+          )
+
+        {:noreply, new_socket}
+
+      :host ->
+        reconnect(socket)
+    end
   end
 
   @impl Slipstream
@@ -495,4 +537,26 @@ defmodule Peridiod.Cloud.Socket do
 
   defp valid_codepoint?(<<_::utf8>>), do: true
   defp valid_codepoint?(_), do: false
+
+  defp url(host, port) do
+    "wss://#{host}:#{port}/socket/websocket"
+  end
+
+  defp opts(host, port, socket) do
+    [
+      mint_opts: [protocols: [:http1], transport_opts: Cloud.get_tls_opts()],
+      uri: url(host, port),
+      rejoin_after_msec: [@rejoin_after],
+      reconnect_after_msec: socket[:reconnect_after_msec]
+    ]
+  end
+
+  defp api_client(%{assigns: %{mode: :ip, device_api_ip: device_api_ip}}) do
+    Cloud.get_client()
+    |> Map.put(:device_api_host, "https://#{device_api_ip}")
+  end
+
+  defp api_client(_socket) do
+    Cloud.get_client()
+  end
 end
