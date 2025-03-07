@@ -1,5 +1,35 @@
 # peridiod releases
 
+## v3.1.0
+
+* Enhancements
+  * [Network Monitor] Added network monitoring options for devices with multi-wan connected network interfaces. Linux will route requests to the internet using the route with the lowest metric. If the default route with the lowest metric is unable to access the internet but other interfaces can, we should try to use those other interfaces. This feature enables peridiod to monitor a specified list of priority network interfaces for connectivity. It will bind network communications to a prioritized route and fail over if it no longer can connect to the internet.
+
+  Add the following to your peridio config to enable:
+
+  ```json
+  "network_monitor": {
+    ["eth0", "eth1", {"ppp0": {"disconnect_on_higher_priority": true}}]
+  }
+  ```
+
+    * The list is in order of highest priority to lowest priority.
+    * It can contain `string` network device names, or, an object with a single key of the interface name and options `{"ppp0": {}}`
+    * Specifying the option `"disconnect_on_higher_priority": true` will forcefully disconnect from that interface when a higher priority interface becomes * available. This is helpful for preventing long lived socket connections from persisting on metered data links like cellular.
+    * In the example above, if we are bound to `eth1` and `eth0` regains connectivity to the internet, we will not disconnect from eth1
+
+  * [Change Plans] The underlying binary installer engine has been rewritten to prepare support for complex bundle installation cases such as
+    * Inter-bundle binary dependencies
+    * Custom lifecycle script execution
+    * Better handling of sequential and parallel installers
+    * Multi-stage updates that require multiple update reboots
+
+* Bug fixes
+  * Fixes issue installing multiple binaries in a bundle in parallel using installers that only support sequential execution
+    * Affected installers: `swupdate`, `dpkg`, `apt`, `opkg`
+  * Fixes issue where installers that can only install from path would not cache the binary before running the installer
+    * Affected installers: `swupdate`, `dpkg`, `apt`, `opkg`
+
 ## v3.0.1
 
 * Bug fixes
