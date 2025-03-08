@@ -1,11 +1,11 @@
-FROM fedora:40 AS build
+FROM fedora:41 AS build
 
 ARG MIX_ENV=prod
-ARG OPENSSL_VERSION=1.1.1v
-ARG ERLANG_VERSION=27.2
-ARG ELIXIR_VERSION=1.18.1
+ARG OPENSSL_VERSION=3.4.1
+ARG ERLANG_VERSION=27.3
+ARG ELIXIR_VERSION=1.18.3
 
-RUN dnf groupinstall -y 'Development Tools' && \
+RUN dnf group install -y development-tools && \
     dnf install -y \
     glibc-static \
     glibc-locale-source \
@@ -15,7 +15,8 @@ RUN dnf groupinstall -y 'Development Tools' && \
     gcc-c++ \
     wget \
     perl \
-    libmnl-devel
+    libmnl-devel \
+    libmnl-static
 
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
@@ -53,7 +54,7 @@ RUN cd otp-OTP-${ERLANG_VERSION} && \
   CFLAGS="-O2 -Wno-error -I/opt/ncurses/include" \
   CXXFLAGS="$CFLAGS -static" \
   LDFLAGS="-L/usr/lib64 -static -L/opt/ncurses/lib" \
-  LIBS="/opt/openssl/lib/libcrypto.a" \
+  LIBS="/opt/openssl/lib64/libcrypto.a" \
   ./configure \
   --without-debugger \
   --without-dialyzer \

@@ -1,4 +1,4 @@
-FROM hexpm/elixir:1.18.1-erlang-27.2-alpine-3.21.0 AS build
+FROM hexpm/elixir:1.18.3-erlang-27.3-alpine-3.21.3 AS build
 
 ARG MIX_ENV=prod
 ARG UBOOT_ENV_SIZE=0x20000
