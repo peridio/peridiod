@@ -17,6 +17,7 @@ defmodule Peridiod.MixProject do
           applications: [peridiod: :permanent],
           include_executables_for: [:unix],
           steps: [:assemble, :tar],
+          strip_beams: true,
           include_erts: System.get_env("MIX_TARGET_INCLUDE_ERTS") || true
         ]
       ]
@@ -45,6 +46,7 @@ defmodule Peridiod.MixProject do
       {:hackney, "~> 1.10"},
       {:slipstream, "~> 1.0 or ~> 0.8"},
       {:x509, "~> 0.8"},
+      {:recon, "~> 2.5"},
       {:plug, "~> 1.11", only: :test},
       {:plug_cowboy, "~> 2.5", only: :test}
     ]

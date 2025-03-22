@@ -1,2 +1,22 @@
 -start_epmd false -erl_epmd_port 6789
 -kernel inet_res "[{lookup, [dns, file, native]}]"
+-hybrid
++A 2
++S 1:1
+
++MMscrpm false
++MIscs 160
+
++MMmcs 32
++MMscs 8
++MMrmcbf 0.1
++P 1024
++Q 1024
++sss 24
+
+# Process limits - tighter constraints for embedded system
++hmax 8388608     # Limit max heap size to 1MB (reduced from ~25MB)
+# +hmaxk true       # Kill processes exceeding heap limit
+# +hms 16384        # Set minimum heap size to 16KB (default is higher)
+# +hmbs 16384       # Minimum binary virtual heap size
+# +hmaxel true      # Log processes that are killed for exceeding limits
