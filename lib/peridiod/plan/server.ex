@@ -77,14 +77,20 @@ defmodule Peridiod.Plan.Server do
   end
 
   # Execute next steps
-  def handle_info({Step, pid, :complete}, %{processing: [pid], sequence: [step | tail], status: :ok} = state) do
+  def handle_info(
+        {Step, pid, :complete},
+        %{processing: [pid], sequence: [step | tail], status: :ok} = state
+      ) do
     Logger.info("[Step Server] Phase complete, executing next phase")
     state = pop_processing(pid, state)
     processing = state.processing ++ execute(step)
     {:noreply, %{state | processing: processing, sequence: tail}}
   end
 
-  def handle_info({Step, pid, :complete}, %{processing: [_ | _], sequence: [_ | _], status: :ok} = state) do
+  def handle_info(
+        {Step, pid, :complete},
+        %{processing: [_ | _], sequence: [_ | _], status: :ok} = state
+      ) do
     Logger.info("[Step Server] Step finished")
     {:noreply, pop_processing(pid, state)}
   end
@@ -153,10 +159,12 @@ defmodule Peridiod.Plan.Server do
   defp transition_to_error(%{processing: []} = state) do
     phase_change(:error, state)
   end
+
   defp transition_to_error(state) do
     Logger.warning(
       "[Plan Server] Waiting #{trunc(state.error_timeout / 1000)}s for in-flight steps to clear before forcefully transitioning to on_error"
     )
+
     error_timer = Process.send_after(self(), :force_error_phase, state.error_timeout)
     %{state | error_timer: error_timer, status: :error}
   end

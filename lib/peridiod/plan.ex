@@ -52,7 +52,8 @@ defmodule Peridiod.Plan do
          cache_pid: cache_pid
        }},
       {Step.SystemState, %{action: :advance, kv_pid: kv_pid, cache_pid: cache_pid}}
-    | maybe_reboot]
+      | maybe_reboot
+    ]
 
     on_error = [
       {Step.SystemState, %{action: :progress_reset, kv_pid: kv_pid, cache_pid: cache_pid}}
@@ -114,7 +115,8 @@ defmodule Peridiod.Plan do
       {Step.Cache,
        %{metadata: via_metadata, action: :stamp_installed, kv_pid: kv_pid, cache_pid: cache_pid}},
       {Step.SystemState, %{action: :advance, kv_pid: kv_pid, cache_pid: cache_pid}}
-    | maybe_reboot]
+      | maybe_reboot
+    ]
 
     on_error = [
       {Step.SystemState, %{action: :progress_reset, kv_pid: kv_pid, cache_pid: cache_pid}}
@@ -211,11 +213,13 @@ defmodule Peridiod.Plan do
             case {Binary.cached?(binary_metadata), installer_mod.interfaces()} do
               {false, [:path]} ->
                 Logger.info("[Plan] Binary not cached, adding cache step")
+
                 {:cache,
                  [
                    {Step.BinaryCache,
                     %{cache_pid: opts[:cache_pid], binary_metadata: binary_metadata}}
-                 | cache_steps]}
+                   | cache_steps
+                 ]}
 
               {true, _} ->
                 Logger.info("[Plan] Binary already cached")
@@ -238,6 +242,7 @@ defmodule Peridiod.Plan do
           steps = [{Step.BinaryInstall, step_opts} | steps]
           {cache_steps, steps}
       end)
+
     case cache_steps do
       [] -> Enum.reverse(steps)
       cache_steps -> [Enum.reverse(cache_steps) |> Enum.uniq(), Enum.reverse(steps)]
@@ -252,9 +257,10 @@ defmodule Peridiod.Plan do
   end
 
   defp binary_install_chunk_sequential([cache_steps, steps])
-    when is_list(cache_steps) and is_list(steps) do
-  [cache_steps | binary_install_chunk_sequential(steps)]
+       when is_list(cache_steps) and is_list(steps) do
+    [cache_steps | binary_install_chunk_sequential(steps)]
   end
+
   defp binary_install_chunk_sequential(steps) do
     Enum.chunk_while(
       steps,
@@ -277,10 +283,23 @@ defmodule Peridiod.Plan do
 
   defp reboot_step(steps, config) do
     steps = List.flatten(steps)
-    case Enum.any?(steps, & elem(&1, 1).binary_metadata.custom_metadata["peridiod"]["reboot_required"] == true) do
+
+    case Enum.any?(
+           steps,
+           &(elem(&1, 1).binary_metadata.custom_metadata["peridiod"]["reboot_required"] == true)
+         ) do
       true ->
-        reboot_opts = Map.take(config, [:reboot_cmd, :reboot_opts, :reboot_delay, :reboot_sync_cmd, :reboot_sync_opts])
+        reboot_opts =
+          Map.take(config, [
+            :reboot_cmd,
+            :reboot_opts,
+            :reboot_delay,
+            :reboot_sync_cmd,
+            :reboot_sync_opts
+          ])
+
         [{Step.SystemReboot, reboot_opts}]
+
       false ->
         []
     end

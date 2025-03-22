@@ -153,17 +153,19 @@ defmodule Peridiod.Cloud.Tunnel do
     interface_confs =
       interface_confs
       |> Enum.map(&update_in(&1, [Access.key(:interface), Access.key(:table)], fn _ -> table end))
-      |> Enum.map(fn(quick_config) ->
+      |> Enum.map(fn quick_config ->
         [{_, dport}] = WireGuard.QuickConfig.get_in_extra(quick_config, ["Peridio", "DPort"])
-        hooks = hooks(
-          rat_config,
-          quick_config.interface,
-          quick_config.peer,
-          dport,
-          ifname
-        )
 
-        extra = Enum.reject(quick_config.extra, & elem(&1, 0) == "Interface")
+        hooks =
+          hooks(
+            rat_config,
+            quick_config.interface,
+            quick_config.peer,
+            dport,
+            ifname
+          )
+
+        extra = Enum.reject(quick_config.extra, &(elem(&1, 0) == "Interface"))
         %{quick_config | extra: [{"Interface", hooks} | extra]}
       end)
 
@@ -217,9 +219,9 @@ defmodule Peridiod.Cloud.Tunnel do
       |> List.to_tuple()
       |> Network.IP.new()
 
-
     wan_ifname = Cloud.NetworkMonitor.get_bound_interface()
     table = if wan_ifname, do: :off, else: :auto
+
     interface =
       interface
       |> Map.put(:ip_address, ip_address)
@@ -242,8 +244,17 @@ defmodule Peridiod.Cloud.Tunnel do
 
   defp hooks(rat_config, interface, peer, dport, wan_ifname) do
     routing_table = rat_config[:routing_table] || @routing_table
+
     args =
-      [interface.id, dport, interface.ip_address, "#{peer.ip_address}/32", wan_ifname, peer.endpoint, routing_table]
+      [
+        interface.id,
+        dport,
+        interface.ip_address,
+        "#{peer.ip_address}/32",
+        wan_ifname,
+        peer.endpoint,
+        routing_table
+      ]
       |> Enum.join(" ")
 
     [
