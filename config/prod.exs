@@ -14,3 +14,8 @@ config :erlexec,
 
 config :peridiod_persistence,
   kv_backend: PeridiodPersistence.KVBackend.UBootEnv
+
+config :peridio_net_mon,
+  internet_host_list: [
+    {{3, 142, 155, 49}, 443}
+  ]
