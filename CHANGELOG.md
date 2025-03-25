@@ -1,5 +1,11 @@
 # peridiod releases
 
+## v3.1.1
+
+* Bug fixes
+  * [Network Monitor] Updated internet host list to monitor peridio infrastructure over 443 to closely represent "healthy" conditions.
+    Previously, internet connectivity health was determined from checks on port 50 to common internet dns server addresses. This would yield false results.
+
 ## v3.1.0
 
 * Enhancements
