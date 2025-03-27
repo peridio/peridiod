@@ -1,5 +1,11 @@
 # peridiod releases
 
+## v3.1.2
+
+* Bug fixes
+  * [Ubuntu | Red Hat] Updated peridiod deb / rpm packages to include additional dependency recommends for remote access tunnels.
+  * [Ubuntu | Red Hat] When installing Peridiod for the first time from deb / rpm package default peridio_vsn_current to 0.1.0. If you would like installs provisioned with this version to adopt into the release graph, configure your first build in the graph with a version requirement of `~> 0.1` or similar
+
 ## v3.1.1
 
 * Bug fixes
