@@ -1,4 +1,4 @@
-FROM fedora:34 AS build
+FROM rockylinux:9 AS build
 
 ARG MIX_ENV=prod
 ARG ERLANG_VERSION=27.1.3

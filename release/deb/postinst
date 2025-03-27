@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -e
+
+# Create directory if it doesn't exist
+mkdir -p /var/peridiod
+
+# Only create file if it doesn't exist, using the template
+if [ ! -f "/var/peridiod/peridiod-state" ]; then
+    echo "Creating peridiod-state file from template..."
+    cp /usr/share/peridiod/peridiod-state.template /var/peridiod/peridiod-state
+    if [ ! -f "/var/peridiod/peridiod-state" ]; then
+        echo "ERROR: Failed to create peridiod-state file"
+        # Try direct creation as fallback
+        echo '{}' > /var/peridiod/peridiod-state
+    fi
+    chmod 644 /var/peridiod/peridiod-state
+fi
+
+# Ensure proper directory permissions
+chmod 755 /var/peridiod
+chmod 644 /var/peridiod/peridiod-state 2>/dev/null || true
+
+echo "Directory permissions set"
+
+# Enable and start the systemd service
+if [ "$1" = "configure" ]; then
+    echo "Configuring systemd service..."
+    systemctl enable peridiod.service || echo "WARNING: Failed to enable peridiod service"
+    systemctl start peridiod.service || echo "WARNING: Failed to start peridiod service"
+fi

@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-set -e
-
-# Enable and start the systemd service
-if [ "$1" = "configure" ]; then
-    systemctl enable peridiod.service
-    systemctl start peridiod.service
-fi

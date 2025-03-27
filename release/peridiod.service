@@ -4,6 +4,7 @@ Description=Peridio Daemon
 [Service]
 Restart=on-failure
 RestartSec=5s
+TimeoutStopSec=10
 
 EnvironmentFile=/etc/peridiod/peridiod.env
 ExecStart=/usr/lib/peridiod/bin/peridiod start

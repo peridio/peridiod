@@ -4,7 +4,8 @@ License: $PERIDIOD_LICENSE
 Vendor: $PERIDIOD_VENDOR
 Architecture: $PERIDIOD_ARCH
 Maintainer: $PERIDIOD_MAINTAINER
-Depends: libc6, libncurses5 | libncurses6, libssl1.1 | libssl3, zlib1g
+Depends: libc6, libncurses5 | libncurses6, libssl1.1 | libssl3, zlib1g, libmnl0
+Recommends: iproute2, iptables, wireguard-tools, socat
 Section: devel
 Priority: optional
 Homepage: $PERIDIOD_HOMEPAGE

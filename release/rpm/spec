@@ -11,6 +11,8 @@ BuildArch:      $PERIDIOD_ARCH_RPM
 Requires:       glibc
 Requires:       openssl
 Requires:       zlib
+Requires:       libmnl
+Recommends:     iproute, iptables, wireguard-tools, socat
 
 %description
 $PERIDIOD_DESCRIPTION
@@ -25,17 +27,29 @@ $PERIDIOD_DESCRIPTION
 mkdir -p %{buildroot}/usr/lib/systemd/system
 mkdir -p %{buildroot}/usr/lib/peridiod
 mkdir -p %{buildroot}/etc/peridiod
+mkdir -p %{buildroot}/var/peridiod
 
 cp -r peridiod/* %{buildroot}/usr/lib/peridiod
 cp peridiod.service %{buildroot}/usr/lib/systemd/system
 cp peridiod.env %{buildroot}/etc/peridiod
 cp peridio.json %{buildroot}/etc/peridiod
+cp peridiod-state %{buildroot}/var/peridiod/peridiod-state
+
+%post
+
+mkdir -p /var/peridiod
+
+# Ensure proper permissions
+chmod 755 /var/peridiod
+chmod 644 /var/peridiod/peridiod-state
 
 %files
 /usr/lib/peridiod/*
 /usr/lib/systemd/system/peridiod.service
 /etc/peridiod/peridio.json
 /etc/peridiod/peridiod.env
+%dir /var/peridiod
+%config(noreplace) %attr(644, root, root) /var/peridiod/peridiod-state
 
 %changelog
 $PERIDIOD_CHANGELOG

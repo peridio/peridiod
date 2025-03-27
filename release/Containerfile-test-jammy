@@ -1,0 +1,65 @@
+FROM hexpm/elixir:1.18.3-erlang-27.3-ubuntu-jammy-20250126 AS build
+
+ARG MIX_ENV=prod
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y \
+    git make build-essential libmnl-dev
+
+RUN mix archive.install github hexpm/hex branch latest --force
+RUN mix local.rebar --force
+
+RUN mkdir -p /opt/app
+ADD . /opt/app/
+
+WORKDIR /opt/app
+
+RUN mix deps.get --only $MIX_ENV
+RUN mix release --overwrite
+
+# Stage for building the deb package
+FROM ubuntu:jammy AS package-builder
+
+RUN apt-get update && \
+    apt-get install -y gettext-base
+
+WORKDIR /build
+
+# Copy the release, build script, and VERSION file
+COPY --from=build /opt/app/_build/prod/peridiod-*.tar.gz ./peridiod.tar.gz
+COPY release/ ./release/
+COPY VERSION ./
+
+SHELL ["/bin/bash", "-c"]
+
+# Build the deb package - using shell form to properly export the VERSION
+RUN mkdir -p ./deb-build && \
+    export PERIDIOD_VERSION=$(cat ./VERSION | tr -d '[:space:]') && \
+    export PERIDIOD_ARCH=$(dpkg --print-architecture) && \
+    source ./release/package-info.sh && \
+    ./release/build-deb.sh ./peridiod.tar.gz ./deb-build && \
+    mv ./deb-build.deb /peridiod.deb
+
+# Final stage for testing installation
+FROM ubuntu:jammy
+
+COPY --from=package-builder /peridiod.deb /tmp/peridiod.deb
+
+RUN apt-get update && \
+    apt-get install -y /tmp/peridiod.deb && \
+    rm /tmp/peridiod.deb
+
+# Verify installation
+RUN systemctl enable peridiod || true
+# Since systemd doesn't run normally in containers, we just verify files exist
+RUN test -f /usr/lib/systemd/system/peridiod.service && \
+    test -d /usr/lib/peridiod && \
+    test -f /etc/peridiod/peridio.json
+
+ENV PERIDIO_CONFIG_FILE=/etc/peridiod/peridio.json
+ENV PERIDIO_KV_BACKEND=filesystem
+ENV PERIDIO_KV_BACKEND_FILESYSTEM_PATH=/var/peridiod
+ENV PERIDIO_KV_BACKEND_FILESYSTEM_FILE=peridiod-state
+
+CMD ["/usr/lib/peridiod/bin/peridiod", "start_iex"]
