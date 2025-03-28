@@ -3,7 +3,6 @@ FROM rockylinux:9 AS build
 ARG MIX_ENV=prod
 ARG ERLANG_VERSION=27.3
 ARG ELIXIR_VERSION=1.18.3-otp-27
-ENV DEBIAN_FRONTEND=noninteractive
 
 RUN dnf groupinstall -y 'Development Tools' && \
     dnf install -y --enablerepo=crb \

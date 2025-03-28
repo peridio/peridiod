@@ -58,7 +58,7 @@ RUN fwup -a -t complete -i support/peridiod.fw -d support/peridiod.img
 RUN mix deps.get --only $MIX_ENV
 RUN mix release --overwrite
 
-FROM alpine:3.21 as app
+FROM alpine:3.21 AS app
 
 RUN apk add --no-cache \
     agetty \

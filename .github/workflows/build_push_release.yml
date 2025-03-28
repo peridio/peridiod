@@ -299,12 +299,14 @@ jobs:
         PERIDIOD_VERSION_RPM=${PERIDIOD_VERSION//-/_}
         PERIDIOD_PACKAGE_DIR=$(pwd)/package/peridiod_${PERIDIOD_VERSION}_${PERIDIOD_ARCH}
         PERIDIOD_RELEASE_NOTES=$(sed -e "/^## ${RELEASE_TAG}/,/^## / ! d" CHANGELOG.md | tail -n +2 | head -n -1)
+        PERIDIOD_DIST_TAG=$(rpm --eval '%{?dist}' | sed 's/^.//')
 
         export PERIDIOD_RELEASE_NOTES
         export PERIDIOD_VERSION
         export PERIDIOD_VERSION_RPM
         export PERIDIOD_ARCH
         export PERIDIOD_ARCH_RPM
+        export PERIDIOD_DIST_TAG
 
         release/build-rpm.sh ./docker_output/peridiod-${PERIDIOD_VERSION}.tar.gz $PERIDIOD_PACKAGE_DIR
 
