@@ -1,5 +1,10 @@
 # peridiod releases
 
+## v3.1.3
+
+* Bug fixes
+  * [Core] Fixed persisted state can become corrupted when performing `get_and_update`
+
 ## v3.1.2
 
 * Bug fixes
