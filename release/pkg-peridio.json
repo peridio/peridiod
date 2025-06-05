@@ -13,8 +13,8 @@
   "node": {
     "key_pair_source": "file",
     "key_pair_config": {
-      "private_key_path": "/etc/peridiod/device-certificate.pem",
-      "certificate_path": "/etc/peridiod/device-private-key.pem"
+      "private_key_path": "/etc/peridiod/device-private-key.pem",
+      "certificate_path": "/etc/peridiod/device-certificate.pem"
     }
   }
 }
