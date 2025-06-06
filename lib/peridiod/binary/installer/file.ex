@@ -29,6 +29,9 @@ defmodule Peridiod.Binary.Installer.File do
     link_dir = Path.dirname(final_dest)
     File.mkdir_p(link_dir)
 
+    # Remove existing file/link if it exists
+    File.rm(final_dest)
+
     case File.ln_s(path, final_dest) do
       :ok -> {:stop, :normal, nil}
       {:error, error} -> {:error, error, nil}
@@ -59,6 +62,9 @@ defmodule Peridiod.Binary.Installer.File do
 
   def stream_finish(_binary_metadata, :valid_signature, _hash, {tmp_dest, final_dest} = state) do
     link_name = Path.relative_to(tmp_dest, Path.dirname(tmp_dest))
+
+    # Remove existing file/link if it exists
+    File.rm(final_dest)
 
     case File.ln_s(link_name, final_dest) do
       :ok -> {:stop, :normal, state}
