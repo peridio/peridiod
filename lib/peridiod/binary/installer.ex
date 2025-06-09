@@ -215,6 +215,7 @@ defmodule Peridiod.Binary.Installer do
 
   defp installer_complete({:stop, error, state}) do
     Logger.error("[Installer #{state.binary_metadata.prn}] Error #{inspect(error)}")
+    Binary.stamp_cached(state.cache_pid, state.binary_metadata)
     try_send(state.callback, {Installer, state.binary_metadata.prn, {:error, error}})
     {:stop, :normal, state}
   end
