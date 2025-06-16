@@ -1,5 +1,12 @@
 # peridiod releases
 
+## v3.1.4
+
+* Bug fixes
+  * [Core] Fixed file installer cleanup of old files
+  * [Core] Fixed failure of install completion to stamp cached file
+  * [Ubuntu] Fixed default locations for certificate key paths
+
 ## v3.1.4-rc.1
 
 * Bug fixes
