@@ -54,7 +54,6 @@ defmodule Peridiod.Config.PKCS11 do
     }
   end
 
-
   defp add_certificate(base_config, %{"certificate_path" => certificate_path}) do
     ssl_opts =
       base_config.ssl
@@ -85,4 +84,3 @@ defmodule Peridiod.Config.PKCS11 do
     |> Enum.find(&File.exists?/1)
   end
 end
-
