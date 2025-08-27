@@ -25,4 +25,4 @@ rm -rf "$PERIDIOD_PACKAGE_DIR/peridiod-$PERIDIOD_VERSION_RPM"
 envsubst < "$SCRIPT_DIR/rpm/spec" > "$PERIDIOD_PACKAGE_DIR/SPECS/peridiod.spec"
 
 rpmbuild -vv -ba --define "_topdir $PERIDIOD_PACKAGE_DIR" --define "_enable_debug_packages 0" --define "debug_package %{nil}" "$PERIDIOD_PACKAGE_DIR/SPECS/peridiod.spec"
-rpm -qlp "$PERIDIOD_PACKAGE_DIR/RPMS/$PERIDIOD_ARCH_RPM/peridiod-$PERIDIOD_VERSION_RPM-1.$PERIDIOD_DIST_TAG.$PERIDIOD_ARCH_RPM.rpm"
+rpm -qlp "$PERIDIOD_PACKAGE_DIR/RPMS/$PERIDIOD_ARCH_RPM/peridiod-$PERIDIOD_VERSION_RPM-1.$PERIDIOD_ARCH_RPM.rpm"
