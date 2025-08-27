@@ -3,7 +3,7 @@ name: Build and Push Release
 on:
   push:
     tags:
-      - 'v*'
+      - '*'
 
 jobs:
   create_release:
@@ -42,42 +42,6 @@ jobs:
               --notes "$RELEASE_NOTES"
           fi
         fi
-
-  create_static:
-    permissions:
-      contents: write
-    runs-on: "${{ matrix.os }}"
-    needs: create_release
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest-4-cores-arm64
-            target: arm64
-          - os: ubuntu-latest
-            target: amd64
-
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-
-    - name: Set Env
-      run: |
-        VERSION=$(echo "${GITHUB_REF#refs/*/}" | sed 's/^v//')
-        echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-        echo "RELEASE_VERSION=${VERSION}" >> $GITHUB_ENV
-
-    - name: Build release artifacts
-      run: |
-        docker build --platform linux/${{ matrix.target }} --output type=local,dest=docker_output/ -f release/Containerfile-build-static .
-
-    - name: Upload Release Asset
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        mv ./docker_output/peridiod-${RELEASE_VERSION}.tar.gz ./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}-static.tar.gz
-        gh release upload $RELEASE_TAG ./docker_output/peridiod-${RELEASE_VERSION}-${{ matrix.target }}-static.tar.gz --clobber
 
   create_container_images:
     permissions:
@@ -299,7 +263,7 @@ jobs:
         PERIDIOD_VERSION_RPM=${PERIDIOD_VERSION//-/_}
         PERIDIOD_PACKAGE_DIR=$(pwd)/package/peridiod_${PERIDIOD_VERSION}_${PERIDIOD_ARCH}
         PERIDIOD_RELEASE_NOTES=$(sed -e "/^## ${RELEASE_TAG}/,/^## / ! d" CHANGELOG.md | tail -n +2 | head -n -1)
-        PERIDIOD_DIST_TAG=$(rpm --eval '%{?dist}' | sed 's/^.//')
+        PERIDIOD_DIST_TAG=${{ matrix.distro }}
 
         export PERIDIOD_RELEASE_NOTES
         export PERIDIOD_VERSION
@@ -310,8 +274,8 @@ jobs:
 
         release/build-rpm.sh ./docker_output/peridiod-${PERIDIOD_VERSION}.tar.gz $PERIDIOD_PACKAGE_DIR
 
-        mv "${PERIDIOD_PACKAGE_DIR}/RPMS/$PERIDIOD_ARCH_RPM/peridiod-${PERIDIOD_VERSION_RPM}-1.${PERIDIOD_ARCH_RPM}.rpm" peridiod-${PERIDIOD_VERSION_RPM}-1.${PERIDIOD_ARCH_RPM}.${{ matrix.distro }}.rpm
-        echo "PERIDIOD_PACKAGE=peridiod-${PERIDIOD_VERSION_RPM}-1.${PERIDIOD_ARCH_RPM}.${{ matrix.distro }}.rpm" >> $GITHUB_ENV
+        mv "${PERIDIOD_PACKAGE_DIR}/RPMS/$PERIDIOD_ARCH_RPM/peridiod-${PERIDIOD_VERSION_RPM}-1.${PERIDIOD_ARCH_RPM}.${PERIDIOD_DIST_TAG}.rpm" peridiod-${PERIDIOD_VERSION_RPM}-1.${PERIDIOD_ARCH_RPM}.${PERIDIOD_DIST_TAG}.rpm
+        echo "PERIDIOD_PACKAGE=peridiod-${PERIDIOD_VERSION_RPM}-1.${PERIDIOD_ARCH_RPM}.${PERIDIOD_DIST_TAG}.rpm" >> $GITHUB_ENV
 
     - name: Upload Release Asset
       env:

@@ -1,37 +1,44 @@
 # peridiod releases
 
-## v3.1.4
+## 3.1.5-rc.0
+
+* Bug fixes
+  * [Core] Allow PKCS#11 public certificate to be passed as a .pem file
+    by specifying `certificate_path`
+  * [Core] Fixed crash when download cache signing key uses an HSM
+
+## 3.1.4
 
 * Bug fixes
   * [Core] Fixed file installer cleanup of old files
   * [Core] Fixed failure of install completion to stamp cached file
   * [Ubuntu] Fixed default locations for certificate key paths
 
-## v3.1.4-rc.1
+## 3.1.4-rc.1
 
 * Bug fixes
   * [Core] Fixed file installer cleanup of old files
   * [Core] Fixed failure of install completion to stamp cached file
   * [Ubuntu] Fixed default locations for certificate key paths
 
-## v3.1.3
+## 3.1.3
 
 * Bug fixes
   * [Core] Fixed persisted state can become corrupted when performing `get_and_update`
 
-## v3.1.2
+## 3.1.2
 
 * Bug fixes
   * [Ubuntu | Red Hat] Updated peridiod deb / rpm packages to include additional dependency recommends for remote access tunnels.
   * [Ubuntu | Red Hat] When installing Peridiod for the first time from deb / rpm package default peridio_vsn_current to 0.1.0. If you would like installs provisioned with this version to adopt into the release graph, configure your first build in the graph with a version requirement of `~> 0.1` or similar
 
-## v3.1.1
+## 3.1.1
 
 * Bug fixes
   * [Network Monitor] Updated internet host list to monitor peridio infrastructure over 443 to closely represent "healthy" conditions.
     Previously, internet connectivity health was determined from checks on port 50 to common internet dns server addresses. This would yield false results.
 
-## v3.1.0
+## 3.1.0
 
 * Enhancements
   * [Network Monitor] Added network monitoring options for devices with multi-wan connected network interfaces. Linux will route requests to the internet using the route with the lowest metric. If the default route with the lowest metric is unable to access the internet but other interfaces can, we should try to use those other interfaces. This feature enables peridiod to monitor a specified list of priority network interfaces for connectivity. It will bind network communications to a prioritized route and fail over if it no longer can connect to the internet.
@@ -61,12 +68,12 @@
   * Fixes issue where installers that can only install from path would not cache the binary before running the installer
     * Affected installers: `swupdate`, `dpkg`, `apt`, `opkg`
 
-## v3.0.1
+## 3.0.1
 
 * Bug fixes
   * [Bundles] Fix issue with bundle update resolution where all binaries may be installed instead of only binaries that are not installed.
 
-## v3.0.0
+## 3.0.0
 
 Added Support for Bundle Distributions
 
@@ -132,7 +139,7 @@ To use releases, binaries must be configured to use an installer. An Installer i
 
 See the [Peridiod Packaging Updates integration docs](https://docs.peridio.com/integration/linux/peridiod/updates) for more information.
 
-## v3.0.0-rc.7
+## 3.0.0-rc.7
 
 * Enhancements
   * Full support for installing via bundle overrides and releases in cohort workflows
@@ -141,7 +148,7 @@ See the [Peridiod Packaging Updates integration docs](https://docs.peridio.com/i
   * Fixed issue with Cache downloader appending to existing cache file instead of starting over on restart. This was causing the cache download file to fail signature checks and grow the cache to unreasonable size.
   * Allow custom_metadata installer_opts key to be optional. Caused Installer process to crash if omitted.
 
-## v3.0.0-rc.6
+## 3.0.0-rc.6
 
 * Bug fixes
   * Fix issues with `swupdate`, `deb`, `apt`, and `opkg` installers writing intermediate files outside peridiod cache dir.
@@ -152,7 +159,7 @@ See the [Peridiod Packaging Updates integration docs](https://docs.peridio.com/i
   * Trim plain text from the preamble of certificates in ubootenv and env. This was causing `SERVER ALERT: Fatal - Handshake Failure`.
   * Remote Access Tunnels: Fix issue where CIDR and Port negotiation may fail if a tunnel is in the process of closing when the system is queried for used resources.
 
-## v3.0.0-rc.5
+## 3.0.0-rc.5
 
 * Enhancements
   * Support for migrating from v2 to v3 peridiod
@@ -163,18 +170,18 @@ See the [Peridiod Packaging Updates integration docs](https://docs.peridio.com/i
   * Improved error handling for releases and installers. If an installer fails with an error, the installer will be stopped and the remainder of the release will be halted. The device will continue to report it is on the previous release
   * Store binary metadata in the cache with the custom_metadata_hash in its path
 
-## v3.0.0-rc.4
+## 3.0.0-rc.4
 
 * Bug fixes
   * Prevent release server from applying another release if one is in progress
   * Bump erlexec to latest to fix compilation issues on Apple Silicon
 
-## v3.0.0-rc.3
+## 3.0.0-rc.3
 
 * Bug fixes
   * Allow `nil` for release version data in device API headers
 
-## v3.0.0-rc.2
+## 3.0.0-rc.2
 
 * Enhancements
   * Added support for deb and rpm package installers
@@ -182,13 +189,13 @@ See the [Peridiod Packaging Updates integration docs](https://docs.peridio.com/i
 * Bug fixes
   * Fixed issues in checking for release logic for releases
 
-## v3.0.0-rc.1
+## 3.0.0-rc.1
 
 * Bug fixes
   * Update systemd peridiod.service to point to /usr/lib/peridiod
   * Allow `release_poll_interval` to be configured from PERIDIO_CONFIG_FILE
 
-## v3.0.0-rc.0
+## 3.0.0-rc.0
 
 **This is a major update and this release should be thoroughly tested.**
 
@@ -274,19 +281,19 @@ The release server will check for an update from Peridio Cloud a the designated 
 When peridiod installs a release, it will accumulate `reboot_required` and trigger a reboot once all binaries have finished the installation process if any `reboot_required` is true.
 
 See the [Peridio Docs](https://docs.peridio.com/) for more information on configuring Releases for your organization.
-## v2.6.2
+## 2.6.2
 
 * Bug fixes
   * Skip Remote Acess Tunnel sync if disabled
   * Force files writes to be synced to disk as they are written to the cache
   * Handle corrupt cached metadata in wireguard config parsing
 
-## v2.6.1
+## 2.6.1
 
 * Bug fixes
   * Update erlexec to revert docs change which broke backwards compatability with > OTP 27
 
-## v2.6.0
+## 2.6.0
 
 * Enhancements
   * Remote Access Tunnels
@@ -304,7 +311,7 @@ See the [Peridio Docs](https://docs.peridio.com/) for more information on config
       },
     ```
 
-## v2.5.4
+## 2.5.4
 
 * Enhancement
   * Add support for extending tunnels
@@ -312,23 +319,23 @@ See the [Peridio Docs](https://docs.peridio.com/) for more information on config
   * Account for reserved tunnel IPs to prevent a race condition between
     wireguard and subsequent calls to `Peridio.RAT.Network.available_cidrs`
 
-## v2.5.3
+## 2.5.3
 
 * Bug fixes
   * Add additional safety around app start so errors can be presented
   * Fix remote_shell to support Alpine Linux
 
-## v2.5.2
+## 2.5.2
 
 * Enhancement
   * Update `key_pair_source` modules `env` and `uboot` to try to decode base64 values
 
-## v2.5.1
+## 2.5.1
 
 * Bug fixes
   * Device was unable to call tunnel update api properly.
 
-## v2.5.0
+## 2.5.0
 
 * Enhancements
   * Add support for choosing between IEx and getty remote shell
@@ -340,27 +347,27 @@ See the [Peridio Docs](https://docs.peridio.com/) for more information on config
   * Added config key `fwup_env: {"KEY": "value", "KEY2": "value2"}`. These key value pairs will be exported into the environment that `fwup` is applied in. This is useful if you need to pass extra arguments passed through the environment.
   * Added config key `fwup_extra_args: ["--unsafe"]`. Useful if you need to pass extra args to `fwup` such as the `--unsafe` flag.
 
-## v2.4.2
+## 2.4.2
 
 * Bug fixes
   * Filter out characters that are not UTF8 before serializing the console.
 
-## v2.4.1
+## 2.4.1
 
 * Enhancements
   * mix release no longer builds a tar into the release directory.
 
-## v2.4.0
+## 2.4.0
 
 * Enhancements
   * Update remote console to present a full getty terminal instead of IEx.
 
-## v2.3.1
+## 2.3.1
 
 * Bug fixes
   * Fixed remote console connectivity issues
 
-## v2.3.0
+## 2.3.0
 
 * Enhancements
   * Add `uboot-env` node configuration for pulling pem encoded x509 certificate
@@ -376,13 +383,13 @@ See the [Peridio Docs](https://docs.peridio.com/) for more information on config
     }
     ```
 
-## v2.2.0
+## 2.2.0
 
 * Updated default retry parameters to accommodate slow connections like
   NB-IoT 1
 * Enhanced debug logging
 
-## v2.1.0
+## 2.1.0
 
 * Updates
   * `PERIDIOD_INCLUDE_ERTS_DIR` is now `MIX_TARGET_INCLUDE_ERTS`
@@ -390,20 +397,20 @@ See the [Peridio Docs](https://docs.peridio.com/) for more information on config
     If you are building peridiod outside yocto, you will need to
     update your build scripts to use the new variable.
 
-## v2.0.1
+## 2.0.1
 
 * Bug Fixes
   * Fix support for using peridiod with Nerves targets
 * Enhancements
   * Default the KVBackend to use UBootEnv.
 
-## v2.0.0
+## 2.0.0
 
 * Enhancements
   * Remove dependency on nerves and nerves_hub
   * Add support for Peridio U-Boot environment key names
 
-## v1.1.0
+## 1.1.0
 
 * Enhancements
   * Updated configurator with key_pair_config to allow using pkcs11 or file
@@ -430,6 +437,6 @@ PKCS11:
 }
 ```
 
-## v1.0.0
+## 1.0.0
 
 Initial release
