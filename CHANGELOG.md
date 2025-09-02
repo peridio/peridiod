@@ -1,6 +1,6 @@
 # peridiod releases
 
-## 3.1.5-rc.0
+## 3.1.5
 
 * Bug fixes
   * [Core] Allow PKCS#11 public certificate to be passed as a .pem file
