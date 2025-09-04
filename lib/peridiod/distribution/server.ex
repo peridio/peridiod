@@ -35,7 +35,10 @@ defmodule Peridiod.Distribution.Server do
             fwup: nil | GenServer.server(),
             fwup_config: Fwup.Config.t(),
             distribution: nil | Distribution.t(),
-            callback: pid()
+            callback: pid(),
+            cache_dir: String.t(),
+            download_before_fwup: boolean(),
+            download_file_path: nil | String.t()
           }
 
     defstruct status: :idle,
@@ -44,7 +47,10 @@ defmodule Peridiod.Distribution.Server do
               download: nil,
               fwup_config: nil,
               distribution: nil,
-              callback: nil
+              callback: nil,
+              cache_dir: "/tmp",
+              download_before_fwup: false,
+              download_file_path: nil
   end
 
   @doc """
@@ -125,7 +131,16 @@ defmodule Peridiod.Distribution.Server do
 
     Process.flag(:trap_exit, true)
 
-    {:ok, %State{fwup_config: fwup_config}}
+    Logger.info(
+      "[Distributions] Download before FWUP config: '#{config.download_before_fwup}', cache_dir: '#{config.cache_dir}'"
+    )
+
+    {:ok,
+     %State{
+       fwup_config: fwup_config,
+       cache_dir: config.cache_dir,
+       download_before_fwup: config.download_before_fwup
+     }}
   end
 
   @impl GenServer
@@ -194,8 +209,41 @@ defmodule Peridiod.Distribution.Server do
 
   # messages from Download
   def handle_info({:download, :complete}, state) do
+    # Gather download information for debugging
+    firmware_uuid = state.distribution && state.distribution.firmware_meta.uuid
+    firmware_url = state.distribution && state.distribution.firmware_url
+    downloaded_bytes = if state.download, do: get_download_info(state.download), else: %{}
+
+    # Get file information if we cached the file
+    file_info =
+      if state.download_before_fwup && state.download_file_path do
+        get_file_info(state.download_file_path)
+      else
+        %{}
+      end
+
     Logger.info("[Distributions] Firmware Download complete")
-    {:noreply, %State{state | download: nil}}
+    Logger.info("[Distributions] Download Details:")
+    Logger.info("  - UUID: #{firmware_uuid}")
+    Logger.info("  - URL: #{firmware_url}")
+
+    Logger.info(
+      "  - Downloaded bytes: #{Map.get(downloaded_bytes, :downloaded_length, "unknown")}"
+    )
+
+    Logger.info("  - Content length: #{Map.get(downloaded_bytes, :content_length, "unknown")}")
+    Logger.info("  - Status: #{Map.get(downloaded_bytes, :status, "unknown")}")
+
+    if state.download_before_fwup do
+      Logger.info("  - Cached file path: #{state.download_file_path || "not set"}")
+      Logger.info("  - File size: #{Map.get(file_info, :size, "unknown")} bytes")
+      Logger.info("  - SHA256 hash: #{Map.get(file_info, :hash, "not calculated")}")
+      Logger.info("  - Note: File cached to disk before fwup processing")
+    else
+      Logger.info("  - Note: File was streamed directly to fwup (no disk cache)")
+    end
+
+    {:noreply, %State{state | download: nil, download_file_path: nil}}
   end
 
   def handle_info({:download, {:error, reason}}, state) do
@@ -205,8 +253,53 @@ defmodule Peridiod.Distribution.Server do
 
   # Data from the download is sent to fwup
   def handle_info({:download, {:stream, data}}, state) do
-    _ = Fwup.Stream.send_chunk(state.fwup, data)
-    {:noreply, state}
+    data_size = byte_size(data)
+    firmware_uuid = state.distribution && state.distribution.firmware_meta.uuid
+    firmware_url = state.distribution && state.distribution.firmware_url
+
+    updated_state =
+      if state.download_before_fwup do
+        # Initialize file path on first chunk if not already set
+        file_path =
+          state.download_file_path || get_download_file_path(state.cache_dir, firmware_uuid)
+
+        # Ensure directory exists and write data to file
+        case ensure_download_dir(file_path) do
+          :ok ->
+            case File.write(file_path, data, [:append, :binary]) do
+              :ok ->
+                # Logger.info(
+                #   "[Distributions] Cached download data - Size: #{data_size} bytes, File: #{file_path}, UUID: #{firmware_uuid}, URL: #{firmware_url}"
+                # )
+                IO.write(".")
+
+                %{state | download_file_path: file_path}
+
+              {:error, reason} ->
+                Logger.error("[Distributions] Failed to cache download data: #{inspect(reason)}")
+                state
+            end
+
+          {:error, reason} ->
+            Logger.error(
+              "[Distributions] Failed to create download directory: #{inspect(reason)}"
+            )
+
+            state
+        end
+      else
+        # Original logic without file caching
+        Logger.info(
+          "[Distributions] Received download data - Size: #{data_size} bytes, UUID: #{firmware_uuid}, URL: #{firmware_url}"
+        )
+
+        # Temporarily commenting out fwup sending for download resumption testing
+        # _ = Fwup.Stream.send_chunk(state.fwup, data)
+
+        state
+      end
+
+    {:noreply, updated_state}
   end
 
   def handle_info({:EXIT, _, error}, state) do
@@ -266,13 +359,32 @@ defmodule Peridiod.Distribution.Server do
   defp start_fwup_stream(%Distribution{} = distribution, state) do
     pid = self()
     fun = &send(pid, {:download, &1})
+    firmware_uuid = distribution.firmware_meta.uuid
+
+    # Set status to updating immediately to prevent concurrent downloads
+    state = %{state | status: {:updating, 0}, distribution: distribution}
+
+    # Check for existing cached file and prepare for potential resume
+    {download_state, file_path} =
+      if state.download_before_fwup do
+        prepare_download_with_cache(state.cache_dir, firmware_uuid, distribution.firmware_url)
+      else
+        {:new_download, nil}
+      end
 
     {:ok, download} =
-      Downloader.Supervisor.start_child(
-        distribution.firmware_meta.uuid,
-        distribution.firmware_url,
-        fun
-      )
+      case download_state do
+        {:resume_download, existing_size} ->
+          Logger.info(
+            "[Distributions] Found existing cached file (#{existing_size} bytes), attempting to resume download"
+          )
+
+          start_child_with_resume(firmware_uuid, distribution.firmware_url, fun, existing_size)
+
+        :new_download ->
+          Logger.info("[Distributions] Starting new download")
+          Downloader.Supervisor.start_child(firmware_uuid, distribution.firmware_url, fun)
+      end
 
     {:ok, fwup} =
       Fwup.stream(pid, Fwup.Config.to_cmd_args(state.fwup_config),
@@ -283,11 +395,113 @@ defmodule Peridiod.Distribution.Server do
 
     %State{
       state
-      | status: {:updating, 0},
-        download: download,
+      | download: download,
         fwup: fwup,
-        distribution: distribution
+        download_file_path: file_path
     }
+  end
+
+  defp get_download_info(download_pid) when is_pid(download_pid) do
+    try do
+      case :sys.get_state(download_pid) do
+        %{downloaded_length: dl, content_length: cl, status: status, uri: uri} ->
+          %{
+            downloaded_length: dl,
+            content_length: cl,
+            status: status,
+            uri: uri
+          }
+
+        _ ->
+          %{}
+      end
+    catch
+      :exit, _ -> %{}
+    end
+  end
+
+  defp get_download_info(_), do: %{}
+
+  defp get_download_file_path(cache_dir, firmware_uuid) do
+    # Follow existing cache conventions: cache_dir/downloads/firmware_uuid/firmware.bin
+    downloads_dir = Path.join(cache_dir, "downloads")
+    firmware_dir = Path.join(downloads_dir, firmware_uuid)
+    Path.join(firmware_dir, "firmware.bin")
+  end
+
+  defp ensure_download_dir(file_path) do
+    file_path
+    |> Path.dirname()
+    |> File.mkdir_p()
+  end
+
+  defp get_file_info(file_path) when is_binary(file_path) do
+    try do
+      case File.stat(file_path) do
+        {:ok, %File.Stat{size: size}} ->
+          # Calculate SHA256 hash of the file
+          hash =
+            case File.read(file_path) do
+              {:ok, content} ->
+                :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
+
+              _ ->
+                "error reading file"
+            end
+
+          %{size: size, hash: hash}
+
+        {:error, _reason} ->
+          %{size: "file not found", hash: "file not found"}
+      end
+    rescue
+      _ -> %{size: "error", hash: "error"}
+    end
+  end
+
+  defp get_file_info(_), do: %{size: "invalid path", hash: "invalid path"}
+
+  defp prepare_download_with_cache(cache_dir, firmware_uuid, _firmware_url) do
+    file_path = get_download_file_path(cache_dir, firmware_uuid)
+
+    case File.stat(file_path) do
+      {:ok, %File.Stat{size: size}} when size > 0 ->
+        Logger.info("[Distributions] Found existing cached file: #{file_path} (#{size} bytes)")
+        {{:resume_download, size}, file_path}
+
+      {:ok, %File.Stat{size: 0}} ->
+        Logger.info("[Distributions] Found empty cached file, removing and starting fresh")
+        File.rm(file_path)
+        {:new_download, file_path}
+
+      {:error, :enoent} ->
+        Logger.info("[Distributions] No existing cached file found, starting new download")
+        {:new_download, file_path}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[Distributions] Error checking cached file: #{inspect(reason)}, starting new download"
+        )
+
+        {:new_download, file_path}
+    end
+  end
+
+  defp start_child_with_resume(id, url, fun, existing_size) do
+    # We need to create a custom child spec that initializes the downloader with existing progress
+    alias Peridiod.Binary.Downloader.RetryConfig
+
+    child_spec = %{
+      id: Module.concat(Peridiod.Binary.Downloader, id),
+      start:
+        {Peridiod.Binary.Downloader, :start_link_with_resume,
+         [id, URI.parse(url), fun, %RetryConfig{}, existing_size]},
+      shutdown: 5000,
+      type: :worker,
+      restart: :transient
+    }
+
+    DynamicSupervisor.start_child(Peridiod.Binary.Downloader.Supervisor, child_spec)
   end
 
   defp try_send(nil, _msg), do: :ok

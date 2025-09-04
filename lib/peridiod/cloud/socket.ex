@@ -98,6 +98,9 @@ defmodule Peridiod.Cloud.Socket do
 
     Process.flag(:trap_exit, true)
 
+    # Schedule a mock update message for testing download resumption (single time)
+    Process.send_after(self(), :simulate_update, 5_000)
+
     {:ok, socket}
   end
 
@@ -386,6 +389,35 @@ defmodule Peridiod.Cloud.Socket do
   def handle_info({:remote_console, _pid, data}, socket) do
     data = remove_unwanted_chars(data)
     _ = push(socket, @console_topic, "up", %{data: data})
+    {:noreply, socket}
+  end
+
+  def handle_info(:simulate_update, socket) do
+    Logger.info("[Cloud Socket] Simulating update message for testing")
+
+    # Create a mock update message with the specified download URL
+    mock_update = %{
+      "firmware_url" => "http://192.168.0.104:55642/fw.bin",
+      "firmware_meta" => %{
+        # "uuid" => "test-firmware-uuid-" <> UUID.uuid4(),
+        "uuid" => "test-firmware-uuid-2d41414b-df0a-4828-b340-338f3f224c75",
+        "version" => "1.0.0-test",
+        "platform" => "test_platform",
+        "architecture" => "test_arch",
+        "product" => "test_product"
+      }
+    }
+
+    # Trigger the same flow as a real websocket update
+    case Peridiod.Distribution.parse(mock_update) do
+      {:ok, %Peridiod.Distribution{} = info} ->
+        Logger.info("[Cloud Socket] Parsed mock update, applying to Distribution Server")
+        _ = Distribution.Server.apply_update(info)
+
+      error ->
+        Logger.error("[Cloud Socket] Error parsing mock update: #{inspect(error)}")
+    end
+
     {:noreply, socket}
   end
 

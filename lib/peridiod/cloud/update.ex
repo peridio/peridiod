@@ -62,24 +62,53 @@ defmodule Peridiod.Cloud.Update do
   defp update_check(client) do
     Logger.info("[Cloud Server] Checking for update")
 
-    PeridioSDK.DeviceAPI.Devices.update(client, [
-      "manifest.binary_prn",
-      "manifest.custom_metadata",
-      "manifest.hash",
-      "manifest.target",
-      "manifest.url",
-      "manifest.signatures",
-      "manifest.size",
-      "manifest.artifact.prn",
-      "manifest.artifact.name",
-      "manifest.artifact_version.prn",
-      "manifest.artifact_version.version",
-      "bundle.prn",
-      "release.prn",
-      "release.version",
-      "release.version_requirement",
-      "bundle_override"
-    ])
+    IO.inspect(
+      [
+        client_device_api_host: client.device_api_host,
+        client_adapter: elem(client.adapter, 0),
+        client_timeout: elem(client.adapter, 1)[:timeout],
+        client_transport_opts: elem(client.adapter, 1)[:transport_opts]
+      ],
+      label: "!!! Update check client details"
+    )
+
+    Logger.info("[Cloud Server] Making HTTP request to: #{client.device_api_host}/update")
+
+    result =
+      PeridioSDK.DeviceAPI.Devices.update(client, [
+        "manifest.binary_prn",
+        "manifest.custom_metadata",
+        "manifest.hash",
+        "manifest.target",
+        "manifest.url",
+        "manifest.signatures",
+        "manifest.size",
+        "manifest.artifact.prn",
+        "manifest.artifact.name",
+        "manifest.artifact_version.prn",
+        "manifest.artifact_version.version",
+        "bundle.prn",
+        "release.prn",
+        "release.version",
+        "release.version_requirement",
+        "bundle_override"
+      ])
+
+    case result do
+      {:ok, response} ->
+        Logger.info("[Cloud Server] HTTP request successful: status=#{response.status}")
+
+        IO.inspect(
+          [response_status: response.status, response_body_keys: Map.keys(response.body)],
+          label: "!!! HTTP Success"
+        )
+
+      {:error, error} ->
+        Logger.error("[Cloud Server] HTTP request failed: #{inspect(error)}")
+        IO.inspect([error_details: error], label: "!!! HTTP Error")
+    end
+
+    result
   end
 
   # Update to new Release

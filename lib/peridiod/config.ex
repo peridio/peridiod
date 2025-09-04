@@ -16,6 +16,7 @@ defmodule Peridiod.Config do
             cache_log_max_files: 0,
             cache_log_compress: true,
             cache_log_level: :debug,
+            download_before_fwup: false,
             device_api_host: "device.cremini.peridio.com",
             device_api_port: 443,
             device_api_sni: "device.cremini.peridio.com",
@@ -63,6 +64,7 @@ defmodule Peridiod.Config do
           cache_log_max_files: non_neg_integer(),
           cache_log_compress: boolean(),
           cache_log_level: :debug | :info | :warning | :error,
+          download_before_fwup: boolean(),
           device_api_host: String.t(),
           device_api_port: String.t(),
           device_api_sni: charlist(),
@@ -175,6 +177,7 @@ defmodule Peridiod.Config do
         config_file["device_api"]["certificate_path"]
       )
       |> override_if_set(:cache_dir, config_file["cache_dir"])
+      |> override_if_set(:download_before_fwup, config_file["download_before_fwup"])
       |> override_if_set(:device_api_host, host)
       |> override_if_set(:device_api_port, port)
       |> override_if_set(:device_api_verify, config_file["device_api"]["verify"])

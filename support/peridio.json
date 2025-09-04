@@ -1,5 +1,7 @@
 {
   "version": 1,
+  "download_before_fwup": true,
+  "cache_dir": "/var/lib/peridiod",
   "fwup": {
     "devpath": "/etc/peridiod/peridiod.img",
     "extra_args": ["--unsafe"],
@@ -27,5 +29,9 @@
       "private_key": "PERIDIO_PRIVATE_KEY",
       "certificate": "PERIDIO_CERTIFICATE"
     }
+  },
+  "device_api": {
+    "url": "device.test.peridio.com:4001",
+    "certificate_path": "/etc/peridiod/ca-cert.pem"
   }
 }

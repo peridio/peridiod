@@ -26,3 +26,8 @@ peridiod-*.tar
 /tmp/
 
 .envrc
+
+# todo: lee remove this
+todo.md
+build-and-run.sh
+fw.bin
