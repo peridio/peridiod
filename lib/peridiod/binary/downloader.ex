@@ -33,6 +33,7 @@ defmodule Peridiod.Binary.Downloader do
             response_headers: [],
             content_length: 0,
             downloaded_length: 0,
+            initial_downloaded_length: 0,
             retry_number: 0,
             handler_fun: nil,
             retry_args: nil,
@@ -57,6 +58,7 @@ defmodule Peridiod.Binary.Downloader do
           response_headers: Mint.Types.headers(),
           content_length: non_neg_integer(),
           downloaded_length: non_neg_integer(),
+          initial_downloaded_length: non_neg_integer(),
           retry_number: non_neg_integer(),
           handler_fun: event_handler_fun,
           retry_args: retry_args(),
@@ -116,6 +118,19 @@ defmodule Peridiod.Binary.Downloader do
     GenServer.start_link(__MODULE__, [id, uri, fun, retry_args])
   end
 
+  @spec start_link_with_resume(
+          String.t(),
+          URI.t(),
+          event_handler_fun(),
+          RetryConfig.t(),
+          non_neg_integer()
+        ) ::
+          GenServer.on_start()
+  def start_link_with_resume(id, %URI{} = uri, fun, %RetryConfig{} = retry_args, existing_size)
+      when is_function(fun, 1) do
+    GenServer.start_link(__MODULE__, [id, uri, fun, retry_args, existing_size])
+  end
+
   def stop(pid) do
     GenServer.stop(pid)
   end
@@ -133,6 +148,26 @@ defmodule Peridiod.Binary.Downloader do
         max_timeout: timer,
         uri: uri
       })
+
+    send(self(), :resume)
+    {:ok, state}
+  end
+
+  def init([id, %URI{} = uri, fun, %RetryConfig{} = retry_args, existing_size]) do
+    timer = Process.send_after(self(), :max_timeout, retry_args.max_timeout)
+    Logger.info("[Stream Downloader #{id}] Started with resume from #{existing_size} bytes")
+
+    state = %Downloader{
+      id: id,
+      handler_fun: fun,
+      retry_args: retry_args,
+      max_timeout: timer,
+      uri: uri,
+      downloaded_length: existing_size,
+      initial_downloaded_length: existing_size,
+      retry_number: 0,
+      content_length: 0
+    }
 
     send(self(), :resume)
     {:ok, state}
@@ -250,9 +285,15 @@ defmodule Peridiod.Binary.Downloader do
 
   defp handle_responses(
          [],
-         %Downloader{downloaded_length: downloaded, content_length: downloaded} = state
+         %Downloader{
+           downloaded_length: downloaded,
+           content_length: content_length,
+           initial_downloaded_length: initial
+         } = state
        )
-       when downloaded != 0 do
+       when downloaded != 0 and content_length > 0 and downloaded - initial >= content_length do
+    # For range requests: downloaded_length - initial_downloaded_length should equal content_length
+    # For full downloads: downloaded_length should equal content_length (initial is 0)
     _ = state.handler_fun.(:complete)
     {:stop, :normal, state}
   end
@@ -370,6 +411,7 @@ defmodule Peridiod.Binary.Downloader do
       state
       | retry_number: 0,
         downloaded_length: 0,
+        initial_downloaded_length: 0,
         content_length: 0
     }
   end
@@ -389,13 +431,13 @@ defmodule Peridiod.Binary.Downloader do
       |> add_retry_number_header(state)
       |> add_user_agent_header(state)
 
+    Logger.info(
+      "[Stream Downloader #{state.id}] #{if(state.downloaded_length > 0, do: "RESUME", else: "INIT")} download attempt #{state.retry_number} #{uri}"
+    )
+
     # mint doesn't accept the query as the http body, so it must be encoded
     # like this. There may be a better way to do this..
     path = if query, do: "#{path}?#{query}", else: path
-
-    Logger.info(
-      "[Stream Downloader #{state.id}] Resuming download attempt number #{state.retry_number} #{uri}"
-    )
 
     with {:ok, conn} <- Mint.HTTP.connect(String.to_existing_atom(scheme), host, port),
          {:ok, conn, request_ref} <- Mint.HTTP.request(conn, "GET", path, request_headers, nil) do
@@ -429,13 +471,12 @@ defmodule Peridiod.Binary.Downloader do
   defp fetch_accept_ranges([]), do: nil
 
   @spec add_range_header(Mint.Types.headers(), t()) :: Mint.Types.headers()
-  defp add_range_header(headers, state)
+  defp add_range_header(headers, %Downloader{downloaded_length: dl} = _state) when dl > 0 do
+    # Use optional range-end format: bytes=start- to request from start position to end of file
+    [{"Range", "bytes=#{dl}-"} | headers]
+  end
 
-  defp add_range_header(headers, %Downloader{content_length: 0}), do: headers
-
-  defp add_range_header(headers, %Downloader{downloaded_length: r, content_length: total})
-       when total > 0,
-       do: [{"Range", "bytes=#{r}-#{total}"} | headers]
+  defp add_range_header(headers, _state), do: headers
 
   @spec add_retry_number_header(Mint.Types.headers(), t()) :: Mint.Types.headers()
   defp add_retry_number_header(headers, %Downloader{retry_number: retry_number}),

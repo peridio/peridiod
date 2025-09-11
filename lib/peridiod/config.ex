@@ -16,6 +16,9 @@ defmodule Peridiod.Config do
             cache_log_max_files: 0,
             cache_log_compress: true,
             cache_log_level: :debug,
+            distributions_cache_download: false,
+            distributions_download_parallel_count: 1,
+            distributions_download_parallel_chunk_bytes: 5_000_000,
             device_api_host: "device.cremini.peridio.com",
             device_api_port: 443,
             device_api_sni: "device.cremini.peridio.com",
@@ -63,6 +66,9 @@ defmodule Peridiod.Config do
           cache_log_max_files: non_neg_integer(),
           cache_log_compress: boolean(),
           cache_log_level: :debug | :info | :warning | :error,
+          distributions_cache_download: boolean(),
+          distributions_download_parallel_count: pos_integer(),
+          distributions_download_parallel_chunk_bytes: pos_integer(),
           device_api_host: String.t(),
           device_api_port: String.t(),
           device_api_sni: charlist(),
@@ -175,6 +181,18 @@ defmodule Peridiod.Config do
         config_file["device_api"]["certificate_path"]
       )
       |> override_if_set(:cache_dir, config_file["cache_dir"])
+      |> override_if_set(
+        :distributions_cache_download,
+        get_in(config_file, ["distributions", "cache_download"])
+      )
+      |> override_if_set(
+        :distributions_download_parallel_count,
+        get_in(config_file, ["distributions", "download_parallel_count"])
+      )
+      |> override_if_set(
+        :distributions_download_parallel_chunk_bytes,
+        get_in(config_file, ["distributions", "download_parallel_chunk_bytes"])
+      )
       |> override_if_set(:device_api_host, host)
       |> override_if_set(:device_api_port, port)
       |> override_if_set(:device_api_verify, config_file["device_api"]["verify"])

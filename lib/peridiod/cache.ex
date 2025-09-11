@@ -38,6 +38,10 @@ defmodule Peridiod.Cache do
     GenServer.call(pid_or_name, {:write_stream_finish, file, signature, public_key})
   end
 
+  def write_stream_finish_local(pid_or_name \\ __MODULE__, file) do
+    GenServer.call(pid_or_name, {:write_stream_finish_local, file})
+  end
+
   def ln_s(pid_or_name \\ __MODULE__, target, link) do
     GenServer.call(pid_or_name, {:ln_s, target, link})
   end
@@ -144,6 +148,22 @@ defmodule Peridiod.Cache do
 
         error ->
           error
+      end
+
+    {:reply, reply, state}
+  end
+
+  def handle_call({:write_stream_finish_local, file}, _from, state) do
+    file_path = Path.join([state.path, file])
+    file_sig_path = file_path <> ".sig"
+
+    reply =
+      with hash <- hash(file_path, state.hash_algorithm),
+           signature <- sign(hash, state.hash_algorithm, state.private_key),
+           :ok <- File.write(file_sig_path, signature) do
+        :ok
+      else
+        error -> error
       end
 
     {:reply, reply, state}
