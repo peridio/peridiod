@@ -31,6 +31,7 @@ defmodule Peridiod.Config do
             fwup_devpath: "/dev/mmcblk0",
             fwup_env: [],
             fwup_extra_args: [],
+            fwup_stream_chunk_bytes: 5_000_000,
             network_monitor: %{},
             params: %{},
             plan_server_pid: Plan.Server,
@@ -200,6 +201,7 @@ defmodule Peridiod.Config do
       |> override_if_set(:fwup_public_keys, config_file["fwup"]["public_keys"])
       |> override_if_set(:fwup_env, config_file["fwup"]["env"])
       |> override_if_set(:fwup_extra_args, config_file["fwup"]["extra_args"])
+      |> override_if_set(:fwup_stream_chunk_bytes, config_file["fwup"]["stream_chunk_bytes"])
       |> override_if_set(:reboot_delay, config_file["reboot_delay"])
       |> override_if_set(:reboot_cmd, config_file["reboot_cmd"])
       |> override_if_set(:reboot_opts, config_file["reboot_opts"])

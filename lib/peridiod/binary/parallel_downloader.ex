@@ -252,21 +252,14 @@ defmodule Peridiod.Binary.ParallelDownloader do
 
     # Check if all chunks are complete
     if MapSet.size(state.completed_chunks) == map_size(state.chunks) do
-      Logger.info("[Parallel Downloader #{state.id}] All chunks completed, assembling final file")
+      Logger.info(
+        "[Parallel Downloader #{state.id}] All chunks completed, skipping final file assembly for streaming use case"
+      )
 
-      case assemble_final_file(state) do
-        :ok ->
-          _ = state.handler_fun.(:complete)
-          {:stop, :normal, state}
-
-        {:error, reason} ->
-          Logger.error(
-            "[Parallel Downloader #{state.id}] Failed to assemble final file: #{inspect(reason)}"
-          )
-
-          _ = state.handler_fun.({:error, {:assembly_failed, reason}})
-          {:stop, {:assembly_failed, reason}, state}
-      end
+      # For streaming use case, we don't assemble a final file since chunks are streamed individually
+      # The upstream process (Distribution.Server) will handle the chunks directly
+      _ = state.handler_fun.(:complete)
+      {:stop, :normal, state}
     else
       # Start next downloads
       state = start_next_downloads(state)
@@ -598,146 +591,6 @@ defmodule Peridiod.Binary.ParallelDownloader do
 
     # Send progress without logging (to avoid noise)
     _ = state.handler_fun.({:progress, progress})
-    :ok
-  end
-
-  @spec assemble_final_file(t()) :: :ok | {:error, any()}
-  defp assemble_final_file(%ParallelDownloader{} = state) do
-    # Log all parts being combined with their sizes
-    chunk_info =
-      0..(map_size(state.chunks) - 1)
-      |> Enum.map(fn chunk_number ->
-        chunk = Map.get(state.chunks, chunk_number)
-        "#{Path.basename(chunk.file_path)}:#{chunk.size}bytes"
-      end)
-      |> Enum.join(", ")
-
-    Logger.info(
-      "[Parallel Downloader #{state.id}] All parts completed, combining chunks: [#{chunk_info}] -> #{Cache.abs_path(state.cache_pid, state.final_rel_path)} (expected #{state.total_size} bytes)"
-    )
-
-    # Ensure final file directory exists
-    Cache.abs_path(state.cache_pid, state.final_rel_path)
-    |> Path.dirname()
-    |> File.mkdir_p()
-
-    # Open final file for writing
-    case File.open(Cache.abs_path(state.cache_pid, state.final_rel_path), [:write, :binary]) do
-      {:ok, final_file} ->
-        result =
-          try do
-            # Write chunks in order
-            0..(map_size(state.chunks) - 1)
-            |> Enum.reduce_while(:ok, fn chunk_number, :ok ->
-              chunk = Map.get(state.chunks, chunk_number)
-
-              case File.read(Cache.abs_path(state.cache_pid, chunk.file_path)) do
-                {:ok, data} ->
-                  case IO.binwrite(final_file, data) do
-                    :ok ->
-                      {:cont, :ok}
-
-                    error ->
-                      Logger.error(
-                        "[Parallel Downloader #{state.id}] Failed to write chunk #{chunk_number} to final file: #{inspect(error)}"
-                      )
-
-                      {:halt, {:error, {:write_error, error}}}
-                  end
-
-                {:error, reason} ->
-                  Logger.error(
-                    "[Parallel Downloader #{state.id}] Failed to read chunk #{chunk_number} (#{Path.basename(chunk.file_path)}): #{inspect(reason)}"
-                  )
-
-                  {:halt, {:error, {:read_error, chunk_number, reason}}}
-              end
-            end)
-          after
-            File.close(final_file)
-          end
-
-        case result do
-          :ok ->
-            # Verify final file size
-            case File.stat(Cache.abs_path(state.cache_pid, state.final_rel_path)) do
-              {:ok, %File.Stat{size: actual_size}} when actual_size == state.total_size ->
-                Logger.info(
-                  "[Parallel Downloader #{state.id}] Successfully assembled final file: #{Cache.abs_path(state.cache_pid, state.final_rel_path)} (#{actual_size} bytes from #{map_size(state.chunks)} chunks)"
-                )
-
-                cleanup_chunk_files(state)
-                log_final_file_info(state)
-                :ok
-
-              {:ok, %File.Stat{size: actual_size}} ->
-                Logger.error(
-                  "[Parallel Downloader #{state.id}] Final file size mismatch: expected #{state.total_size}, got #{actual_size}"
-                )
-
-                {:error, {:size_mismatch, state.total_size, actual_size}}
-
-              {:error, reason} ->
-                {:error, {:stat_error, reason}}
-            end
-
-          error ->
-            error
-        end
-
-      {:error, reason} ->
-        {:error, {:open_error, reason}}
-    end
-  end
-
-  @spec cleanup_chunk_files(t()) :: :ok
-  defp cleanup_chunk_files(%ParallelDownloader{} = state) do
-    Logger.info(
-      "[Parallel Downloader #{state.id}] Cleaning up #{map_size(state.chunks)} chunk files"
-    )
-
-    Enum.each(state.chunks, fn {_chunk_number, chunk} ->
-      case File.rm(Cache.abs_path(state.cache_pid, chunk.file_path)) do
-        :ok ->
-          :ok
-
-        # File already doesn't exist
-        {:error, :enoent} ->
-          :ok
-
-        {:error, reason} ->
-          Logger.warning(
-            "[Parallel Downloader #{state.id}] Failed to cleanup chunk file #{chunk.file_path}: #{inspect(reason)}"
-          )
-      end
-    end)
-  end
-
-  @spec log_final_file_info(t()) :: :ok
-  defp log_final_file_info(%ParallelDownloader{} = state) do
-    case File.stat(Cache.abs_path(state.cache_pid, state.final_rel_path)) do
-      {:ok, %File.Stat{size: size}} ->
-        # Calculate SHA256 hash
-        case File.read(Cache.abs_path(state.cache_pid, state.final_rel_path)) do
-          {:ok, data} ->
-            hash = :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
-            Logger.info("[Parallel Downloader #{state.id}] FINAL FILE INFO:")
-            Logger.info("  - Path: #{Cache.abs_path(state.cache_pid, state.final_rel_path)}")
-            Logger.info("  - Size: #{size} bytes")
-            Logger.info("  - SHA256: #{hash}")
-
-          {:error, reason} ->
-            Logger.warning(
-              "[Parallel Downloader #{state.id}] Could not read final file for hash calculation: #{inspect(reason)}"
-            )
-        end
-
-      {:error, reason} ->
-        Logger.warning(
-          "[Parallel Downloader #{state.id}] Could not stat final file: #{inspect(reason)}"
-        )
-    end
-
     :ok
   end
 

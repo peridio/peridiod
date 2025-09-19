@@ -47,7 +47,11 @@ defmodule Peridiod.Distribution.Server do
             callback: pid(),
             distributions_cache_download: boolean(),
             download_file_path: nil | String.t(),
-            config: Peridiod.Config.t()
+            config: Peridiod.Config.t(),
+            async_streaming:
+              nil
+              | %{file_path: String.t(), offset: non_neg_integer(), file_size: non_neg_integer()},
+            pending_download_plan: nil | any()
           }
 
     defstruct status: :idle,
@@ -62,7 +66,9 @@ defmodule Peridiod.Distribution.Server do
               next_chunk_to_stream: nil,
               ready_chunk_files: %{},
               total_chunks: nil,
-              config: nil
+              config: nil,
+              async_streaming: nil,
+              pending_download_plan: nil
   end
 
   @doc """
@@ -237,12 +243,18 @@ defmodule Peridiod.Distribution.Server do
 
   # Handle parallel chunk completion: stream in-order to fwup
   def handle_info({:download, {:chunk_complete, chunk_number, rel_path}}, %State{} = state) do
+    Logger.info("[Distributions] Chunk ##{chunk_number} completed: #{Path.basename(rel_path)}")
+
     state =
       if is_map(state.ready_chunk_files) do
         %{state | ready_chunk_files: Map.put(state.ready_chunk_files, chunk_number, rel_path)}
       else
         %{state | ready_chunk_files: %{chunk_number => rel_path}}
       end
+
+    Logger.debug(
+      "[Distributions] Ready chunks: #{inspect(Map.keys(state.ready_chunk_files))}, next to stream: #{state.next_chunk_to_stream}"
+    )
 
     {:noreply, stream_ready_chunks_in_order(state)}
   end
@@ -277,6 +289,97 @@ defmodule Peridiod.Distribution.Server do
     {:noreply, state}
   end
 
+  def handle_info({:async_stream_small_chunk_file, file_path}, %State{} = state) do
+    try do
+      case File.read(file_path) do
+        {:ok, data} ->
+          if state.fwup do
+            try do
+              :ok = Fwup.Stream.send_chunk(state.fwup, data, 2000)
+
+              Logger.debug(
+                "[Distributions] Small chunk streamed successfully: #{Path.basename(file_path)}"
+              )
+
+              # Small chunk complete, continue with next chunk in sequence
+              {:noreply, stream_ready_chunks_in_order(state)}
+            rescue
+              e ->
+                Logger.error("[Distributions] Failed to send small chunk to FWUP: #{inspect(e)}")
+
+                state = %{
+                  state
+                  | status: {:fwup_error, "Small chunk streaming failed: #{inspect(e)}"}
+                }
+
+                {:noreply, state}
+            end
+          else
+            Logger.error(
+              "[Distributions] FWUP process not available during small chunk streaming"
+            )
+
+            state = %{state | status: {:fwup_error, "FWUP process not available"}}
+            {:noreply, state}
+          end
+
+        {:error, reason} ->
+          Logger.error("[Distributions] Failed to read small chunk file: #{inspect(reason)}")
+          state = %{state | status: {:fwup_error, "Small chunk read failed: #{inspect(reason)}"}}
+          {:noreply, state}
+      end
+    rescue
+      e ->
+        Logger.error("[Distributions] Exception during small chunk streaming: #{inspect(e)}")
+        state = %{state | status: {:fwup_error, "Small chunk streaming exception: #{inspect(e)}"}}
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:async_stream_file, file_path, offset}, %State{} = state) do
+    case state.async_streaming do
+      %{file_path: ^file_path, file_size: file_size} when offset >= file_size ->
+        # Streaming complete for this large chunk
+        Logger.info(
+          "[Distributions] Async streaming complete for large chunk: #{Path.basename(file_path)}"
+        )
+
+        # Clear async streaming state and continue with next chunk in sequence or pending download
+        state_cleared = %{state | async_streaming: nil}
+
+        # Check if we need to continue with pending download plan or stream next chunk
+        case state.pending_download_plan do
+          nil ->
+            # No pending download, check if we need to stream the next chunk
+            {:noreply, stream_ready_chunks_in_order(state_cleared)}
+
+          {plan, distribution, handler_fun} ->
+            download =
+              execute_cached_download_plan(plan, distribution, state_cleared, handler_fun)
+
+            {:noreply, %{state_cleared | download: download, pending_download_plan: nil}}
+        end
+
+      %{file_path: ^file_path} ->
+        # Continue streaming this file
+        handle_async_stream_chunk(file_path, offset, state)
+
+      _ ->
+        # Different file or invalid state - this should not happen with proper ordering
+        Logger.warning(
+          "[Distributions] Async stream chunk for unexpected file: #{file_path}, expected: #{inspect(state.async_streaming)}"
+        )
+
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:async_stream_file, _file_path, _offset}, %State{async_streaming: nil} = state) do
+    # Streaming was cancelled or completed, ignore
+    Logger.debug("[Distributions] Ignoring async stream chunk for cancelled streaming")
+    {:noreply, state}
+  end
+
   @spec maybe_update_firmware(Distribution.t(), State.t()) :: State.t()
   defp maybe_update_firmware(
          %Distribution{} = _distribution,
@@ -288,6 +391,7 @@ defmodule Peridiod.Distribution.Server do
     # interrupt FWUP and let the task finish. After update and reboot, the
     # device will check-in and get an update message if it was actually new and
     # required
+    Logger.info("[Distributions] Received update message but already updating, ignoring")
     state
   end
 
@@ -376,26 +480,54 @@ defmodule Peridiod.Distribution.Server do
             fwup_env: state.fwup_config.fwup_env
           )
 
-        # Pre-stream any existing cache data before resuming network download
+        # Initialize state for parallel downloads if needed
+        {next_chunk, total_chunks} =
+          case plan do
+            {:parallel, total_size, _final_rel_path} ->
+              # Calculate number of chunks for parallel downloads
+              chunk_size = state.config.distributions_download_parallel_chunk_bytes
+
+              num_chunks =
+                div(total_size, chunk_size) + if rem(total_size, chunk_size) > 0, do: 1, else: 0
+
+              Logger.info(
+                "[Distributions] Initialized parallel streaming: expecting #{num_chunks} chunks, starting from chunk #0"
+              )
+
+              {0, num_chunks}
+
+            _ ->
+              {nil, nil}
+          end
+
         state_with_fwup =
           %State{
             state
             | fwup: fwup,
               download_file_path: file_path,
-              next_chunk_to_stream: nil,
+              next_chunk_to_stream: next_chunk,
               ready_chunk_files: %{},
-              total_chunks: nil
+              total_chunks: total_chunks
           }
 
-        state_after_prestream = pre_stream_existing_if_needed(plan, state_with_fwup)
+        # Check if we need pre-streaming and handle accordingly
+        case plan do
+          {:non_parallel_resume, _existing_size} ->
+            # Start async pre-streaming and store the download plan to execute after completion
+            state_with_prestream = pre_stream_existing_if_needed(plan, state_with_fwup)
 
-        download =
-          execute_cached_download_plan(plan, distribution, state_after_prestream, handler_fun)
+            %State{
+              state_with_prestream
+              | pending_download_plan: {plan, distribution, handler_fun}
+            }
 
-        %State{
-          state_after_prestream
-          | download: download
-        }
+          _ ->
+            # No pre-streaming needed, start download immediately
+            download =
+              execute_cached_download_plan(plan, distribution, state_with_fwup, handler_fun)
+
+            %State{state_with_fwup | download: download}
+        end
     end
   end
 
@@ -537,14 +669,14 @@ defmodule Peridiod.Distribution.Server do
       _ ->
         if should_use_parallel_download?(state) do
           case get_content_length(distribution.firmware_url) do
-            total_file_size when total_file_size > 0 ->
+            total_file_size when is_integer(total_file_size) and total_file_size > 0 ->
               Logger.info(
                 "[Distributions] Starting parallel download: #{total_file_size} bytes in #{state.config.distributions_download_parallel_chunk_bytes} byte chunks"
               )
 
               {{:parallel, total_file_size, final_rel_path}, final_rel_path}
 
-            nil ->
+            _ ->
               Logger.warning(
                 "[Distributions] Cannot use parallel download without file size, falling back to single download"
               )
@@ -603,7 +735,7 @@ defmodule Peridiod.Distribution.Server do
 
       {:non_parallel_resume, existing_size} ->
         Logger.info(
-          "[Distributions] Found existing cached file (#{existing_size} bytes), attempting to resume non-paralleldownload"
+          "[Distributions] Found existing cached file (#{existing_size} bytes), attempting to resume non-parallel download"
         )
 
         {:ok, download} =
@@ -732,29 +864,39 @@ defmodule Peridiod.Distribution.Server do
   defp handle_cached_download_complete(%State{} = state) do
     firmware_uuid = state.distribution && state.distribution.firmware_meta.uuid
 
-    final_rel_path =
-      if state.download_file_path do
-        rename_completed_download(state, firmware_uuid)
-      else
-        state.download_file_path
-      end
-
+    # For parallel downloads, we don't rename files since we're streaming chunks directly
     final_state =
-      if final_rel_path do
-        :ok = Cache.write_stream_finish_local(state.config.cache_pid, final_rel_path)
-        final_abs_path = Cache.abs_path(state.config.cache_pid, final_rel_path)
-        %{size: file_size, hash: file_hash} = get_file_info(final_abs_path)
-
+      if state.next_chunk_to_stream != nil do
+        # This was a parallel download - log completion but don't try to process a final file
         Logger.info(
-          "[Distributions] Firmware cached complete path=#{final_abs_path} size=#{file_size} sha256=#{file_hash}"
+          "[Distributions] Parallel download complete - all chunks have been downloaded and are being streamed to FWUP"
         )
 
         state
       else
-        state
+        # This was a regular download - handle normally
+        final_rel_path =
+          if state.download_file_path do
+            rename_completed_download(state, firmware_uuid)
+          else
+            state.download_file_path
+          end
+
+        if final_rel_path do
+          final_abs_path = Cache.abs_path(state.config.cache_pid, final_rel_path)
+          %{size: file_size, hash: file_hash} = get_file_info(final_abs_path)
+
+          Logger.info(
+            "[Distributions] Firmware cached complete path=#{final_abs_path} size=#{file_size} sha256=#{file_hash}"
+          )
+
+          %State{state | download_file_path: final_rel_path}
+        else
+          state
+        end
       end
 
-    {:noreply, %State{final_state | download: nil, download_file_path: final_rel_path}}
+    {:noreply, %State{final_state | download: nil}}
   end
 
   defp handle_streamed_download_complete(%State{} = state) do
@@ -771,10 +913,11 @@ defmodule Peridiod.Distribution.Server do
         if is_binary(rel) do
           abs = Cache.abs_path(state.config.cache_pid, rel)
           Logger.info("[Distributions] Pre-streaming existing cached bytes to FWUP from #{abs}")
-          stream_file_to_fwup(abs, state.fwup)
+          # Use async streaming for pre-streaming too, to prevent blocking
+          initiate_async_chunk_stream(abs, state)
+        else
+          state
         end
-
-        state
 
       {:parallel, total_size, _final_rel_path} ->
         # Initialize ordering state; existing completed chunks will be notified by downloader init
@@ -794,39 +937,188 @@ defmodule Peridiod.Distribution.Server do
 
   defp stream_ready_chunks_in_order(%State{next_chunk_to_stream: nil} = state), do: state
 
+  defp stream_ready_chunks_in_order(%State{async_streaming: %{}} = state) do
+    # Already streaming a chunk, wait for it to complete
+    state
+  end
+
   defp stream_ready_chunks_in_order(%State{} = state) do
-    do_stream = fn
-      %State{next_chunk_to_stream: next, ready_chunk_files: ready} = s ->
-        case Map.pop(ready, next) do
-          {nil, _} ->
-            {:halt, s}
+    next = state.next_chunk_to_stream
 
-          {rel_path, updated_ready} ->
-            abs = Cache.abs_path(s.config.cache_pid, rel_path)
+    case Map.get(state.ready_chunk_files, next) do
+      nil ->
+        # Next chunk in sequence is not ready yet
+        state
 
-            Logger.info(
-              "[Distributions] Streaming completed chunk ##{next + 1} -> FWUP from #{abs}"
-            )
+      rel_path ->
+        # Next chunk is ready, stream it
+        abs = Cache.abs_path(state.config.cache_pid, rel_path)
 
-            stream_file_to_fwup(abs, s.fwup)
-            {:cont, %State{s | ready_chunk_files: updated_ready, next_chunk_to_stream: next + 1}}
+        Logger.info("[Distributions] Streaming completed chunk ##{next + 1} -> FWUP from #{abs}")
+
+        # Remove this chunk from ready list and increment counter
+        updated_ready = Map.delete(state.ready_chunk_files, next)
+
+        state_with_updated_ready = %State{
+          state
+          | ready_chunk_files: updated_ready,
+            next_chunk_to_stream: next + 1
+        }
+
+        # Use async streaming for chunks to prevent blocking
+        initiate_async_chunk_stream(abs, state_with_updated_ready)
+    end
+  end
+
+  defp initiate_async_chunk_stream(abs_path, %State{} = state) do
+    # Check file size and decide streaming strategy
+    case File.stat(abs_path) do
+      {:ok, %File.Stat{size: file_size}} ->
+        chunk_size = state.config.fwup_stream_chunk_bytes
+
+        Logger.debug(
+          "[Distributions] Processing chunk file: #{Path.basename(abs_path)}, file size: #{file_size} bytes, FWUP stream chunk size: #{chunk_size} bytes"
+        )
+
+        if file_size <= chunk_size do
+          # Small file - read and stream entire file at once (non-blocking)
+          Logger.debug(
+            "[Distributions] Small chunk file (#{file_size} bytes ≤ #{chunk_size} bytes) - streaming entire file"
+          )
+
+          send(self(), {:async_stream_small_chunk_file, abs_path})
+          state
+        else
+          # Large file - use incremental streaming to prevent blocking
+          Logger.info(
+            "[Distributions] Large chunk file (#{file_size} bytes > #{chunk_size} bytes) - using incremental streaming"
+          )
+
+          # Only start incremental streaming if not already streaming something else
+          case state.async_streaming do
+            nil ->
+              async_streaming = %{
+                file_path: abs_path,
+                offset: 0,
+                file_size: file_size
+              }
+
+              send(self(), {:async_stream_file, abs_path, 0})
+              %{state | async_streaming: async_streaming}
+
+            _ ->
+              # This should not happen with proper sequential ordering
+              Logger.error(
+                "[Distributions] CRITICAL: Attempted to stream chunk while another stream is active"
+              )
+
+              %{
+                state
+                | status:
+                    {:fwup_error,
+                     "Concurrent streaming attempted - this indicates a bug in sequential ordering"}
+              }
+          end
         end
-    end
 
-    case Enum.reduce_while(Stream.cycle([:tick]), state, fn _, acc -> do_stream.(acc) end) do
-      %State{} = new_state -> new_state
+      {:error, reason} ->
+        Logger.error("[Distributions] Cannot stat chunk file: #{inspect(reason)}")
+        %{state | status: {:fwup_error, "Chunk file stat failed: #{inspect(reason)}"}}
     end
   end
 
-  defp stream_file_to_fwup(abs_path, fwup_pid)
-       when is_binary(abs_path) and not is_nil(fwup_pid) do
+  # Helper function for incremental streaming of large files
+  defp handle_async_stream_chunk(file_path, offset, %State{} = state) do
     try do
-      File.stream!(abs_path, 64 * 1024)
-      |> Enum.each(fn chunk -> Fwup.Stream.send_chunk(fwup_pid, chunk) end)
+      case File.open(file_path, [:read, :binary]) do
+        {:ok, file} ->
+          :file.position(file, offset)
+
+          case IO.binread(file, state.config.fwup_stream_chunk_bytes) do
+            data when is_binary(data) ->
+              File.close(file)
+              Logger.info("[Distributions] Sending chunk to FWUP: #{byte_size(data)} bytes")
+
+              # Send chunk to FWUP
+              if state.fwup do
+                try do
+                  :ok = Fwup.Stream.send_chunk(state.fwup, data)
+
+                  # Schedule next chunk
+                  next_offset = offset + byte_size(data)
+                  send(self(), {:async_stream_file, file_path, next_offset})
+
+                  {:noreply, state}
+                rescue
+                  e ->
+                    Logger.error("[Distributions] Failed to send chunk to FWUP: #{inspect(e)}")
+
+                    state = %{
+                      state
+                      | async_streaming: nil,
+                        status: {:fwup_error, "Streaming failed: #{inspect(e)}"}
+                    }
+
+                    {:noreply, state}
+                end
+              else
+                Logger.error("[Distributions] FWUP process not available during async streaming")
+
+                state = %{
+                  state
+                  | async_streaming: nil,
+                    status: {:fwup_error, "FWUP process not available"}
+                }
+
+                {:noreply, state}
+              end
+
+            :eof ->
+              File.close(file)
+              Logger.info("[Distributions] Reached EOF during async streaming")
+              send(self(), {:async_stream_file, file_path, state.async_streaming.file_size})
+              {:noreply, state}
+
+            {:error, reason} ->
+              File.close(file)
+
+              Logger.error(
+                "[Distributions] Failed to read chunk during async streaming: #{inspect(reason)}"
+              )
+
+              state = %{
+                state
+                | async_streaming: nil,
+                  status: {:fwup_error, "Read failed: #{inspect(reason)}"}
+              }
+
+              {:noreply, state}
+          end
+
+        {:error, reason} ->
+          Logger.error(
+            "[Distributions] Failed to open file for async streaming: #{inspect(reason)}"
+          )
+
+          state = %{
+            state
+            | async_streaming: nil,
+              status: {:fwup_error, "File open failed: #{inspect(reason)}"}
+          }
+
+          {:noreply, state}
+      end
     rescue
-      e -> Logger.error("[Distributions] Failed pre/part streaming to FWUP: #{inspect(e)}")
+      e ->
+        Logger.error("[Distributions] Exception during async streaming: #{inspect(e)}")
+
+        state = %{
+          state
+          | async_streaming: nil,
+            status: {:fwup_error, "Streaming exception: #{inspect(e)}"}
+        }
+
+        {:noreply, state}
     end
   end
-
-  defp stream_file_to_fwup(_, _), do: :ok
 end
