@@ -16,6 +16,9 @@ defmodule Peridiod.Config do
             cache_log_max_files: 0,
             cache_log_compress: true,
             cache_log_level: :debug,
+            distributions_cache_download: false,
+            distributions_download_parallel_count: 1,
+            distributions_download_parallel_chunk_bytes: 5_000_000,
             device_api_host: "device.cremini.peridio.com",
             device_api_port: 443,
             device_api_sni: "device.cremini.peridio.com",
@@ -28,6 +31,7 @@ defmodule Peridiod.Config do
             fwup_devpath: "/dev/mmcblk0",
             fwup_env: [],
             fwup_extra_args: [],
+            fwup_stream_chunk_bytes: 5_000_000,
             network_monitor: %{},
             params: %{},
             plan_server_pid: Plan.Server,
@@ -63,6 +67,9 @@ defmodule Peridiod.Config do
           cache_log_max_files: non_neg_integer(),
           cache_log_compress: boolean(),
           cache_log_level: :debug | :info | :warning | :error,
+          distributions_cache_download: boolean(),
+          distributions_download_parallel_count: pos_integer(),
+          distributions_download_parallel_chunk_bytes: pos_integer(),
           device_api_host: String.t(),
           device_api_port: String.t(),
           device_api_sni: charlist(),
@@ -175,6 +182,18 @@ defmodule Peridiod.Config do
         config_file["device_api"]["certificate_path"]
       )
       |> override_if_set(:cache_dir, config_file["cache_dir"])
+      |> override_if_set(
+        :distributions_cache_download,
+        get_in(config_file, ["distributions", "cache_download"])
+      )
+      |> override_if_set(
+        :distributions_download_parallel_count,
+        get_in(config_file, ["distributions", "download_parallel_count"])
+      )
+      |> override_if_set(
+        :distributions_download_parallel_chunk_bytes,
+        get_in(config_file, ["distributions", "download_parallel_chunk_bytes"])
+      )
       |> override_if_set(:device_api_host, host)
       |> override_if_set(:device_api_port, port)
       |> override_if_set(:device_api_verify, config_file["device_api"]["verify"])
@@ -182,6 +201,7 @@ defmodule Peridiod.Config do
       |> override_if_set(:fwup_public_keys, config_file["fwup"]["public_keys"])
       |> override_if_set(:fwup_env, config_file["fwup"]["env"])
       |> override_if_set(:fwup_extra_args, config_file["fwup"]["extra_args"])
+      |> override_if_set(:fwup_stream_chunk_bytes, config_file["fwup"]["stream_chunk_bytes"])
       |> override_if_set(:reboot_delay, config_file["reboot_delay"])
       |> override_if_set(:reboot_cmd, config_file["reboot_cmd"])
       |> override_if_set(:reboot_opts, config_file["reboot_opts"])

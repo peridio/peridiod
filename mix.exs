@@ -46,7 +46,8 @@ defmodule Peridiod.MixProject do
       {:slipstream, "~> 1.0 or ~> 0.8"},
       {:x509, "~> 0.8"},
       {:plug, "~> 1.11", only: :test},
-      {:plug_cowboy, "~> 2.5", only: :test}
+      {:plug_cowboy, "~> 2.5", only: :test},
+      {:req, "~> 0.5.0"}
     ]
   end
 end

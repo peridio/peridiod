@@ -99,7 +99,7 @@ defmodule Peridiod.Cloud.NetworkMonitor do
         bound
       else
         Logger.info("[Cloud Monitor] Keeping bound interface #{bound}")
-        bound
+        {bound, interfaces[bound]}
       end
 
     {:noreply, %{state | bound_interface: bound_interface, interfaces: interfaces}}

@@ -396,6 +396,10 @@ defmodule Peridiod.Cloud.Socket do
     {:noreply, socket}
   end
 
+  def handle_info({Peridiod.Distribution.Server, :install, {:percent, _}}, socket) do
+    {:noreply, socket}
+  end
+
   def handle_info({:EXIT, _pid, :normal}, socket) do
     {:noreply, socket}
   end
