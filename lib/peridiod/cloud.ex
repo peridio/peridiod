@@ -138,7 +138,15 @@ defmodule Peridiod.Cloud do
       |> :inet_res.lookup(:in, :a, timeout: 1000)
       |> Enum.map(&Peridio.NetMon.IP.ip_to_string/1)
 
-    %{state | device_api_ip_cache: addresses}
+    case addresses do
+      [] ->
+        Logger.debug("[Cloud] DNS lookup returned no addresses, keeping existing cache")
+        state
+
+      _ ->
+        Logger.debug("[Cloud] DNS lookup returned #{length(addresses)} addresses")
+        %{state | device_api_ip_cache: addresses}
+    end
   end
 
   defp do_update_client_headers(client, headers) do
