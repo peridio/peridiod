@@ -32,9 +32,7 @@ defmodule Peridiod.Cloud.Update do
 
     send(self(), :check_for_update)
 
-    update_timer = Process.send_after(self(), :check_for_update, state.poll_interval)
-
-    {:noreply, %{state | update_timer: update_timer}}
+    {:noreply, state}
   end
 
   def handle_continue(false, state) do
