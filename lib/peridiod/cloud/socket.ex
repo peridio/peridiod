@@ -433,14 +433,15 @@ defmodule Peridiod.Cloud.Socket do
         address = Enum.random(addresses)
         Logger.info("[Cloud Socket] Attempting reconnect with IP #{address}")
 
-        new_socket =
-          new_socket()
-          |> Map.put(:assigns, socket.assigns)
+        updated_socket =
+          socket
           |> assign(:mode, :ip)
           |> assign(:device_api_ip, address)
-          |> connect!(opts(address, socket.assigns.device_api_port, socket.assigns.socket_opts))
 
-        {:noreply, new_socket}
+        case reconnect(updated_socket) do
+          {:ok, socket} -> {:noreply, socket}
+          {:error, _reason} -> {:noreply, updated_socket}
+        end
     end
   end
 
@@ -453,19 +454,12 @@ defmodule Peridiod.Cloud.Socket do
           "[Cloud Socket] Switching back to device api host #{socket.assigns.device_api_host}"
         )
 
-        new_socket =
-          new_socket()
-          |> Map.put(:assigns, socket.assigns)
-          |> assign(:mode, :host)
-          |> connect!(
-            opts(
-              socket.assigns.device_api_host,
-              socket.assigns.device_api_port,
-              socket.assigns.socket_opts
-            )
-          )
+        updated_socket = assign(socket, :mode, :host)
 
-        {:noreply, new_socket}
+        case reconnect(updated_socket) do
+          {:ok, socket} -> {:noreply, socket}
+          {:error, _reason} -> {:noreply, updated_socket}
+        end
 
       :host ->
         reconnect(socket)
