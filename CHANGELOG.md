@@ -1,10 +1,16 @@
 # peridiod releases
 
-## 3.2.0
+## 3.2.1
 
 * Bug fixes
-  * [Network Monitor] Fixed potential crash in some status change scenarios
+  * [Network Monitor] Fixed lack of backoff strategy in certain network reconnect scenarios
+
+## 3.2.0
+
+* Enhancements
   * [Core] Added opt-in distribution firmware download caching, resumption, and parallel downloading
+* Bug fixes
+  * [Network Monitor] Fixed potential crash in some status change scenarios
 
 ## 3.1.5
 
