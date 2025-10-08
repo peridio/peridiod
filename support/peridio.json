@@ -8,11 +8,12 @@
     }
   },
   "network_monitor": {
-    "interface_priority": ["eth0", "eth1", {"wwan0": {"disconnect_on_higher_priority": true}}]
+    "interface_priority": []
   },
   "remote_iex": false,
   "remote_shell": true,
   "update_poll_enabled": true,
+  "update_poll_interval": 30000,
   "remote_access_tunnels": {
     "enabled": true,
     "service_ports": [22],
@@ -27,5 +28,9 @@
       "private_key": "PERIDIO_PRIVATE_KEY",
       "certificate": "PERIDIO_CERTIFICATE"
     }
+  },
+  "device_api": {
+    "url": "device.test.peridio.com:4001",
+    "certificate_path": "/etc/peridiod/ca-cert.pem"
   }
 }

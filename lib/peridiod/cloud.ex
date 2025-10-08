@@ -65,7 +65,8 @@ defmodule Peridiod.Cloud do
 
     client =
       PeridioSDK.Client.new(
-        device_api_host: "https://#{config.device_api_host}",
+        # device_api_host: "https://#{config.device_api_host}",
+        device_api_host: "https://#{config.device_api_host}:#{config.device_api_port}",
         adapter: adapter,
         user_agent: user_agent()
       )
