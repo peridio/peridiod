@@ -10,4 +10,4 @@ Peridio offers several ways to integrate peridiod into your build workflow via t
 * Cross-Compiling as part of your custom build tools.
 * As part of an existing [Elixir based application](https://github.com/peridio/peridio-nerves-example).
 
-See the [Peridio Daemon Docs](https://docs.peridio.com/integration/linux/peridiod) for more information
+See the [Peridio Daemon Docs](https://docs.peridio.com/peridio-core/tools/peridio-daemon/overview) for more information
