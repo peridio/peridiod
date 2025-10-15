@@ -76,13 +76,18 @@ defmodule Peridiod.Cloud.Update do
       "release.prn",
       "release.version",
       "release.version_requirement",
-      "bundle_override"
+      "bundle_override",
+      "source_type"
     ])
   end
 
-  # Update to new Release
+  # Update to Release
   defp update_response(
-         {:ok, %{status: 200, body: %{"status" => "update", "release" => _release} = body}}
+         {:ok,
+          %{
+            status: 200,
+            body: %{"status" => "update", "source_type" => "release"} = body
+          }}
        ) do
     with {:ok, release_metadata} <- Release.metadata_from_manifest(body),
          :ok <- Bundle.Server.install_bundle(release_metadata) do
@@ -90,11 +95,16 @@ defmodule Peridiod.Cloud.Update do
     end
   end
 
+  # Update to BundleOverride
   defp update_response(
          {:ok,
           %{
             status: 200,
-            body: %{"status" => "update", "bundle_override" => _bundle_override} = body
+            body:
+              %{
+                "status" => "update",
+                "source_type" => "bundle_override"
+              } = body
           }}
        ) do
     with {:ok, override_metadata} <- BundleOverride.metadata_from_manifest(body),
