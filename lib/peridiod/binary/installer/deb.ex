@@ -34,13 +34,44 @@ defmodule Peridiod.Binary.Installer.Deb do
       true ->
         extra_args = opts["extra_args"] || []
 
-        case System.cmd(@exec, ["install", "-y", path] ++ extra_args) do
-          {_result, 0} ->
-            {:stop, :normal, nil}
+        case determine_deb_path(path) do
+          {:ok, deb_path} ->
+            case System.cmd(@exec, ["install", "-y", deb_path] ++ extra_args) do
+              {_result, 0} ->
+                {:stop, :normal, nil}
 
-          {error, _} ->
-            {:error, error, nil}
+              {error, _} ->
+                {:error, error, nil}
+            end
+
+          {:error, reason} ->
+            {:error, reason, nil}
         end
+    end
+  end
+
+  defp determine_deb_path(path) do
+    cond do
+      String.ends_with?(path, ".deb") ->
+        if File.exists?(path) do
+          {:ok, path}
+        else
+          {:error, "File does not exist: #{path}"}
+        end
+
+      File.exists?(path <> ".deb") ->
+        {:ok, path <> ".deb"}
+
+      File.exists?(path) ->
+        deb_path = path <> ".deb"
+
+        case File.ln_s(path, deb_path) do
+          :ok -> {:ok, deb_path}
+          {:error, reason} -> {:error, "Failed to create symbolic link: #{inspect(reason)}"}
+        end
+
+      true ->
+        {:error, "File does not exist: #{path}"}
     end
   end
 end
