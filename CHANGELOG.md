@@ -1,5 +1,10 @@
 # peridiod releases
 
+## 3.2.2
+
+* Bug fixes
+  * [Core] Debian installer ensures the file has a .deb extension
+
 ## 3.2.1
 
 * Bug fixes
