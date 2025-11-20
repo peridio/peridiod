@@ -136,4 +136,40 @@ defmodule Peridiod.Plan.ServerTest do
 
     %{binary_metadata | custom_metadata: custom_metadata}
   end
+
+  describe "avocado bundle execution" do
+    setup :start_cache
+    setup :start_kv
+    setup :step_opts
+    setup :start_plan_server
+
+    test "extensions and enable command execution", %{
+      step_opts: step_opts,
+      plan_server_pid: pid
+    } do
+      ext_manifest = TestFixtures.binary_manifest_avocado_extension("app1")
+      ext = Binary.metadata_from_manifest(ext_manifest)
+
+      custom_metadata =
+        put_in(ext.custom_metadata, ["peridiod", "installer_opts", "path"], "test/workspace")
+
+      ext = %{ext | custom_metadata: custom_metadata}
+
+      # Override step_opts to use echo for avocadoctl and don't cache
+      step_opts =
+        step_opts
+        |> Keyword.merge(avocadoctl_cmd: "echo")
+        |> Keyword.put(:filtered_binaries, [ext])
+
+      bundle_metadata = %Peridiod.Bundle{
+        prn: "prn:1:test:bundle:avocado-ext-test",
+        binaries: []
+      }
+
+      plan = Plan.resolve_install_bundle(bundle_metadata, step_opts)
+      Plan.Server.execute_plan(pid, plan)
+
+      assert_receive {Plan.Server, _pid, :complete}, 10_000
+    end
+  end
 end

@@ -159,4 +159,102 @@ defmodule Peridiod.Plan.StepTest do
       assert_receive {Step, ^step_pid, :complete}
     end
   end
+
+  describe "avocado extension enable" do
+    test "enable with version" do
+      step_mod = Step.AvocadoExtensionEnable
+
+      step_opts = %{
+        extension_names: ["app1", "app2"],
+        os_version: "v1.0.0",
+        callback: self(),
+        avocadoctl_cmd: "echo"
+      }
+
+      {:ok, step_pid} = Step.start_link({step_mod, step_opts})
+      Step.execute(step_pid)
+
+      assert_receive {Step, ^step_pid, :complete}
+    end
+
+    test "enable without version" do
+      step_mod = Step.AvocadoExtensionEnable
+
+      step_opts = %{
+        extension_names: ["app1"],
+        os_version: nil,
+        callback: self(),
+        avocadoctl_cmd: "echo"
+      }
+
+      {:ok, step_pid} = Step.start_link({step_mod, step_opts})
+      Step.execute(step_pid)
+
+      assert_receive {Step, ^step_pid, :complete}
+    end
+
+    test "enable with multiple extensions" do
+      step_mod = Step.AvocadoExtensionEnable
+
+      step_opts = %{
+        extension_names: ["app1", "app2", "app3"],
+        os_version: "v2.0.0",
+        callback: self(),
+        avocadoctl_cmd: "echo"
+      }
+
+      {:ok, step_pid} = Step.start_link({step_mod, step_opts})
+      Step.execute(step_pid)
+
+      assert_receive {Step, ^step_pid, :complete}
+    end
+
+    @tag capture_log: true
+    test "enable failure handling" do
+      step_mod = Step.AvocadoExtensionEnable
+
+      step_opts = %{
+        extension_names: ["app1"],
+        os_version: nil,
+        callback: self(),
+        avocadoctl_cmd: "false"
+      }
+
+      {:ok, step_pid} = Step.start_link({step_mod, step_opts})
+      Step.execute(step_pid)
+
+      assert_receive {Step, ^step_pid, {:error, _}}
+    end
+  end
+
+  describe "avocado refresh" do
+    test "refresh success" do
+      step_mod = Step.AvocadoRefresh
+
+      step_opts = %{
+        callback: self(),
+        avocadoctl_cmd: "echo"
+      }
+
+      {:ok, step_pid} = Step.start_link({step_mod, step_opts})
+      Step.execute(step_pid)
+
+      assert_receive {Step, ^step_pid, :complete}
+    end
+
+    @tag capture_log: true
+    test "refresh failure handling" do
+      step_mod = Step.AvocadoRefresh
+
+      step_opts = %{
+        callback: self(),
+        avocadoctl_cmd: "false"
+      }
+
+      {:ok, step_pid} = Step.start_link({step_mod, step_opts})
+      Step.execute(step_pid)
+
+      assert_receive {Step, ^step_pid, {:error, _}}
+    end
+  end
 end
