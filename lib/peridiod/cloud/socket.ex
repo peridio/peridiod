@@ -94,6 +94,7 @@ defmodule Peridiod.Cloud.Socket do
       |> assign(remote_console_pid: nil)
       |> assign(remote_console_timer: nil)
       |> assign(mode: :host)
+      |> assign(shadow_config: build_shadow_config(config))
       |> connect!(opts(config.device_api_host, config.device_api_port, config.socket))
 
     Process.flag(:trap_exit, true)
@@ -306,6 +307,23 @@ defmodule Peridiod.Cloud.Socket do
     Logger.info("[Cloud Socket] Tunnel Server requested close")
     Cloud.Tunnel.close(tunnel_prn, "server_requested_close")
     {:ok, socket}
+  end
+
+  def handle_message(@device_topic, "shadow_request", _params, socket) do
+    case socket.assigns.shadow_config do
+      {:ok, config} ->
+        Logger.info("[Cloud Socket] Shadow update requested")
+        _ = Cloud.Shadow.update(config)
+        {:ok, socket}
+
+      {:error, :disabled} ->
+        Logger.warning("[Cloud Socket] Shadow update requested but shadow is disabled")
+        {:ok, socket}
+
+      {:error, reason} ->
+        Logger.error("[Cloud Socket] Shadow update requested but config is invalid: #{reason}")
+        {:ok, socket}
+    end
   end
 
   ##
@@ -556,5 +574,19 @@ defmodule Peridiod.Cloud.Socket do
 
   defp api_client(_socket) do
     Cloud.get_client()
+  end
+
+  defp build_shadow_config(%{shadow_enabled: false}), do: {:error, :disabled}
+
+  defp build_shadow_config(config) do
+    shadow_config = %{
+      shadow_executable: config.shadow_executable,
+      shadow_args: config.shadow_args
+    }
+
+    case Cloud.Shadow.validate(shadow_config) do
+      :ok -> {:ok, shadow_config}
+      {:error, reason} -> {:error, reason}
+    end
   end
 end
