@@ -143,7 +143,7 @@ defmodule Peridiod.Config do
       config
     else
       {:error, e} ->
-        warn(%{message: "unable to read peridio config file", file_read_error: e})
+        Logger.warning("[Config] unable to read config file: #{inspect(e)}")
         %{}
     end
   end
