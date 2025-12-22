@@ -25,7 +25,7 @@ defmodule Peridiod.Distribution.DownloadTest do
     @tag capture_log: true
     test "starts fwup and downloader", %{config: config} do
       {:ok, server} = Distribution.Server.start_link(config, [])
-      url = "http://localhost:4001/1M.bin"
+      url = "http://localhost:4001/fwup.fw"
 
       firmware_meta = %{
         "uuid" => "test-firmware-uuid-stream",

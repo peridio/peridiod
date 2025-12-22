@@ -99,7 +99,8 @@ defmodule Peridiod.TestFixtures do
     "peridiod" => %{
       "installer" => "avocado-ext",
       "installer_opts" => %{
-        "name" => "test-app.raw"
+        "name" => "test-app.raw",
+        "enabled" => true
       },
       "avocado" => %{
         "extension_name" => "test-app"

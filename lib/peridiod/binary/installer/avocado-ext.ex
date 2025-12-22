@@ -8,7 +8,8 @@ defmodule Peridiod.Binary.Installer.AvocadoExt do
     "peridiod": {
       "installer": "avocado-ext",
       "installer_opts": {
-        "name": "extension-name"
+        "name": "extension-name",
+        "path": "/custom/path"  // optional, defaults to /usr/lib/avocado/extensions
       },
       "reboot_required": false
     }
@@ -20,13 +21,14 @@ defmodule Peridiod.Binary.Installer.AvocadoExt do
 
   alias Peridiod.Binary
 
-  @extensions_path "/usr/lib/avocado/extensions"
+  @default_extensions_path "/usr/lib/avocado/extensions"
 
   def execution_model(), do: :parallel
   def interfaces(), do: [:path, :stream]
 
-  def path_install(_binary_metadata, path, %{"name" => name}) do
-    final_dest = Path.join([@extensions_path, name])
+  def path_install(_binary_metadata, path, %{"name" => name} = opts) do
+    extensions_path = Map.get(opts, "path", @default_extensions_path)
+    final_dest = Path.join([extensions_path, name])
     dest_dir = Path.dirname(final_dest)
     File.mkdir_p(dest_dir)
 
@@ -43,11 +45,13 @@ defmodule Peridiod.Binary.Installer.AvocadoExt do
     {:error, "AvocadoExt installer_opts key name is required", nil}
   end
 
-  def stream_init(%Binary{prn: prn}, %{"name" => name}) do
-    with :ok <- File.mkdir_p(@extensions_path),
+  def stream_init(%Binary{prn: prn}, %{"name" => name} = opts) do
+    extensions_path = Map.get(opts, "path", @default_extensions_path)
+
+    with :ok <- File.mkdir_p(extensions_path),
          {:ok, id} <- Binary.id_from_prn(prn) do
-      final_dest = Path.join([@extensions_path, name])
-      tmp_dest = Path.join([@extensions_path, id])
+      final_dest = Path.join([extensions_path, name])
+      tmp_dest = Path.join([extensions_path, id])
       state = {tmp_dest, final_dest}
       {:ok, state}
     else
