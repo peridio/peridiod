@@ -416,14 +416,14 @@ defmodule Peridiod.Plan do
   end
 
   defp avocado_extension?(%Binary{
-         custom_metadata: %{"peridiod" => %{"avocado" => %{"type" => "extension"}}}
+         custom_metadata: %{"peridiod" => %{"installer" => "avocado-ext"}}
        }),
        do: true
 
   defp avocado_extension?(_), do: false
 
   defp avocado_os?(%Binary{
-         custom_metadata: %{"peridiod" => %{"avocado" => %{"type" => "os"}}}
+         custom_metadata: %{"peridiod" => %{"installer" => "avocado-os"}}
        }),
        do: true
 
@@ -437,9 +437,16 @@ defmodule Peridiod.Plan do
   end
 
   defp extract_extension_names(extension_binaries) do
-    Enum.map(extension_binaries, fn binary ->
+    extension_binaries
+    |> Enum.filter(&extension_enabled?/1)
+    |> Enum.map(fn binary ->
       get_in(binary.custom_metadata, ["peridiod", "avocado", "extension_name"])
     end)
     |> Enum.reject(&is_nil/1)
+  end
+
+  defp extension_enabled?(binary) do
+    installer_opts = Installer.opts(binary)
+    installer_opts["enabled"] == true
   end
 end

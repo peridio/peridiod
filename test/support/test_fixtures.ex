@@ -85,10 +85,11 @@ defmodule Peridiod.TestFixtures do
 
   @custom_metadata_avocado_os %{
     "peridiod" => %{
-      "installer" => "swupdate",
-      "installer_opts" => %{},
-      "avocado" => %{
-        "type" => "os"
+      "installer" => "avocado-os",
+      "installer_opts" => %{
+        "type" => "file",
+        "name" => "avocado-os.img",
+        "path" => "test/workspace"
       },
       "reboot_required" => true
     }
@@ -96,13 +97,11 @@ defmodule Peridiod.TestFixtures do
 
   @custom_metadata_avocado_extension %{
     "peridiod" => %{
-      "installer" => "file",
+      "installer" => "avocado-ext",
       "installer_opts" => %{
-        "name" => "test-app.raw",
-        "path" => "/var/lib/avocado/extensions/"
+        "name" => "test-app.raw"
       },
       "avocado" => %{
-        "type" => "extension",
         "extension_name" => "test-app"
       },
       "reboot_required" => false

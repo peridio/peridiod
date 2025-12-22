@@ -261,6 +261,12 @@ defmodule Peridiod.Binary.Installer do
   def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "swupdate"}}}),
     do: Installer.SWUpdate
 
+  def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "avocado-os"}}}),
+    do: Installer.AvocadoOS
+
+  def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => "avocado-ext"}}}),
+    do: Installer.AvocadoExt
+
   def mod(%Binary{custom_metadata: %{"peridiod" => %{"installer" => installer}}}) do
     {:error, "The specified installer: #{inspect(installer)} is not a supported installer module"}
   end
@@ -282,6 +288,11 @@ defmodule Peridiod.Binary.Installer do
   end
 
   def config_opts(Installer.Fwup, config) do
+    Map.take(config, [:fwup_devpath, :fwup_env, :fwup_public_keys, :fwup_extra_args])
+  end
+
+  # AvocadoOS may delegate to Fwup, so include fwup config options
+  def config_opts(Installer.AvocadoOS, config) do
     Map.take(config, [:fwup_devpath, :fwup_env, :fwup_public_keys, :fwup_extra_args])
   end
 

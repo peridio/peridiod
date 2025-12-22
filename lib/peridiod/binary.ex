@@ -159,8 +159,18 @@ defmodule Peridiod.Binary do
     :crypto.hash(:sha256, ordered_metadata)
   end
 
-  def valid_signature?(hash, signature, public_key) do
-    :crypto.verify(:eddsa, :sha256, hash, signature, [public_key, :ed25519])
+  def valid_signature?(hash, signature, public_key) when is_binary(hash) do
+    # Try raw binary hash first (new format - signature against raw 32-byte hash)
+    raw_hash = if byte_size(hash) == 64, do: Base.decode16!(hash, case: :mixed), else: hash
+
+    case :crypto.verify(:eddsa, :none, raw_hash, signature, [public_key, :ed25519]) do
+      true ->
+        true
+
+      false ->
+        # Fallback to base16 encoded hash (legacy format)
+        :crypto.verify(:eddsa, :none, hash, signature, [public_key, :ed25519])
+    end
   end
 
   def id_from_prn(binary_prn) do

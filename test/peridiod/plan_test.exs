@@ -458,7 +458,7 @@ defmodule Peridiod.PlanTest do
       ext_install_steps =
         Enum.filter(all_steps, fn
           {Step.BinaryInstall, %{binary_metadata: %{custom_metadata: cm}}} ->
-            get_in(cm, ["peridiod", "avocado", "type"]) == "extension"
+            get_in(cm, ["peridiod", "installer"]) == "avocado-ext"
 
           _ ->
             false

@@ -142,9 +142,9 @@ defmodule Peridiod.Binary.Installer.Fwup do
       opts["devpath"] || opts[:fwup_devpath] || KV.get(opts[:kv_pid], "peridio_disk_devpath") ||
         KV.get(opts[:kv_pid], "nerves_fw_devpath")
 
-    env = opts["env"] || opts.fwup_env
-    extra_args = opts["extra_args"] || opts.fwup_extra_args
-    public_keys = opts.fwup_public_keys
+    env = opts["env"] || opts[:fwup_env]
+    extra_args = opts["extra_args"] || opts[:fwup_extra_args]
+    public_keys = opts[:fwup_public_keys]
     task = opts["task"] || "upgrade"
 
     fwup_config = %Fwup.Config{
