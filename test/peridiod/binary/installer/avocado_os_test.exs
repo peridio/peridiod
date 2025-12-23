@@ -251,4 +251,3 @@ defmodule Peridiod.Binary.Installer.AvocadoOSTest do
     end
   end
 end
-

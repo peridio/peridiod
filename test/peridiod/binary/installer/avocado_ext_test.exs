@@ -158,4 +158,3 @@ defmodule Peridiod.Binary.Installer.AvocadoExtTest do
     end
   end
 end
-
