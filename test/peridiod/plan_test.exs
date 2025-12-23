@@ -470,8 +470,8 @@ defmodule Peridiod.PlanTest do
 
       assert get_in(installed_ext.custom_metadata, [
                "peridiod",
-               "avocado",
-               "extension_name"
+               "installer_opts",
+               "name"
              ]) == "new-extension"
     end
   end

@@ -30,37 +30,37 @@ defmodule Peridiod.Binary.Installer.AvocadoExtTest do
       %{test_dir: test_dir, extensions_path: extensions_path, source_file: source_file}
     end
 
-    test "returns error when name is missing" do
+    test "returns error when image is missing" do
       result = AvocadoExt.path_install(%Binary{}, "/some/path", %{})
-      assert {:error, "AvocadoExt installer_opts key name is required", nil} = result
+      assert {:error, "AvocadoExt installer_opts key image is required", nil} = result
     end
 
     test "returns error when opts is empty map" do
       result = AvocadoExt.path_install(%Binary{}, "/some/path", %{"other" => "value"})
-      assert {:error, "AvocadoExt installer_opts key name is required", nil} = result
+      assert {:error, "AvocadoExt installer_opts key image is required", nil} = result
     end
   end
 
   describe "stream_init/2" do
-    test "returns error when name is missing" do
+    test "returns error when image is missing" do
       binary = %Binary{prn: "prn:1:be4d30b5-6a15-4dfe-b002-bd0c:binary:test-binary"}
       result = AvocadoExt.stream_init(binary, %{})
-      assert {:error, "AvocadoExt installer_opts key name is required", nil} = result
+      assert {:error, "AvocadoExt installer_opts key image is required", nil} = result
     end
 
     test "returns error when opts has wrong keys" do
       binary = %Binary{prn: "prn:1:be4d30b5-6a15-4dfe-b002-bd0c:binary:test-binary"}
       result = AvocadoExt.stream_init(binary, %{"other" => "value"})
-      assert {:error, "AvocadoExt installer_opts key name is required", nil} = result
+      assert {:error, "AvocadoExt installer_opts key image is required", nil} = result
     end
 
-    test "initializes successfully with valid name" do
+    test "initializes successfully with valid image" do
       binary = %Binary{prn: "prn:1:be4d30b5-6a15-4dfe-b002-bd0c:binary:test-binary"}
-      result = AvocadoExt.stream_init(binary, %{"name" => "my-extension"})
+      result = AvocadoExt.stream_init(binary, %{"image" => "my-extension.raw"})
 
       case result do
         {:ok, {tmp_dest, final_dest}} ->
-          assert String.ends_with?(final_dest, "my-extension")
+          assert String.ends_with?(final_dest, "my-extension.raw")
           assert String.contains?(final_dest, "avocado/extensions")
           assert is_binary(tmp_dest)
 
@@ -158,3 +158,4 @@ defmodule Peridiod.Binary.Installer.AvocadoExtTest do
     end
   end
 end
+

@@ -38,6 +38,10 @@ defmodule Peridiod.Binary.Installer.File do
     end
   end
 
+  def path_install(_binary_metadata, _path, _opts) do
+    {:error, "File installer_opts keys name and path are required", nil}
+  end
+
   def stream_init(%Binary{prn: prn}, %{"name" => name, "path" => path}) do
     with :ok <- File.mkdir_p(path),
          {:ok, id} <- Binary.id_from_prn(prn) do

@@ -39,7 +39,19 @@ defmodule Peridiod.Binary.Installer.AvocadoOS do
   }
 
   def execution_model(), do: :sequential
+
+  # Default interfaces when we don't know the sub-type yet
   def interfaces(), do: [:path, :stream]
+
+  # Get interfaces from the sub-module based on "type" in opts
+  def interfaces(%{"type" => type}) do
+    case get_sub_module(type) do
+      {:ok, sub_mod} -> sub_mod.interfaces()
+      {:error, _} -> [:path, :stream]
+    end
+  end
+
+  def interfaces(_opts), do: [:path, :stream]
 
   def path_install(binary_metadata, path, %{"type" => type} = opts) do
     sub_opts = Map.delete(opts, "type")
@@ -68,6 +80,9 @@ defmodule Peridiod.Binary.Installer.AvocadoOS do
 
           {:error, reason, sub_state} ->
             {:error, reason, {sub_mod, sub_state}}
+
+          {:error, reason} ->
+            {:error, reason, nil}
         end
 
       {:error, reason} ->

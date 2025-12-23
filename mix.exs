@@ -24,7 +24,7 @@ defmodule Peridiod.MixProject do
   end
 
   def application,
-    do: [extra_applications: [:crypto, :logger, :inets], mod: {Peridiod.Application, []}]
+    do: [extra_applications: [:crypto, :logger, :inets, :asn1], mod: {Peridiod.Application, []}]
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]

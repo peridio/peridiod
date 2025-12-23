@@ -85,6 +85,14 @@ defmodule Peridiod.Binary.Installer do
   def execution_model(installer_mod), do: installer_mod.execution_model()
   def interfaces(installer_mod), do: installer_mod.interfaces()
 
+  def interfaces(installer_mod, installer_opts) do
+    if function_exported?(installer_mod, :interfaces, 1) do
+      installer_mod.interfaces(installer_opts)
+    else
+      installer_mod.interfaces()
+    end
+  end
+
   def path_install(pid, path) do
     GenServer.cast(pid, {:path_install, path})
   end

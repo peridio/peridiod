@@ -1,6 +1,8 @@
 defmodule Peridiod.Plan.Step.BinaryCache do
   use Peridiod.Plan.Step
 
+  require Logger
+
   alias Peridiod.{Binary, Cache, Cloud}
   alias Peridiod.Binary.Downloader
 
@@ -76,6 +78,10 @@ defmodule Peridiod.Plan.Step.BinaryCache do
         {:stop, :normal, %{state | step_percent: 1.0}}
 
       {:error, error} ->
+        Logger.error(
+          "[BinaryCache] Signature validation failed for #{state.binary_metadata.prn}: #{inspect(error)}"
+        )
+
         Binary.cache_rm(state.cache_pid, state.binary_metadata)
         {:error, error, state}
     end

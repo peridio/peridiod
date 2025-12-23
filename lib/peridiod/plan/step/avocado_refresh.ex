@@ -8,7 +8,7 @@ defmodule Peridiod.Plan.Step.AvocadoRefresh do
   end
 
   def init(opts) do
-    avocadoctl_cmd = Map.get(opts, :avocadoctl_cmd, "avocadoctl")
+    avocadoctl_cmd = opts[:avocadoctl_cmd] || "avocadoctl"
 
     {:ok, %{avocadoctl_cmd: avocadoctl_cmd}}
   end

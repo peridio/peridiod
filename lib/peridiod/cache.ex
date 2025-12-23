@@ -136,7 +136,7 @@ defmodule Peridiod.Cache do
 
     reply =
       with hash <- hash(file_path, state.hash_algorithm),
-           true <- :crypto.verify(:eddsa, :sha256, hash, signature, [public_key, :ed25519]),
+           true <- verify_signature(hash, signature, public_key),
            signature <- sign(hash, state.hash_algorithm, state.private_key),
            :ok <- File.write(file_sig_path, signature) do
         :ok
@@ -205,6 +205,16 @@ defmodule Peridiod.Cache do
   def handle_call({:rm_rf, dir}, _from, state) do
     path = Path.join([state.path, dir])
     {:reply, File.rm_rf(path), state}
+  end
+
+  # Verify signature trying raw hash first (new format), then base16 encoded (legacy)
+  defp verify_signature(hash, signature, public_key) when is_binary(hash) do
+    raw_hash = if byte_size(hash) == 64, do: Base.decode16!(hash, case: :mixed), else: hash
+
+    case :crypto.verify(:eddsa, :none, raw_hash, signature, [public_key, :ed25519]) do
+      true -> true
+      false -> :crypto.verify(:eddsa, :none, hash, signature, [public_key, :ed25519])
+    end
   end
 
   defp do_write(file, content, %{

@@ -8,7 +8,7 @@ defmodule Peridiod.Plan.Step.AvocadoExtensionEnable do
   end
 
   def init(%{extension_names: extension_names, os_version: os_version} = opts) do
-    avocadoctl_cmd = Map.get(opts, :avocadoctl_cmd, "avocadoctl")
+    avocadoctl_cmd = opts[:avocadoctl_cmd] || "avocadoctl"
 
     {:ok,
      %{

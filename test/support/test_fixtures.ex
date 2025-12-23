@@ -99,10 +99,9 @@ defmodule Peridiod.TestFixtures do
     "peridiod" => %{
       "installer" => "avocado-ext",
       "installer_opts" => %{
-        "name" => "test-app.raw"
-      },
-      "avocado" => %{
-        "extension_name" => "test-app"
+        "name" => "test-app",
+        "image" => "test-app.raw",
+        "enabled" => true
       },
       "reboot_required" => false
     }
@@ -232,8 +231,8 @@ defmodule Peridiod.TestFixtures do
   def binary_manifest_avocado_extension(extension_name) do
     @trusted_release_binary_file
     |> Map.put("custom_metadata", @custom_metadata_avocado_extension)
-    |> put_in(["custom_metadata", "peridiod", "avocado", "extension_name"], extension_name)
-    |> put_in(["custom_metadata", "peridiod", "installer_opts", "name"], "#{extension_name}.raw")
+    |> put_in(["custom_metadata", "peridiod", "installer_opts", "name"], extension_name)
+    |> put_in(["custom_metadata", "peridiod", "installer_opts", "image"], "#{extension_name}.raw")
   end
 
   def custom_metadata_avocado_os(), do: @custom_metadata_avocado_os

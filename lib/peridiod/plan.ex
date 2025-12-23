@@ -208,9 +208,10 @@ defmodule Peridiod.Plan do
           installer_opts = Installer.opts(binary_metadata)
           installer_config_opts = Installer.config_opts(installer_mod, config)
           installer_opts = Map.merge(installer_config_opts, installer_opts)
+          installer_interfaces = Installer.interfaces(installer_mod, installer_opts)
 
           {source, cache_steps} =
-            case {Binary.cached?(binary_metadata), installer_mod.interfaces()} do
+            case {Binary.cached?(binary_metadata), installer_interfaces} do
               {false, [:path]} ->
                 Logger.info("[Plan] Binary not cached, adding cache step")
 
@@ -440,7 +441,7 @@ defmodule Peridiod.Plan do
     extension_binaries
     |> Enum.filter(&extension_enabled?/1)
     |> Enum.map(fn binary ->
-      get_in(binary.custom_metadata, ["peridiod", "avocado", "extension_name"])
+      get_in(binary.custom_metadata, ["peridiod", "installer_opts", "name"])
     end)
     |> Enum.reject(&is_nil/1)
   end
