@@ -1,7 +1,7 @@
 defmodule Peridiod.Config.Env do
-  require Logger
-
   import Peridiod.Utils, only: [try_base64_decode: 1, pem_certificate_trim: 1]
+
+  require Logger
 
   def config(%{"private_key" => nil, "certificate" => nil}, base_config) do
     Logger.error("""

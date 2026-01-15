@@ -10,12 +10,3 @@ config :peridiod_persistence,
        "peridio_vsn_current" => System.get_env("PERIDIO_RELEASE_VERSION"),
        "peridio_rel_current" => System.get_env("PERIDIO_RELEASE_PRN")
      }}
-
-config :peridiod,
-  key_pair_source: "env",
-  key_pair_config: %{
-    "private_key" => "PERIDIO_PRIVATE_KEY",
-    "certificate" => "PERIDIO_CERTIFICATE"
-  },
-  releases_enabled: false,
-  socket_enabled?: false
