@@ -20,8 +20,8 @@ defmodule Peridiod.Plan do
 
     steps =
       binaries_metadata
-      |> binary_install_steps(opts)
-      |> binary_install_chunk_sequential()
+      |> separate_binaries_by_type(installed_binaries)
+      |> build_install_steps(opts)
 
     maybe_reboot = reboot_step(steps, config)
 
@@ -78,8 +78,8 @@ defmodule Peridiod.Plan do
 
     steps =
       binaries_metadata
-      |> binary_install_steps(opts)
-      |> binary_install_chunk_sequential()
+      |> separate_binaries_by_type(installed_binaries)
+      |> build_install_steps(opts)
 
     maybe_reboot = reboot_step(steps, config)
 
@@ -284,10 +284,16 @@ defmodule Peridiod.Plan do
   defp reboot_step(steps, config) do
     steps = List.flatten(steps)
 
-    case Enum.any?(
-           steps,
-           &(elem(&1, 1).binary_metadata.custom_metadata["peridiod"]["reboot_required"] == true)
-         ) do
+    requires_reboot? =
+      Enum.any?(steps, fn
+        {_, %{binary_metadata: binary_metadata}} ->
+          get_in(binary_metadata.custom_metadata, ["peridiod", "reboot_required"]) == true
+
+        _ ->
+          false
+      end)
+
+    case requires_reboot? do
       true ->
         reboot_opts =
           Map.take(config, [
@@ -303,5 +309,144 @@ defmodule Peridiod.Plan do
       false ->
         []
     end
+  end
+
+  defp separate_binaries_by_type(binaries_metadata, installed_binaries) do
+    {avocado_extensions, rest} = Enum.split_with(binaries_metadata, &avocado_extension?/1)
+    {avocado_os, non_avocado} = Enum.split_with(rest, &avocado_os?/1)
+
+    # Find already-installed Avocado extensions
+    installed_extensions = Enum.filter(installed_binaries, &avocado_extension?/1)
+
+    # Combine ALL extension names (installed + uninstalled)
+    all_extension_names =
+      (avocado_extensions ++ installed_extensions)
+      |> extract_extension_names()
+
+    os_version = extract_os_version(avocado_os)
+
+    %{
+      avocado_extensions: avocado_extensions,
+      avocado_os: avocado_os,
+      non_avocado: non_avocado,
+      all_extension_names: all_extension_names,
+      os_version: os_version
+    }
+  end
+
+  defp build_install_steps(grouped_binaries, opts, initial_steps \\ []) do
+    initial_steps
+    |> build_extension_install_steps(grouped_binaries.avocado_extensions, opts)
+    |> build_extension_enable_step(
+      grouped_binaries.all_extension_names,
+      grouped_binaries.os_version,
+      opts
+    )
+    |> build_non_avocado_steps(grouped_binaries.non_avocado, opts)
+    |> build_os_or_refresh_step(
+      grouped_binaries.avocado_os,
+      grouped_binaries.all_extension_names,
+      opts
+    )
+  end
+
+  defp build_extension_install_steps(steps, [], _opts), do: steps
+
+  defp build_extension_install_steps(steps, extensions, opts) do
+    extension_steps =
+      extensions
+      |> binary_install_steps(opts)
+      |> binary_install_chunk_sequential()
+
+    steps ++ extension_steps
+  end
+
+  defp build_extension_enable_step(steps, [], _os_version, _opts), do: steps
+
+  defp build_extension_enable_step(steps, extension_names, os_version, opts) do
+    enable_step = [
+      {Step.AvocadoExtensionEnable,
+       %{
+         extension_names: extension_names,
+         os_version: os_version,
+         avocadoctl_cmd: opts[:avocadoctl_cmd]
+       }}
+    ]
+
+    steps ++ [enable_step]
+  end
+
+  defp build_non_avocado_steps(steps, [], _opts), do: steps
+
+  defp build_non_avocado_steps(steps, non_avocado, opts) do
+    non_avocado_steps =
+      non_avocado
+      |> binary_install_steps(opts)
+      |> binary_install_chunk_sequential()
+
+    steps ++ non_avocado_steps
+  end
+
+  defp build_os_or_refresh_step(steps, avocado_os, extension_names, opts) do
+    cond do
+      # If we have an OS binary, install it
+      !Enum.empty?(avocado_os) ->
+        os_steps =
+          avocado_os
+          |> binary_install_steps(opts)
+          |> binary_install_chunk_sequential()
+
+        steps ++ os_steps
+
+      # If we have extensions (new or already-installed) but no OS, refresh
+      !Enum.empty?(extension_names) ->
+        refresh_step = [
+          {Step.AvocadoRefresh,
+           %{
+             avocadoctl_cmd: opts[:avocadoctl_cmd]
+           }}
+        ]
+
+        steps ++ [refresh_step]
+
+      # No Avocado components at all
+      true ->
+        steps
+    end
+  end
+
+  defp avocado_extension?(%Binary{
+         custom_metadata: %{"peridiod" => %{"installer" => "avocado-ext"}}
+       }),
+       do: true
+
+  defp avocado_extension?(_), do: false
+
+  defp avocado_os?(%Binary{
+         custom_metadata: %{"peridiod" => %{"installer" => "avocado-os"}}
+       }),
+       do: true
+
+  defp avocado_os?(_), do: false
+
+  defp extract_os_version([]), do: nil
+
+  defp extract_os_version([%Binary{} = os_binary | _]) do
+    # Version comes from the binary's version field (from artifact_version.version)
+    os_binary.version
+  end
+
+  defp extract_extension_names(extension_binaries) do
+    extension_binaries
+    |> Enum.filter(&extension_enabled?/1)
+    |> Enum.map(fn binary ->
+      get_in(binary.custom_metadata, ["peridiod", "avocado", "extension_name"])
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp extension_enabled?(binary) do
+    installer_opts = Installer.opts(binary)
+    installer_opts["enabled"] == true
   end
 end

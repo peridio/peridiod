@@ -73,9 +73,11 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
         {:noreply, state}
 
       {false, _} ->
+        Binary.cache_rm(state.cache_pid, state.binary_metadata)
         {:error, :invalid_hash, state}
 
       {_, false} ->
+        Binary.cache_rm(state.cache_pid, state.binary_metadata)
         {:error, :invalid_signature, state}
     end
   end
@@ -138,6 +140,7 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
   end
 
   def handle_info({:source, {:eof, :invalid_signature, hash}}, state) do
+    Binary.cache_rm(state.cache_pid, state.binary_metadata)
     Installer.stream_finish(state.installer, :invalid_signature, hash)
     {:error, :invalid_signature, state}
   end
@@ -166,6 +169,11 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
         {true, false} -> :invalid_signature
         {false, _} -> :invalid_hash
       end
+
+    # Cleanup cache if validation failed to prevent reusing corrupt files
+    if validity in [:invalid_signature, :invalid_hash] do
+      Binary.cache_rm(state.cache_pid, state.binary_metadata)
+    end
 
     Installer.stream_finish(state.installer, validity, hash)
     {:noreply, state}

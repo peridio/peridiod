@@ -83,6 +83,32 @@ defmodule Peridiod.TestFixtures do
     }
   }
 
+  @custom_metadata_avocado_os %{
+    "peridiod" => %{
+      "installer" => "avocado-os",
+      "installer_opts" => %{
+        "type" => "file",
+        "name" => "avocado-os.img",
+        "path" => "test/workspace"
+      },
+      "reboot_required" => true
+    }
+  }
+
+  @custom_metadata_avocado_extension %{
+    "peridiod" => %{
+      "installer" => "avocado-ext",
+      "installer_opts" => %{
+        "name" => "test-app.raw",
+        "enabled" => true
+      },
+      "avocado" => %{
+        "extension_name" => "test-app"
+      },
+      "reboot_required" => false
+    }
+  }
+
   @trusted_release_binary %{
     "artifact" => %{
       "name" => "fwup.fw",
@@ -197,4 +223,20 @@ defmodule Peridiod.TestFixtures do
 
     %{@release_manifest | "manifest" => [manifest]}
   end
+
+  def binary_manifest_avocado_os(version \\ "v1.0.0") do
+    @trusted_release_binary
+    |> Map.put("custom_metadata", @custom_metadata_avocado_os)
+    |> put_in(["artifact_version", "version"], version)
+  end
+
+  def binary_manifest_avocado_extension(extension_name) do
+    @trusted_release_binary_file
+    |> Map.put("custom_metadata", @custom_metadata_avocado_extension)
+    |> put_in(["custom_metadata", "peridiod", "avocado", "extension_name"], extension_name)
+    |> put_in(["custom_metadata", "peridiod", "installer_opts", "name"], "#{extension_name}.raw")
+  end
+
+  def custom_metadata_avocado_os(), do: @custom_metadata_avocado_os
+  def custom_metadata_avocado_extension(), do: @custom_metadata_avocado_extension
 end
