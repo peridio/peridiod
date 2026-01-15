@@ -267,23 +267,34 @@ defmodule Peridiod.Binary.ParallelDownloader do
     end
   end
 
-  # Handle chunk download error
-  def handle_info({:chunk_error, chunk_number, reason}, %ParallelDownloader{} = state) do
-    chunk = Map.get(state.chunks, chunk_number)
-
-    Logger.warning(
-      "[Parallel Downloader #{state.id}] Download chunk errored: #{Path.basename(chunk.file_path)} (#{chunk.downloaded}/#{chunk.size} bytes, range #{chunk.start_byte}-#{chunk.end_byte}) - #{inspect(reason)} - will retry"
+  # Handle fatal HTTP error on chunk - abort entire download
+  def handle_info(
+        {:chunk_fatal_http_error, chunk_number, status, uri},
+        %ParallelDownloader{} = state
+      ) do
+    Logger.error(
+      "[Parallel Downloader #{state.id}] Fatal HTTP error #{status} on chunk #{chunk_number}. " <>
+        "URL: #{URI.to_string(uri)} - Aborting all downloads."
     )
 
-    state = %{
-      state
-      | failed_chunks: MapSet.put(state.failed_chunks, chunk_number),
-        active_downloads: Map.delete(state.active_downloads, chunk_number)
-    }
+    stop_all_active_downloads(state)
 
-    # For now, we'll retry failed chunks by starting them again
-    # In a more sophisticated implementation, we might have retry limits per chunk
-    state = start_next_downloads(state)
+    # Propagate fatal error to Distribution.Server
+    _ = state.handler_fun.({:fatal_http_error, status, uri})
+
+    {:stop, :normal, state}
+  end
+
+  # Handle chunk download error - informational only
+  # ChunkDownloader handles retries internally via reschedule_resume, so the process is still alive
+  # We just log the error; the :DOWN handler will restart if the process actually dies
+  def handle_info({:chunk_error, chunk_number, reason}, %ParallelDownloader{} = state) do
+    Logger.debug(
+      "[Parallel Downloader #{state.id}] Chunk #{chunk_number} reported error: #{inspect(reason)} - ChunkDownloader still handling"
+    )
+
+    # Don't remove from active_downloads - ChunkDownloader is still alive and retrying
+    # Don't add to failed_chunks - this is informational during internal retries
     {:noreply, state}
   end
 
@@ -310,15 +321,49 @@ defmodule Peridiod.Binary.ParallelDownloader do
     # Find which chunk this PID was handling
     case Enum.find(state.active_downloads, fn {_chunk, chunk_pid} -> chunk_pid == pid end) do
       {chunk_number, ^pid} ->
-        Logger.warning(
-          "[Parallel Downloader #{state.id}] Chunk #{chunk_number} process died: #{inspect(reason)} - will retry"
-        )
+        # Remove from active downloads
+        state = %{state | active_downloads: Map.delete(state.active_downloads, chunk_number)}
 
-        send(self(), {:chunk_error, chunk_number, reason})
-        {:noreply, state}
+        case reason do
+          :normal ->
+            # Normal exit - chunk completed successfully or fatal error already handled
+            {:noreply, state}
+
+          _ ->
+            # Abnormal exit - process died, need to restart the chunk
+            Logger.warning(
+              "[Parallel Downloader #{state.id}] Chunk #{chunk_number} process died: #{inspect(reason)} - restarting"
+            )
+
+            # Schedule restart after brief delay to avoid tight loop
+            Process.send_after(self(), {:restart_chunk, chunk_number}, 100)
+            {:noreply, state}
+        end
 
       nil ->
         # Unknown process died, ignore
+        {:noreply, state}
+    end
+  end
+
+  # Handle scheduled chunk restart after process death
+  def handle_info({:restart_chunk, chunk_number}, %ParallelDownloader{} = state) do
+    case Map.get(state.chunks, chunk_number) do
+      %{complete?: true} ->
+        # Chunk already completed, no need to restart
+        {:noreply, state}
+
+      nil ->
+        # Unknown chunk, ignore
+        {:noreply, state}
+
+      chunk ->
+        # Restart this specific chunk
+        Logger.info(
+          "[Parallel Downloader #{state.id}] Restarting chunk #{chunk_number} after process death"
+        )
+
+        state = start_chunk_download(state, chunk_number, chunk)
         {:noreply, state}
     end
   end
@@ -407,10 +452,13 @@ defmodule Peridiod.Binary.ParallelDownloader do
           {chunk_number, %{chunk | downloaded: size, complete?: false}}
 
         {:ok, %File.Stat{size: size}} when size > expected_chunk_size ->
-          # File is larger than expected - something went wrong, start over with this chunk
+          # File is larger than expected - something went wrong, delete and start over
           Logger.warning(
-            "[Parallel Downloader] Found oversized chunk: #{Path.basename(chunk.file_path)} (#{size}/#{expected_chunk_size} bytes) - will restart from beginning"
+            "[Parallel Downloader] Found oversized chunk: #{Path.basename(chunk.file_path)} (#{size}/#{expected_chunk_size} bytes) - deleting and restarting"
           )
+
+          # Delete the corrupted/oversized file to prevent append issues
+          File.rm(abs)
 
           {chunk_number, %{chunk | downloaded: 0, complete?: false}}
 
@@ -449,6 +497,8 @@ defmodule Peridiod.Binary.ParallelDownloader do
   defp start_chunk_download(%ParallelDownloader{} = state, chunk_number, chunk) do
     # Create handler function for this chunk
     parent_pid = self()
+    progress_counter = :counters.new(1, [])
+    :counters.put(progress_counter, 1, chunk.downloaded)
 
     handler_fun = fn
       {:stream, data} ->
@@ -456,7 +506,9 @@ defmodule Peridiod.Binary.ParallelDownloader do
         case Cache.write_stream_update(state.cache_pid, chunk.file_path, data) do
           :ok ->
             # Update progress
-            send(parent_pid, {:chunk_progress, chunk_number, chunk.downloaded + byte_size(data)})
+            :counters.add(progress_counter, 1, byte_size(data))
+            downloaded_bytes = :counters.get(progress_counter, 1)
+            send(parent_pid, {:chunk_progress, chunk_number, downloaded_bytes})
 
           {:error, reason} ->
             Logger.error(
@@ -465,6 +517,10 @@ defmodule Peridiod.Binary.ParallelDownloader do
 
             send(parent_pid, {:chunk_error, chunk_number, {:file_write_error, reason}})
         end
+
+      {:fatal_http_error, status, uri} ->
+        # Forward fatal HTTP error to parent - this will abort the entire download
+        send(parent_pid, {:chunk_fatal_http_error, chunk_number, status, uri})
 
       {:error, reason} ->
         send(parent_pid, {:chunk_error, chunk_number, reason})
@@ -527,39 +583,44 @@ defmodule Peridiod.Binary.ParallelDownloader do
           {:ok, pid()} | {:error, any()}
   defp start_chunk_downloader(%ParallelDownloader{} = state, chunk_number, chunk, handler_fun) do
     # Don't start downloader for chunks that are already complete
-    if chunk.complete? do
-      Logger.warning(
-        "[Parallel Downloader #{state.id}] Attempted to start downloader for complete chunk #{chunk_number}"
-      )
+    case chunk.complete? do
+      true ->
+        Logger.warning(
+          "[Parallel Downloader #{state.id}] Attempted to start downloader for complete chunk #{chunk_number}"
+        )
 
-      {:error, :chunk_already_complete}
-    else
-      if chunk.downloaded > 0 do
-        # Resume existing chunk
-        ChunkDownloader.start_link_with_resume(
-          state.id,
-          state.uri,
-          chunk_number,
-          chunk.start_byte,
-          chunk.end_byte,
-          chunk.file_path,
-          handler_fun,
-          state.retry_args,
-          chunk.downloaded
-        )
-      else
-        # Start new chunk
-        ChunkDownloader.start_link(
-          state.id,
-          state.uri,
-          chunk_number,
-          chunk.start_byte,
-          chunk.end_byte,
-          chunk.file_path,
-          handler_fun,
-          state.retry_args
-        )
-      end
+        {:error, :chunk_already_complete}
+
+      false ->
+        # Use start (not start_link) to avoid crash propagation - we monitor instead
+        case chunk.downloaded > 0 do
+          true ->
+            # Resume existing chunk
+            ChunkDownloader.start_with_resume(
+              state.id,
+              state.uri,
+              chunk_number,
+              chunk.start_byte,
+              chunk.end_byte,
+              chunk.file_path,
+              handler_fun,
+              state.retry_args,
+              chunk.downloaded
+            )
+
+          false ->
+            # Start new chunk
+            ChunkDownloader.start(
+              state.id,
+              state.uri,
+              chunk_number,
+              chunk.start_byte,
+              chunk.end_byte,
+              chunk.file_path,
+              handler_fun,
+              state.retry_args
+            )
+        end
     end
   end
 

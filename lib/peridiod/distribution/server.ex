@@ -198,6 +198,12 @@ defmodule Peridiod.Distribution.Server do
     {:noreply, maybe_update_firmware(response, %State{state | update_reschedule_timer: nil})}
   end
 
+  # Ignore stale fwup messages after update has been cancelled/reset
+  def handle_info({:fwup, _message}, %State{fwup: nil} = state) do
+    Logger.debug("[Distributions] Ignoring stale fwup message - update was cancelled")
+    {:noreply, state}
+  end
+
   # messages from FWUP
   def handle_info({:fwup, message}, state) do
     _ = state.fwup_config.handle_fwup_message.(message)
@@ -230,8 +236,20 @@ defmodule Peridiod.Distribution.Server do
     end
   end
 
+  def handle_info({:download, {:fatal_http_error, status, uri}}, state) do
+    Logger.error(
+      "[Distributions] Fatal HTTP error #{status} downloading firmware. " <>
+        "URL: #{URI.to_string(uri)} - Update aborted, ready for new update."
+    )
+
+    {:noreply, reset_update_state(state)}
+  end
+
   def handle_info({:download, {:error, reason}}, state) do
-    Logger.error("[Distributions] Nonfatal HTTP download error: #{inspect(reason)}")
+    Logger.warning(
+      "[Distributions] Transient HTTP download error (will retry): #{inspect(reason)}"
+    )
+
     {:noreply, state}
   end
 
@@ -859,6 +877,38 @@ defmodule Peridiod.Distribution.Server do
     if Process.alive?(pid) do
       send(pid, msg)
     end
+  end
+
+  defp maybe_stop_fwup(%State{fwup: nil} = state), do: state
+
+  defp maybe_stop_fwup(%State{fwup: fwup} = state) when is_pid(fwup) do
+    case Process.alive?(fwup) do
+      true -> GenServer.stop(fwup, :normal, 5000)
+      false -> :ok
+    end
+
+    %State{state | fwup: nil}
+  end
+
+  defp reset_update_state(%State{} = state) do
+    state = maybe_stop_fwup(state)
+    state = maybe_cancel_timer(state)
+
+    # Notify callback of the failure
+    try_send(state.callback, {__MODULE__, :install, {:error, :http_download_failed}})
+
+    %State{
+      state
+      | status: :idle,
+        download: nil,
+        distribution: nil,
+        download_file_path: nil,
+        async_streaming: nil,
+        pending_download_plan: nil,
+        next_chunk_to_stream: nil,
+        ready_chunk_files: %{},
+        total_chunks: nil
+    }
   end
 
   defp handle_cached_download_complete(%State{} = state) do

@@ -276,7 +276,8 @@ defmodule Peridiod.Binary.Downloader do
     case handle_response(response, state) do
       # this `status != nil` thing seems really weird. Shouldn't be needed.
       %Downloader{status: status} = state when status != nil and status >= 400 ->
-        {:stop, {:http_error, status}, state}
+        # Normal exit prevents supervisor restart
+        {:stop, :normal, state}
 
       state ->
         handle_responses(rest, state)
@@ -319,11 +320,11 @@ defmodule Peridiod.Binary.Downloader do
   # the handle_responses/2 function checks this value again because this function only handles state
   def handle_response(
         {:status, request_ref, status},
-        %Downloader{request_ref: request_ref} = state
+        %Downloader{request_ref: request_ref, uri: uri} = state
       )
       when status >= 400 do
-    # kind of a hack to make the error type uniform
-    state.handler_fun.({:error, %Mint.HTTPError{reason: {:http_error, status}}})
+    # Send fatal error with URL for logging, then mark for clean shutdown
+    state.handler_fun.({:fatal_http_error, status, uri})
     %Downloader{state | status: status}
   end
 
