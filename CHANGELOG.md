@@ -1,5 +1,14 @@
 # peridiod releases
 
+## 3.3.0
+
+* Enhancements
+  * [Core] Added `avocado-os` and `avocado-ext` binary installers for Avocado platform support
+  * [Core] Added support for verifying raw and hex-encoded binary signatures
+* Bug fixes
+  * [Core] Fixed download failure handling where fatal HTTP errors (4xx/5xx) could cause supervisor restart loops with stale URLs
+  * [Core] Fixed various parallel downloader reliability and recovery issues
+
 ## 3.2.2
 
 * Bug fixes
