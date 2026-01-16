@@ -66,6 +66,7 @@ defmodule Peridiod.Binary.Installer do
   end
 
   def child_spec(%Binary{prn: binary_prn} = binary_metadata, mod, opts) do
+  raise "for test"
     opts = Map.put(opts, :callback, self())
 
     %{
