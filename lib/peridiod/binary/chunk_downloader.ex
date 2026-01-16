@@ -65,28 +65,13 @@ defmodule Peridiod.Binary.ChunkDownloader do
           chunk_file_path: nil | String.t()
         }
 
-  def child_spec(
-        id,
-        uri,
-        chunk_number,
-        range_start,
-        range_end,
-        chunk_file_path,
-        fun,
-        %RetryConfig{} = retry_args
-      ) do
-    %{
-      id: Module.concat(__MODULE__, "#{id}_chunk_#{chunk_number}"),
-      start:
-        {__MODULE__, :start_link,
-         [id, uri, chunk_number, range_start, range_end, chunk_file_path, fun, retry_args]},
-      shutdown: 5000,
-      type: :worker,
-      restart: :transient
-    }
-  end
+  @doc """
+  Start a ChunkDownloader without linking to the caller.
 
-  @spec start_link(
+  This is used by ParallelDownloader to avoid crash propagation - the parent
+  monitors the ChunkDownloader instead of linking to it.
+  """
+  @spec start(
           String.t(),
           String.t() | URI.t(),
           non_neg_integer(),
@@ -97,7 +82,7 @@ defmodule Peridiod.Binary.ChunkDownloader do
           RetryConfig.t()
         ) ::
           GenServer.on_start()
-  def start_link(
+  def start(
         id,
         uri,
         chunk_number,
@@ -108,7 +93,7 @@ defmodule Peridiod.Binary.ChunkDownloader do
         %RetryConfig{} = retry_args
       )
       when is_function(fun, 1) do
-    GenServer.start_link(__MODULE__, [
+    GenServer.start(__MODULE__, [
       id,
       uri,
       chunk_number,
@@ -120,7 +105,7 @@ defmodule Peridiod.Binary.ChunkDownloader do
     ])
   end
 
-  @spec start_link_with_resume(
+  @spec start_with_resume(
           String.t(),
           URI.t(),
           non_neg_integer(),
@@ -132,7 +117,7 @@ defmodule Peridiod.Binary.ChunkDownloader do
           non_neg_integer()
         ) ::
           GenServer.on_start()
-  def start_link_with_resume(
+  def start_with_resume(
         id,
         %URI{} = uri,
         chunk_number,
@@ -144,7 +129,7 @@ defmodule Peridiod.Binary.ChunkDownloader do
         existing_size
       )
       when is_function(fun, 1) do
-    GenServer.start_link(__MODULE__, [
+    GenServer.start(__MODULE__, [
       id,
       uri,
       chunk_number,
@@ -172,27 +157,49 @@ defmodule Peridiod.Binary.ChunkDownloader do
         fun,
         %RetryConfig{} = retry_args
       ]) do
-    timer = Process.send_after(self(), :max_timeout, retry_args.max_timeout)
+    # Remove any existing file to ensure fresh start (prevents append to oversized/corrupt files)
+    case File.exists?(chunk_file_path) do
+      true ->
+        Logger.info(
+          "[Chunk Downloader #{id}_#{chunk_number}] Removing existing file for fresh start"
+        )
 
-    Logger.info(
-      "[Chunk Downloader #{id}_#{chunk_number}] Started for range #{range_start}-#{range_end}"
-    )
+        File.rm(chunk_file_path)
 
-    state =
-      reset(%ChunkDownloader{
-        id: id,
-        handler_fun: fun,
-        retry_args: retry_args,
-        max_timeout: timer,
-        uri: uri,
-        chunk_number: chunk_number,
-        range_start: range_start,
-        range_end: range_end,
-        chunk_file_path: chunk_file_path
-      })
+      false ->
+        :ok
+    end
+    |> case do
+      :ok ->
+        timer = Process.send_after(self(), :max_timeout, retry_args.max_timeout)
 
-    send(self(), :resume)
-    {:ok, state}
+        Logger.info(
+          "[Chunk Downloader #{id}_#{chunk_number}] Started for range #{range_start}-#{range_end}"
+        )
+
+        state =
+          reset(%ChunkDownloader{
+            id: id,
+            handler_fun: fun,
+            retry_args: retry_args,
+            max_timeout: timer,
+            uri: uri,
+            chunk_number: chunk_number,
+            range_start: range_start,
+            range_end: range_end,
+            chunk_file_path: chunk_file_path
+          })
+
+        send(self(), :resume)
+        {:ok, state}
+
+      {:error, reason} ->
+        Logger.error(
+          "[Chunk Downloader #{id}_#{chunk_number}] Failed to remove existing file: #{inspect(reason)} - cannot proceed"
+        )
+
+        {:stop, {:file_cleanup_failed, reason}}
+    end
   end
 
   def init([
@@ -359,7 +366,8 @@ defmodule Peridiod.Binary.ChunkDownloader do
     case handle_response(response, state) do
       # this `status != nil` thing seems really weird. Shouldn't be needed.
       %ChunkDownloader{status: status} = state when status != nil and status >= 400 ->
-        {:stop, {:http_error, status}, state}
+        # Normal exit prevents supervisor restart and link crash propagation
+        {:stop, :normal, state}
 
       state ->
         handle_responses(rest, state)
@@ -402,11 +410,23 @@ defmodule Peridiod.Binary.ChunkDownloader do
   # the handle_responses/2 function checks this value again because this function only handles state
   def handle_response(
         {:status, request_ref, status},
-        %ChunkDownloader{request_ref: request_ref} = state
+        %ChunkDownloader{
+          request_ref: request_ref,
+          uri: uri,
+          chunk_number: chunk_number,
+          range_start: range_start,
+          range_end: range_end
+        } = state
       )
       when status >= 400 do
-    # kind of a hack to make the error type uniform
-    state.handler_fun.({:error, %Mint.HTTPError{reason: {:http_error, status}}})
+    # Log detailed error information for this chunk
+    Logger.error(
+      "[Chunk Downloader #{state.id}_#{chunk_number}] Fatal HTTP error #{status} for chunk #{chunk_number} " <>
+        "(range #{range_start}-#{range_end}). URL: #{URI.to_string(uri)}"
+    )
+
+    # Send fatal error with URL for logging, then mark for clean shutdown
+    state.handler_fun.({:fatal_http_error, status, uri})
     %ChunkDownloader{state | status: status}
   end
 
