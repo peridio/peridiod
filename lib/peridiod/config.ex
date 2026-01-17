@@ -52,7 +52,11 @@ defmodule Peridiod.Config do
             trusted_signing_key_threshold: 1,
             socket: [],
             socket_enabled?: true,
-            ssl: []
+            ssl: [],
+            shadow_executable: nil,
+            shadow_args: [],
+            shadow_interval: 10_000,
+            shadow_enabled: false
 
   @type public_key :: :public_key.public_key()
   @type private_key :: :public_key.private_key()
@@ -101,7 +105,11 @@ defmodule Peridiod.Config do
           trusted_signing_key_threshold: non_neg_integer(),
           socket: any(),
           socket_enabled?: boolean,
-          ssl: [:ssl.tls_client_option()]
+          ssl: [:ssl.tls_client_option()],
+          shadow_executable: String.t() | nil,
+          shadow_args: [],
+          shadow_interval: non_neg_integer(),
+          shadow_enabled: boolean()
         }
 
   @spec new(Config.t()) :: Config.t()
@@ -228,6 +236,10 @@ defmodule Peridiod.Config do
         :trusted_signing_key_threshold,
         config_file["trusted_signing_key_threshold"]
       )
+      |> override_if_set(:shadow_executable, config_file["shadow"]["executable"])
+      |> override_if_set(:shadow_args, config_file["shadow"]["args"])
+      |> override_if_set(:shadow_interval, config_file["shadow"]["interval"])
+      |> override_if_set(:shadow_enabled, config_file["shadow"]["enabled"])
 
     verify =
       case config.device_api_verify do
