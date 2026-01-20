@@ -1,5 +1,10 @@
 # peridiod releases
 
+## 3.3.2
+
+* Bug fixes
+  * [Build] Switched ARM64 CI builds to use GitHub-hosted runners
+
 ## 3.3.1
 
 * Bug fixes
