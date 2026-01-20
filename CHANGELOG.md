@@ -1,5 +1,10 @@
 # peridiod releases
 
+## 3.3.1
+
+* Bug fixes
+  * [Build] Fixed CI container builds failing due to `.tool-versions` conflict
+
 ## 3.3.0
 
 * Enhancements
