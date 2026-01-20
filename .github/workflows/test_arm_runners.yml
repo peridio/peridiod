@@ -1,0 +1,63 @@
+# Temporary workflow to test ARM64 runner migration
+# Delete this file after confirming ubuntu-24.04-arm works
+name: Test ARM64 Runners
+
+on:
+  push:
+    branches:
+      - test-arm-runners
+
+jobs:
+  test_arm_container_build:
+    name: Test container build (arm64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Build container (no push)
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./release/Containerfile-release
+        push: false
+        tags: peridio/peridiod:test-arm64
+
+  test_arm_deb_build:
+    name: Test deb build (arm64, ${{ matrix.distro }})
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [jammy, noble]
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y dpkg-dev debhelper fakeroot
+
+    - name: Build release artifacts
+      run: |
+        docker build --platform linux/arm64 --output type=local,dest=docker_output/ -f release/Containerfile-build-${{ matrix.distro }} .
+
+    - name: Verify output exists
+      run: ls -la docker_output/
+
+  test_arm_rpm_build:
+    name: Test rpm build (arm64, rhel9)
+    runs-on: ubuntu-24.04-arm
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y dpkg-dev debhelper fakeroot
+
+    - name: Build release artifacts
+      run: |
+        docker build --platform linux/arm64 --output type=local,dest=docker_output/ -f release/Containerfile-build-rhel9 .
+
+    - name: Verify output exists
+      run: ls -la docker_output/
