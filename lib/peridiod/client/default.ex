@@ -35,11 +35,39 @@ defmodule Peridiod.Client.Default do
   end
 
   @impl Peridiod.Client
-  def reboot() do
-    # this function must reboot the system
-    unless Peridiod.env_test?() do
-      Logger.warning("[Client] Rebooting System")
-      System.cmd("reboot", [], stderr_to_stdout: true)
+  def reboot(opts \\ %{}) do
+    # Extract configuration with defaults
+    sync_cmd = Map.get(opts, :reboot_sync_cmd, "sync")
+    sync_opts = Map.get(opts, :reboot_sync_opts, [])
+    reboot_cmd = Map.get(opts, :reboot_cmd, "reboot")
+    reboot_opts = Map.get(opts, :reboot_opts, [])
+
+    # Perform sync and reboot (skip in test environment)
+    with false <- Peridiod.env_test?(),
+         {_sync_output, 0} <- run_sync(sync_cmd, sync_opts),
+         :ok <- run_reboot(reboot_cmd, reboot_opts) do
+      Logger.warning("[Client] System rebooting now")
+    else
+      {result, code} ->
+        Logger.error(
+          "[Client] Exit code #{inspect(code)} while attempting to sync/reboot the system: #{inspect(result)}"
+        )
+
+      true ->
+        Logger.warning("[Client] Test environment - skipping reboot")
     end
+  end
+
+  defp run_sync(sync_cmd, sync_opts) do
+    Logger.info("[Client] Running sync command: #{sync_cmd} #{inspect(sync_opts)}")
+    {output, status} = System.cmd(sync_cmd, sync_opts, stderr_to_stdout: true)
+    Logger.info("[Client] Sync command completed with status: #{status}")
+    {output, status}
+  end
+
+  defp run_reboot(reboot_cmd, reboot_opts) do
+    Logger.warning("[Client] Running reboot command: #{reboot_cmd} #{inspect(reboot_opts)}")
+    System.cmd(reboot_cmd, reboot_opts, stderr_to_stdout: true)
+    :ok
   end
 end

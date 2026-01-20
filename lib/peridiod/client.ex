@@ -82,10 +82,16 @@ defmodule Peridiod.Client do
   The default behavior is to call `reboot` after a successful update. This
   is useful for testing and for doing additional work like notifying users in a UI that a reboot
   will happen soon. It is critical that a reboot does happen.
-  """
-  @callback reboot() :: no_return()
 
-  @optional_callbacks [reboot: 0]
+  The callback accepts an optional map of options with the following keys:
+  * `:reboot_cmd` - The system reboot command (default: "reboot")
+  * `:reboot_opts` - Extra args to be passed to the reboot command (default: [])
+  * `:reboot_sync_cmd` - The system sync command to force filesystem writes (default: "sync")
+  * `:reboot_sync_opts` - Extra args to be passed to the sync command (default: [])
+  """
+  @callback reboot(opts :: map()) :: no_return()
+
+  @optional_callbacks [reboot: 1]
 
   @doc """
   This function is called internally by Peridiod to notify clients.
@@ -138,17 +144,33 @@ defmodule Peridiod.Client do
   This function is called internally by Peridiod to initiate a reboot.
 
   After a successful firmware update, Peridiod calls this to start the
-  reboot process. It calls `c:reboot/0` if supplied or
+  reboot process. It calls `c:reboot/1` if supplied or
   `:os.cmd('reboot')`.
   """
   @spec initiate_reboot() :: :ok
   def initiate_reboot() do
     client = mod()
+    config = Peridiod.config()
+
+    reboot_opts =
+      Map.take(config, [
+        :reboot_cmd,
+        :reboot_opts,
+        :reboot_sync_cmd,
+        :reboot_sync_opts
+      ])
 
     {mod, fun, args} =
-      if function_exported?(client, :reboot, 0),
-        do: {client, :reboot, []},
-        else: {:os, :cmd, [~c"reboot"]}
+      cond do
+        function_exported?(client, :reboot, 1) ->
+          {client, :reboot, [reboot_opts]}
+
+        function_exported?(client, :reboot, 0) ->
+          {client, :reboot, []}
+
+        true ->
+          {:os, :cmd, [~c"reboot"]}
+      end
 
     _ = spawn(mod, fun, args)
     :ok
