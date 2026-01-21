@@ -1,5 +1,10 @@
 # peridiod releases
 
+## 3.4.0
+
+* Enhancements
+  * [Distributions] Backported configurable sync and reboot commands to distribution updates. The `reboot_cmd`, `reboot_opts`, `reboot_sync_cmd`, and `reboot_sync_opts` configuration options are now respected by distribution (FWUP-based) updates, matching the existing behavior in releases.
+
 ## 3.3.2
 
 * Bug fixes
