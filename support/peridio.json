@@ -2,20 +2,32 @@
   "version": 1,
   "fwup": {
     "devpath": "/etc/peridiod/peridiod.img",
-    "extra_args": ["--unsafe"],
+    "extra_args": [
+      "--unsafe"
+    ],
     "env": {
       "PERIDIO_EXECUTE": "touch /tmp/peridio-upgrade"
     }
   },
   "network_monitor": {
-    "interface_priority": ["eth0", "eth1", {"wwan0": {"disconnect_on_higher_priority": true}}]
+    "interface_priority": [
+      "eth0",
+      "eth1",
+      {
+        "wwan0": {
+          "disconnect_on_higher_priority": true
+        }
+      }
+    ]
   },
   "remote_iex": false,
   "remote_shell": true,
   "update_poll_enabled": true,
   "remote_access_tunnels": {
     "enabled": true,
-    "service_ports": [22],
+    "service_ports": [
+      22
+    ],
     "hooks": {
       "pre_up": "/etc/peridiod/hooks/pre-up.sh",
       "pre_down": "/etc/peridiod/hooks/pre-down.sh"
@@ -27,5 +39,13 @@
       "private_key": "PERIDIO_PRIVATE_KEY",
       "certificate": "PERIDIO_CERTIFICATE"
     }
+  },
+  "shadow": {
+    "executable": "bash",
+    "args": [
+      "/etc/peridiod/shadow.sh"
+    ],
+    "interval": 5000,
+    "enabled": true
   }
 }

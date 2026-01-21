@@ -33,6 +33,12 @@ defmodule Peridiod.Cloud.Supervisor do
           children
       end
 
+    children =
+      case config.shadow_enabled do
+        true -> children ++ [{Cloud.Shadow, config}]
+        false -> children
+      end
+
     Supervisor.init(children, strategy: :one_for_one)
   end
 end
