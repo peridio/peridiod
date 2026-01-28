@@ -36,7 +36,10 @@ defmodule Peridiod.Binary.Installer.Deb do
 
         case determine_deb_path(path) do
           {:ok, deb_path} ->
-            case System.cmd(@exec, ["install", "-y", deb_path] ++ extra_args) do
+            dir = Path.dirname(deb_path)
+            file = Path.basename(deb_path)
+
+            case System.cmd(@exec, ["install", "-y", "./#{file}"] ++ extra_args, cd: dir) do
               {_result, 0} ->
                 {:stop, :normal, nil}
 
