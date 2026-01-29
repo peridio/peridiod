@@ -1,5 +1,10 @@
 # peridiod releases
 
+## 3.4.1
+
+* Bug fixes
+  * [Core] Update debian installer to change directories before installing for wider apt support
+
 ## 3.4.0
 
 * Enhancements
