@@ -78,6 +78,7 @@ defmodule Peridiod.LogSanitizerTest do
     test "handles invalid PRN format" do
       assert LogSanitizer.sanitize_prn("not-a-prn") == "[FILTERED PRN]"
       assert LogSanitizer.sanitize_prn("prn:1") == "[FILTERED PRN]"
+      assert LogSanitizer.sanitize_prn("prn:1:org:device") == "[FILTERED PRN]"
     end
 
     test "handles nil" do
@@ -127,10 +128,10 @@ defmodule Peridiod.LogSanitizerTest do
   end
 
   describe "sanitize_engine_key/1" do
-    test "redacts key_id, preserves engine and algorithm" do
-      key = %{engine: :pkcs11, key_id: "slot=0:label=device-key", algorithm: :ecdsa}
+    test "redacts key_id, preserves all other fields" do
+      key = %{engine: :pkcs11, key_id: "slot=0:label=device-key", algorithm: :ecdsa, extra: "context"}
       result = LogSanitizer.sanitize_engine_key(key)
-      assert result == %{engine: :pkcs11, key_id: "[FILTERED]", algorithm: :ecdsa}
+      assert result == %{engine: :pkcs11, key_id: "[FILTERED]", algorithm: :ecdsa, extra: "context"}
       refute inspect(result) =~ "device-key"
     end
 

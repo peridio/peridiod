@@ -39,7 +39,7 @@ defmodule Peridiod.LogSanitizer do
   """
   def sanitize_prn(prn) when is_binary(prn) do
     case String.split(prn, ":") do
-      ["prn", version, _org_id, resource_type | _rest] ->
+      ["prn", version, _org_id, resource_type, _resource_id | _] ->
         "prn:#{version}:***:#{resource_type}:***"
 
       _ ->
@@ -68,18 +68,18 @@ defmodule Peridiod.LogSanitizer do
   Sanitizes the `"firmware_url"` field in an update payload map.
   Other keys are passed through unchanged.
   """
-  def sanitize_update(%{"firmware_url" => url} = update) when is_binary(url) do
+  def sanitize_update(%{"firmware_url" => url} = update) do
     Map.put(update, "firmware_url", sanitize_uri(url))
   end
 
   def sanitize_update(update), do: update
 
   @doc """
-  Redacts the `:key_id` from an engine key map while preserving `:engine`
-  and `:algorithm` for debugging PKCS#11 configuration issues.
+  Redacts the `:key_id` from an engine key map while preserving the rest of
+  the map for debugging PKCS#11 configuration issues.
   """
-  def sanitize_engine_key(%{engine: engine, key_id: _key_id, algorithm: algorithm}) do
-    %{engine: engine, key_id: "[FILTERED]", algorithm: algorithm}
+  def sanitize_engine_key(%{key_id: _} = key) do
+    Map.put(key, :key_id, "[FILTERED]")
   end
 
   def sanitize_engine_key(key), do: key
