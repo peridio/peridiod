@@ -56,8 +56,8 @@ defmodule Peridiod.LogSanitizer do
   Example: `"192.168.1.100"` → `"192.168.xxx.xxx"`
   """
   def sanitize_ip(address) when is_binary(address) do
-    case String.split(address, ".") do
-      [a, b, _, _] -> "#{a}.#{b}.xxx.xxx"
+    case :inet.parse_address(String.to_charlist(address)) do
+      {:ok, {a, b, _c, _d}} -> "#{a}.#{b}.xxx.xxx"
       _ -> "[FILTERED IP]"
     end
   end

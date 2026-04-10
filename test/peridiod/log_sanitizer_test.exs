@@ -104,6 +104,7 @@ defmodule Peridiod.LogSanitizerTest do
     test "handles non-IPv4 format" do
       assert LogSanitizer.sanitize_ip("not-an-ip") == "[FILTERED IP]"
       assert LogSanitizer.sanitize_ip("::1") == "[FILTERED IP]"
+      assert LogSanitizer.sanitize_ip("a.b.c.d") == "[FILTERED IP]"
     end
 
     test "handles nil" do
