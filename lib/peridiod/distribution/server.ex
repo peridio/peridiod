@@ -9,7 +9,7 @@ defmodule Peridiod.Distribution.Server do
   """
   use GenServer
 
-  alias Peridiod.{Client, Distribution, Cache}
+  alias Peridiod.{Client, Distribution, Cache, LogSanitizer}
 
   alias Peridiod.Binary.{
     Downloader,
@@ -239,7 +239,7 @@ defmodule Peridiod.Distribution.Server do
   def handle_info({:download, {:fatal_http_error, status, uri}}, state) do
     Logger.error(
       "[Distributions] Fatal HTTP error #{status} downloading firmware. " <>
-        "URL: #{URI.to_string(uri)} - Update aborted, ready for new update."
+        "URL: #{LogSanitizer.sanitize_uri(uri)} - Update aborted, ready for new update."
     )
 
     {:noreply, reset_update_state(state)}
@@ -458,7 +458,7 @@ defmodule Peridiod.Distribution.Server do
     state = %{state | status: {:updating, 0}, distribution: distribution}
 
     Logger.info(
-      "[Distributions] Downloading firmware to disk cache (with live FWUP stream): #{firmware_url}"
+      "[Distributions] Downloading firmware to disk cache (with live FWUP stream): #{LogSanitizer.sanitize_uri(firmware_url)}"
     )
 
     :ok = cleanup_download_cache(state.config.cache_pid, firmware_uuid)
@@ -555,7 +555,9 @@ defmodule Peridiod.Distribution.Server do
     firmware_uuid = distribution.firmware_meta.uuid
     firmware_url = distribution.firmware_url
 
-    Logger.info("[Distributions] Downloading and streaming firmware to fwup: #{firmware_url}")
+    Logger.info(
+      "[Distributions] Downloading and streaming firmware to fwup: #{LogSanitizer.sanitize_uri(firmware_url)}"
+    )
 
     {:ok, download} = start_downloader(firmware_uuid, firmware_url, handler_fun)
 
@@ -564,7 +566,9 @@ defmodule Peridiod.Distribution.Server do
         fwup_env: state.fwup_config.fwup_env
       )
 
-    Logger.info("[Distributions] Downloading firmware: #{firmware_url}")
+    Logger.info(
+      "[Distributions] Downloading firmware: #{LogSanitizer.sanitize_uri(firmware_url)}"
+    )
 
     %State{
       state
@@ -768,7 +772,7 @@ defmodule Peridiod.Distribution.Server do
 
       {:parallel, total_size, final_rel_path} ->
         Logger.info(
-          "[Distributions] Starting parallel file download: #{firmware_url} (#{total_size} bytes) with #{state.config.distributions_download_parallel_count} parallel connections, #{state.config.distributions_download_parallel_chunk_bytes} bytes per chunk"
+          "[Distributions] Starting parallel file download: #{LogSanitizer.sanitize_uri(firmware_url)} (#{total_size} bytes) with #{state.config.distributions_download_parallel_count} parallel connections, #{state.config.distributions_download_parallel_chunk_bytes} bytes per chunk"
         )
 
         {:ok, download} =

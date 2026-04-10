@@ -4,7 +4,7 @@ defmodule Peridiod.Cloud.Tunnel do
   # Cloud -> Device: Response interface / peer information
   require Logger
 
-  alias Peridiod.Cloud
+  alias Peridiod.{Cloud, LogSanitizer}
   alias Peridio.RAT
   alias Peridio.RAT.{Network, WireGuard}
 
@@ -83,7 +83,7 @@ defmodule Peridiod.Cloud.Tunnel do
             # Server lists tunnel as open, but the config is missing locally. No way to recover, close the tunnel
             nil ->
               Logger.debug(
-                "[Remote Access Tunnels] Closing open tunnel missing local config: #{inspect(tunnel_data["prn"])}"
+                "[Remote Access Tunnels] Closing open tunnel missing local config: #{LogSanitizer.sanitize_prn(tunnel_data["prn"])}"
               )
 
               close_request(client, tunnel_data["prn"], "device_tunnel_abnormal_down")

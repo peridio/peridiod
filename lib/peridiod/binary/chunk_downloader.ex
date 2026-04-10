@@ -14,6 +14,8 @@ defmodule Peridiod.Binary.ChunkDownloader do
     Downloader.TimeoutCalculation
   }
 
+  alias Peridiod.LogSanitizer
+
   require Logger
 
   defstruct id: nil,
@@ -422,7 +424,7 @@ defmodule Peridiod.Binary.ChunkDownloader do
     # Log detailed error information for this chunk
     Logger.error(
       "[Chunk Downloader #{state.id}_#{chunk_number}] Fatal HTTP error #{status} for chunk #{chunk_number} " <>
-        "(range #{range_start}-#{range_end}). URL: #{URI.to_string(uri)}"
+        "(range #{range_start}-#{range_end}). URL: #{LogSanitizer.sanitize_uri(uri)}"
     )
 
     # Send fatal error with URL for logging, then mark for clean shutdown
@@ -447,7 +449,7 @@ defmodule Peridiod.Binary.ChunkDownloader do
     location = fetch_location(headers)
 
     Logger.debug(
-      "[Chunk Downloader #{state.id}_#{state.chunk_number}] Redirecting to #{location}"
+      "[Chunk Downloader #{state.id}_#{state.chunk_number}] Redirecting to #{LogSanitizer.sanitize_uri(location)}"
     )
 
     state = reset(state)
@@ -564,7 +566,7 @@ defmodule Peridiod.Binary.ChunkDownloader do
     current_position = state.range_start + state.downloaded_length
 
     Logger.info(
-      "[Chunk Downloader #{state.id}_#{state.chunk_number}] CHUNK download attempt #{state.retry_number + 1} #{uri} (range #{current_position}-#{state.range_end})"
+      "[Chunk Downloader #{state.id}_#{state.chunk_number}] CHUNK download attempt #{state.retry_number + 1} #{LogSanitizer.sanitize_uri(uri)} (range #{current_position}-#{state.range_end})"
     )
 
     with {:ok, conn} <- Mint.HTTP.connect(String.to_existing_atom(scheme), host, port),

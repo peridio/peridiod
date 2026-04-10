@@ -23,6 +23,8 @@ defmodule Peridiod.Binary.Downloader do
     Downloader.TimeoutCalculation
   }
 
+  alias Peridiod.LogSanitizer
+
   require Logger
 
   defstruct id: nil,
@@ -343,7 +345,10 @@ defmodule Peridiod.Binary.Downloader do
       )
       when status >= 300 and status < 400 do
     location = fetch_location(headers)
-    Logger.debug("[Stream Downloader #{state.id}] Redirecting to #{location}")
+
+    Logger.debug(
+      "[Stream Downloader #{state.id}] Redirecting to #{LogSanitizer.sanitize_uri(location)}"
+    )
 
     state = reset(state)
 
@@ -433,7 +438,7 @@ defmodule Peridiod.Binary.Downloader do
       |> add_user_agent_header(state)
 
     Logger.info(
-      "[Stream Downloader #{state.id}] #{if(state.downloaded_length > 0, do: "RESUME", else: "INIT")} download attempt #{state.retry_number} #{uri}"
+      "[Stream Downloader #{state.id}] #{if(state.downloaded_length > 0, do: "RESUME", else: "INIT")} download attempt #{state.retry_number} #{LogSanitizer.sanitize_uri(uri)}"
     )
 
     # mint doesn't accept the query as the http body, so it must be encoded
