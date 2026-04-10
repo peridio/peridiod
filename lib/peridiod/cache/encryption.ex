@@ -37,14 +37,15 @@ defmodule Peridiod.Cache.Encryption do
   Returns `{:ok, dek}` on success or `{:error, reason}` on failure.
   """
   def load_or_create_dek(cache_dir, private_key, public_key) do
-    :ok = File.mkdir_p(cache_dir)
-    dek_path = dek_path(cache_dir)
-    dek_sig_path = dek_sig_path(cache_dir)
+    with :ok <- File.mkdir_p(cache_dir) do
+      dek_path = dek_path(cache_dir)
+      dek_sig_path = dek_sig_path(cache_dir)
 
-    if File.exists?(dek_path) and File.exists?(dek_sig_path) do
-      load_dek(dek_path, dek_sig_path, public_key)
-    else
-      generate_and_save_dek(dek_path, dek_sig_path, private_key)
+      if File.exists?(dek_path) and File.exists?(dek_sig_path) do
+        load_dek(dek_path, dek_sig_path, public_key)
+      else
+        generate_and_save_dek(dek_path, dek_sig_path, private_key)
+      end
     end
   end
 
@@ -129,22 +130,26 @@ defmodule Peridiod.Cache.Encryption do
   end
 
   defp decrypt_chunks_binary(<<len::32, rest::binary>>, file_nonce, dek, idx, acc) do
-    case rest do
-      <<chunk_data::binary-size(len), remaining::binary>> ->
-        ct = binary_part(chunk_data, 0, len - @tag_size)
-        tag = binary_part(chunk_data, len - @tag_size, @tag_size)
-        nonce = <<idx::32, file_nonce::binary>>
+    if len < @tag_size do
+      {:error, :invalid_chunk_length}
+    else
+      case rest do
+        <<chunk_data::binary-size(len), remaining::binary>> ->
+          ct = binary_part(chunk_data, 0, len - @tag_size)
+          tag = binary_part(chunk_data, len - @tag_size, @tag_size)
+          nonce = <<idx::32, file_nonce::binary>>
 
-        case :crypto.crypto_one_time_aead(:aes_256_gcm, dek, nonce, ct, @aad, tag, false) do
-          plaintext when is_binary(plaintext) ->
-            decrypt_chunks_binary(remaining, file_nonce, dek, idx + 1, [plaintext | acc])
+          case :crypto.crypto_one_time_aead(:aes_256_gcm, dek, nonce, ct, @aad, tag, false) do
+            plaintext when is_binary(plaintext) ->
+              decrypt_chunks_binary(remaining, file_nonce, dek, idx + 1, [plaintext | acc])
 
-          :error ->
-            {:error, :authentication_failed}
-        end
+            :error ->
+              {:error, :authentication_failed}
+          end
 
-      _ ->
-        {:error, :truncated_chunk}
+        _ ->
+          {:error, :truncated_chunk}
+      end
     end
   end
 
@@ -238,23 +243,27 @@ defmodule Peridiod.Cache.Encryption do
         :ok
 
       <<len::32>> ->
-        case IO.binread(in_file, len) do
-          chunk_data when is_binary(chunk_data) and byte_size(chunk_data) == len ->
-            ct = binary_part(chunk_data, 0, len - @tag_size)
-            tag = binary_part(chunk_data, len - @tag_size, @tag_size)
-            nonce = <<idx::32, file_nonce::binary>>
+        if len < @tag_size do
+          {:error, :invalid_chunk_length}
+        else
+          case IO.binread(in_file, len) do
+            chunk_data when is_binary(chunk_data) and byte_size(chunk_data) == len ->
+              ct = binary_part(chunk_data, 0, len - @tag_size)
+              tag = binary_part(chunk_data, len - @tag_size, @tag_size)
+              nonce = <<idx::32, file_nonce::binary>>
 
-            case :crypto.crypto_one_time_aead(:aes_256_gcm, dek, nonce, ct, @aad, tag, false) do
-              plaintext when is_binary(plaintext) ->
-                IO.binwrite(out_file, plaintext)
-                decrypt_file_chunks(in_file, out_file, file_nonce, dek, idx + 1)
+              case :crypto.crypto_one_time_aead(:aes_256_gcm, dek, nonce, ct, @aad, tag, false) do
+                plaintext when is_binary(plaintext) ->
+                  IO.binwrite(out_file, plaintext)
+                  decrypt_file_chunks(in_file, out_file, file_nonce, dek, idx + 1)
 
-              :error ->
-                {:error, :authentication_failed}
-            end
+                :error ->
+                  {:error, :authentication_failed}
+              end
 
-          _ ->
-            {:error, :truncated_chunk}
+            _ ->
+              {:error, :truncated_chunk}
+          end
         end
 
       _ ->
@@ -280,15 +289,28 @@ defmodule Peridiod.Cache.Encryption do
       when byte_size(dek) == 32 do
     Stream.resource(
       fn ->
-        {:ok, file} = File.open(file_path, [:read, :binary])
-        header = IO.binread(file, @header_size)
-        <<@version::8, file_nonce::binary-8, _::32>> = header
-        hash_acc = :crypto.hash_init(algorithm) |> :crypto.hash_update(header)
-        {:reading, file, file_nonce, 0, hash_acc}
+        case File.open(file_path, [:read, :binary]) do
+          {:ok, file} ->
+            case IO.binread(file, @header_size) do
+              <<@version::8, file_nonce::binary-8, _::32>> = header ->
+                hash_acc = :crypto.hash_init(algorithm) |> :crypto.hash_update(header)
+                {:reading, file, file_nonce, 0, hash_acc}
+
+              _ ->
+                File.close(file)
+                {:invalid, nil}
+            end
+
+          {:error, _reason} ->
+            {:invalid, nil}
+        end
       end,
       fn
         {:done, _file} = acc ->
           {:halt, acc}
+
+        {:invalid, _} ->
+          {[{:eof, :invalid_signature, ""}], {:done, nil}}
 
         {:reading, file, file_nonce, idx, hash_acc} ->
           case IO.binread(file, 4) do
@@ -305,7 +327,7 @@ defmodule Peridiod.Cache.Encryption do
 
               {[eof_event], {:done, file}}
 
-            <<len::32>> = len_bytes ->
+            <<len::32>> = len_bytes when len >= @tag_size ->
               case IO.binread(file, len) do
                 chunk_data when is_binary(chunk_data) and byte_size(chunk_data) == len ->
                   hash_acc =
@@ -338,6 +360,7 @@ defmodule Peridiod.Cache.Encryption do
               end
 
             _ ->
+              # Short chunk length (< @tag_size) or unexpected read result
               {[{:eof, :invalid_signature, ""}], {:done, file}}
           end
       end,

@@ -100,28 +100,28 @@ defmodule Peridiod.Cache do
 
     init_cache_dir(cache_dir)
 
-    dek =
+    dek_result =
       if encryption_enabled do
-        case Encryption.load_or_create_dek(cache_dir, private_key, public_key) do
-          {:ok, dek} ->
-            dek
-
-          {:error, reason} ->
-            Logger.error("[Cache] Failed to load or create DEK: #{inspect(reason)}")
-            nil
-        end
+        Encryption.load_or_create_dek(cache_dir, private_key, public_key)
       else
-        nil
+        {:ok, nil}
       end
 
-    {:ok,
-     %{
-       path: cache_dir,
-       hash_algorithm: hash_algorithm,
-       private_key: private_key,
-       public_key: public_key,
-       dek: dek
-     }}
+    case dek_result do
+      {:ok, dek} ->
+        {:ok,
+         %{
+           path: cache_dir,
+           hash_algorithm: hash_algorithm,
+           private_key: private_key,
+           public_key: public_key,
+           dek: dek
+         }}
+
+      {:error, reason} ->
+        Logger.error("[Cache] Failed to load or create DEK: #{inspect(reason)}")
+        {:stop, reason}
+    end
   end
 
   def handle_call({:exists?, file}, _from, state) do
@@ -263,11 +263,12 @@ defmodule Peridiod.Cache do
   end
 
   def handle_call({:cleanup_tempfile, path}, _from, state) do
-    tmp_dir = Path.join(state.path, ".tmp") <> "/"
+    tmp_dir = Path.expand(Path.join(state.path, ".tmp"))
+    expanded = Path.expand(path)
 
     reply =
-      if String.starts_with?(path, tmp_dir) do
-        File.rm(path)
+      if String.starts_with?(expanded, tmp_dir <> "/") do
+        File.rm(expanded)
       else
         :ok
       end

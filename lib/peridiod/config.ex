@@ -60,6 +60,7 @@ defmodule Peridiod.Config do
 
   @type t() :: %__MODULE__{
           cache_dir: Path.t(),
+          cache_encryption_enabled: boolean(),
           cache_private_key: private_key(),
           cache_public_key: public_key(),
           cache_pid: pid() | module(),

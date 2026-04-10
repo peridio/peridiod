@@ -1,5 +1,5 @@
 defmodule Peridiod.Cache.EncryptionTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Peridiod.Cache.Encryption
 
@@ -108,7 +108,7 @@ defmodule Peridiod.Cache.EncryptionTest do
              Encryption.decrypt_to_tempfile(enc_path, temp_dir, wrong_key)
 
     # Temp file should have been cleaned up
-    refute File.exists?(Path.join(temp_dir, ".tmp_*"))
+    assert Path.wildcard(Path.join(temp_dir, ".tmp_*")) == []
   end
 
   test "decrypt_to_tempfile fails for invalid format" do
