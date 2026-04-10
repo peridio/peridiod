@@ -3,7 +3,7 @@ defmodule Peridiod.Cloud.Update do
 
   require Logger
 
-  alias Peridiod.{Cloud, Bundle, BundleOverride, Release}
+  alias Peridiod.{Cloud, Bundle, BundleOverride, LogSanitizer, Release}
 
   @update_poll_interval 30 * 60 * 1000
 
@@ -127,7 +127,7 @@ defmodule Peridiod.Cloud.Update do
   defp update_response({_, %{status: status_code, body: body}}) do
     Logger.info("[Cloud Server] Non 200 response from server")
     Logger.info("[Cloud Server] Status code: #{inspect(status_code)}")
-    Logger.info("[Cloud Server] Response: #{inspect(body)}")
+    Logger.info("[Cloud Server] Response: #{inspect(LogSanitizer.sanitize_update(body))}")
     {:error, body}
   end
 
@@ -152,7 +152,7 @@ defmodule Peridiod.Cloud.Update do
 
       addresses ->
         address = Enum.random(addresses)
-        Logger.warning("[Cloud Server] Using IP Address #{address}")
+        Logger.warning("[Cloud Server] Using IP Address #{LogSanitizer.sanitize_ip(address)}")
 
         client =
           Cloud.get_client()

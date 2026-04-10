@@ -2,7 +2,7 @@ defmodule Peridiod.Config do
   use Peridiod.Log
 
   alias PeridiodPersistence.KV
-  alias Peridiod.{Cloud, Cache, SigningKey, Plan}
+  alias Peridiod.{Cloud, Cache, LogSanitizer, SigningKey, Plan}
   alias __MODULE__
 
   require Logger
@@ -389,7 +389,7 @@ defmodule Peridiod.Config do
           [signing_key | signing_keys]
 
         error ->
-          Logger.error("[Config] Error loading signing key\n#{key}\nError: #{inspect(error)}")
+          Logger.error("[Config] Error loading signing key #{LogSanitizer.sanitize_key(key)} Error: #{inspect(error)}")
           signing_keys
       end
     end)

@@ -2,7 +2,7 @@ defmodule Peridiod.Cloud.Socket do
   use Slipstream
   require Logger
 
-  alias Peridiod.{Client, Distribution, RemoteConsole, Utils, Cloud}
+  alias Peridiod.{Client, Distribution, LogSanitizer, RemoteConsole, Utils, Cloud}
   alias Peridiod.Binary.Installer.Fwup
   alias PeridiodPersistence.KV
 
@@ -216,7 +216,7 @@ defmodule Peridiod.Cloud.Socket do
 
       error ->
         Logger.error(
-          "[Cloud Socket] Error parsing update data: #{inspect(update)} error: #{inspect(error)}"
+          "[Cloud Socket] Error parsing update data: #{inspect(LogSanitizer.sanitize_update(update))} error: #{inspect(error)}"
         )
 
         {:ok, socket}
@@ -226,11 +226,11 @@ defmodule Peridiod.Cloud.Socket do
   def handle_message(
         @device_topic,
         "tunnel_request",
-        %{"tunnel_prn" => tunnel_prn} = payload,
+        %{"tunnel_prn" => tunnel_prn},
         %{assigns: %{remote_access_tunnels: %{enabled: false}}} = socket
       ) do
     Logger.warning(
-      "[Cloud Socket] Remote Access Tunnel requested but not enabled on the device: #{inspect(payload)}"
+      "[Cloud Socket] Remote Access Tunnel requested but not enabled on the device: tunnel_prn=#{LogSanitizer.sanitize_prn(tunnel_prn)}"
     )
 
     Cloud.Tunnel.close(tunnel_prn, "feature_not_enabled")
@@ -405,7 +405,7 @@ defmodule Peridiod.Cloud.Socket do
   end
 
   def handle_info(msg, socket) do
-    Logger.warning("[Cloud Socket] Unhandled handle_info: #{inspect(msg)}")
+    Logger.warning("[Cloud Socket] Unhandled handle_info: #{inspect(msg, limit: 50)}")
     {:noreply, socket}
   end
 
@@ -431,7 +431,7 @@ defmodule Peridiod.Cloud.Socket do
 
       addresses ->
         address = Enum.random(addresses)
-        Logger.info("[Cloud Socket] Attempting reconnect with IP #{address}")
+        Logger.info("[Cloud Socket] Attempting reconnect with IP #{LogSanitizer.sanitize_ip(address)}")
 
         updated_socket =
           socket
@@ -479,7 +479,7 @@ defmodule Peridiod.Cloud.Socket do
 
       error ->
         Logger.error(
-          "[Cloud Socket] Error parsing update data: #{inspect(update)} error: #{inspect(error)}"
+          "[Cloud Socket] Error parsing update data: #{inspect(LogSanitizer.sanitize_update(update))} error: #{inspect(error)}"
         )
 
         :noop

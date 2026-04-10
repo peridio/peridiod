@@ -1,4 +1,6 @@
 defmodule Peridiod.Crypto do
+  alias Peridiod.LogSanitizer
+
   require Logger
 
   @stream_chunk_size 4096
@@ -37,8 +39,8 @@ defmodule Peridiod.Crypto do
         _algorithm,
         %{engine: _engine, key_id: _key_id, algorithm: _crypto_algorithm} = engine_key
       ) do
-    Logger.error("Unrecognized key format: #{inspect(engine_key)}")
-    raise ArgumentError, "Unrecognized key format: #{inspect(engine_key)}"
+    Logger.error("Unrecognized key format: #{inspect(LogSanitizer.sanitize_engine_key(engine_key))}")
+    raise ArgumentError, "Unrecognized key format: #{inspect(LogSanitizer.sanitize_engine_key(engine_key))}"
   end
 
   def sign(hash, algorithm, private_key) do
@@ -62,8 +64,8 @@ defmodule Peridiod.Crypto do
         _signature,
         %{engine: _engine, key_id: _key_id, algorithm: _crypto_algorithm} = engine_key
       ) do
-    Logger.error("Unrecognized key format: #{inspect(engine_key)}")
-    raise ArgumentError, "Unrecognized key format: #{inspect(engine_key)}"
+    Logger.error("Unrecognized key format: #{inspect(LogSanitizer.sanitize_engine_key(engine_key))}")
+    raise ArgumentError, "Unrecognized key format: #{inspect(LogSanitizer.sanitize_engine_key(engine_key))}"
   end
 
   def verified?(hash, algorithm, signature, public_key) do
