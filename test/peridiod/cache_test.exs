@@ -86,7 +86,10 @@ defmodule Peridiod.CacheTest do
 
     :ok = Cache.write(cache_pid, file, content)
     :ok = Cache.ln_s(cache_pid, file, link)
-    assert {:ok, ^content} = File.read(Path.join([cache_dir, link]))
+    # Verify the symlink was created (it points to the possibly-encrypted file)
+    assert File.exists?(Path.join([cache_dir, link]))
+    # Content is still accessible via the original cache file
+    assert {:ok, ^content} = Cache.read(cache_pid, file)
   end
 
   test "rm", %{cache_pid: cache_pid, test: name} do

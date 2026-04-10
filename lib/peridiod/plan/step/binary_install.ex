@@ -74,10 +74,12 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
         {:noreply, state}
 
       {false, _} ->
+        Cache.cleanup_tempfile(state.cache_pid, source)
         Binary.cache_rm(state.cache_pid, state.binary_metadata)
         {:error, :invalid_hash, state}
 
       {_, false} ->
+        Cache.cleanup_tempfile(state.cache_pid, source)
         Binary.cache_rm(state.cache_pid, state.binary_metadata)
         {:error, :invalid_signature, state}
     end
@@ -194,8 +196,20 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
   end
 
   # Installer Callbacks
+  def handle_info({Installer, _binary_prn, :complete}, %{source: source} = state)
+      when is_binary(source) do
+    Cache.cleanup_tempfile(state.cache_pid, source)
+    {:stop, :normal, state}
+  end
+
   def handle_info({Installer, _binary_prn, :complete}, state) do
     {:stop, :normal, state}
+  end
+
+  def handle_info({Installer, _binary_prn, {:error, error}}, %{source: source} = state)
+      when is_binary(source) do
+    Cache.cleanup_tempfile(state.cache_pid, source)
+    {:error, error, state}
   end
 
   def handle_info({Installer, _binary_prn, {:error, error}}, state) do
@@ -212,31 +226,30 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
     end
   end
 
+  # Path-only installers receive a decrypted temp file so they can read plaintext.
   defp validate_source_interface(:cache, [:path], %{
          cache_pid: cache_pid,
          binary_metadata: binary_metadata
        }) do
-    expand_cache_path(binary_metadata, cache_pid)
-  end
+    binary_cache_file = Binary.cache_file(binary_metadata)
 
-  defp validate_source_interface(:cache, [:stream], %{
-         cache_pid: cache_pid,
-         binary_metadata: binary_metadata
-       }) do
-    case expand_cache_path(binary_metadata, cache_pid) do
-      {:ok, path} ->
-        {:ok, %URI{scheme: "file", path: path}}
-
-      error ->
-        error
+    case Cache.exists?(cache_pid, binary_cache_file) do
+      true -> Cache.decrypt_to_tempfile(cache_pid, binary_cache_file)
+      false -> {:error, :cache_file_missing}
     end
   end
 
-  defp validate_source_interface(:cache, [_ | _], %{
+  # Stream-capable installers go through Cache.read_stream which decrypts on the fly.
+  defp validate_source_interface(:cache, _interfaces, %{
          cache_pid: cache_pid,
          binary_metadata: binary_metadata
        }) do
-    expand_cache_path(binary_metadata, cache_pid)
+    binary_cache_file = Binary.cache_file(binary_metadata)
+
+    case Cache.exists?(cache_pid, binary_cache_file) do
+      true -> {:ok, :cache}
+      false -> {:error, :cache_file_missing}
+    end
   end
 
   defp validate_source_interface(%URI{scheme: "file", path: path}, [:path], _opts),
@@ -244,17 +257,4 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
 
   defp validate_source_interface(%URI{}, [:path], _opts), do: {:error, :unsupported_interface}
   defp validate_source_interface(%URI{} = source, [_ | _], _opts), do: {:ok, source}
-
-  defp expand_cache_path(binary_metadata, cache_pid) do
-    binary_cache_file = Binary.cache_file(binary_metadata)
-
-    case Cache.exists?(cache_pid, binary_cache_file) do
-      true ->
-        source = Cache.abs_path(cache_pid, binary_cache_file)
-        {:ok, source}
-
-      false ->
-        {:error, :cache_file_missing}
-    end
-  end
 end
