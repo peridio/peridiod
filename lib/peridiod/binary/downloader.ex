@@ -345,7 +345,10 @@ defmodule Peridiod.Binary.Downloader do
       )
       when status >= 300 and status < 400 do
     location = fetch_location(headers)
-    Logger.debug("[Stream Downloader #{state.id}] Redirecting to #{LogSanitizer.sanitize_uri(location)}")
+
+    Logger.debug(
+      "[Stream Downloader #{state.id}] Redirecting to #{LogSanitizer.sanitize_uri(location)}"
+    )
 
     state = reset(state)
 

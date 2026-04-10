@@ -555,7 +555,9 @@ defmodule Peridiod.Distribution.Server do
     firmware_uuid = distribution.firmware_meta.uuid
     firmware_url = distribution.firmware_url
 
-    Logger.info("[Distributions] Downloading and streaming firmware to fwup: #{LogSanitizer.sanitize_uri(firmware_url)}")
+    Logger.info(
+      "[Distributions] Downloading and streaming firmware to fwup: #{LogSanitizer.sanitize_uri(firmware_url)}"
+    )
 
     {:ok, download} = start_downloader(firmware_uuid, firmware_url, handler_fun)
 
@@ -564,7 +566,9 @@ defmodule Peridiod.Distribution.Server do
         fwup_env: state.fwup_config.fwup_env
       )
 
-    Logger.info("[Distributions] Downloading firmware: #{LogSanitizer.sanitize_uri(firmware_url)}")
+    Logger.info(
+      "[Distributions] Downloading firmware: #{LogSanitizer.sanitize_uri(firmware_url)}"
+    )
 
     %State{
       state

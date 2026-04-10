@@ -5,7 +5,11 @@ defmodule Peridiod.LogSanitizerTest do
 
   describe "sanitize_uri/1" do
     test "strips query params and fragment from URI struct" do
-      uri = URI.parse("https://s3.amazonaws.com/bucket/firmware.fw?X-Amz-Signature=abc123&X-Amz-Credential=key#frag")
+      uri =
+        URI.parse(
+          "https://s3.amazonaws.com/bucket/firmware.fw?X-Amz-Signature=abc123&X-Amz-Credential=key#frag"
+        )
+
       result = LogSanitizer.sanitize_uri(uri)
       assert result == "https://s3.amazonaws.com/bucket/firmware.fw?[FILTERED]"
       refute String.contains?(result, "abc123")
@@ -129,9 +133,22 @@ defmodule Peridiod.LogSanitizerTest do
 
   describe "sanitize_engine_key/1" do
     test "redacts key_id, preserves all other fields" do
-      key = %{engine: :pkcs11, key_id: "slot=0:label=device-key", algorithm: :ecdsa, extra: "context"}
+      key = %{
+        engine: :pkcs11,
+        key_id: "slot=0:label=device-key",
+        algorithm: :ecdsa,
+        extra: "context"
+      }
+
       result = LogSanitizer.sanitize_engine_key(key)
-      assert result == %{engine: :pkcs11, key_id: "[FILTERED]", algorithm: :ecdsa, extra: "context"}
+
+      assert result == %{
+               engine: :pkcs11,
+               key_id: "[FILTERED]",
+               algorithm: :ecdsa,
+               extra: "context"
+             }
+
       refute inspect(result) =~ "device-key"
     end
 

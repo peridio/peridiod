@@ -431,7 +431,10 @@ defmodule Peridiod.Cloud.Socket do
 
       addresses ->
         address = Enum.random(addresses)
-        Logger.info("[Cloud Socket] Attempting reconnect with IP #{LogSanitizer.sanitize_ip(address)}")
+
+        Logger.info(
+          "[Cloud Socket] Attempting reconnect with IP #{LogSanitizer.sanitize_ip(address)}"
+        )
 
         updated_socket =
           socket

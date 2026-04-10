@@ -15,7 +15,7 @@ defmodule Peridiod.LogSanitizer do
   def sanitize_uri(%URI{query: nil, fragment: nil} = uri), do: URI.to_string(uri)
 
   def sanitize_uri(%URI{} = uri) do
-    %URI{uri | query: (if uri.query, do: "[FILTERED]"), fragment: nil}
+    %URI{uri | query: if(uri.query, do: "[FILTERED]"), fragment: nil}
     |> URI.to_string()
   end
 
