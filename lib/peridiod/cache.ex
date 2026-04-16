@@ -109,6 +109,8 @@ defmodule Peridiod.Cache do
 
     case dek_result do
       {:ok, dek} ->
+        if dek != nil, do: cleanup_orphaned_plaintext(cache_dir)
+
         {:ok,
          %{
            path: cache_dir,
@@ -396,6 +398,7 @@ defmodule Peridiod.Cache do
 
           error ->
             File.rm(tmp_path)
+            File.rm(file_path)
             error
         end
 
@@ -403,6 +406,35 @@ defmodule Peridiod.Cache do
         File.rm(tmp_path)
         File.rm(file_path)
         error
+    end
+  end
+
+  # Remove plaintext temp files left behind by decrypt_to_tempfile calls that were
+  # interrupted before the caller could clean up. Called on startup when encryption
+  # is enabled so plaintext never persists across restarts.
+  defp cleanup_orphaned_plaintext(cache_dir) do
+    tmp_dir = Path.join(cache_dir, ".tmp")
+
+    case File.ls(tmp_dir) do
+      {:ok, entries} ->
+        Enum.each(entries, fn entry ->
+          path = Path.join(tmp_dir, entry)
+
+          case File.lstat(path) do
+            {:ok, %File.Stat{type: :regular}} ->
+              Logger.debug("[Cache] Removing leftover temp file: #{path}")
+              File.rm(path)
+
+            _ ->
+              :ok
+          end
+        end)
+
+      {:error, :enoent} ->
+        :ok
+
+      _ ->
+        :ok
     end
   end
 

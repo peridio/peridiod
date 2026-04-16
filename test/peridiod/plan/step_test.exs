@@ -6,6 +6,19 @@ defmodule Peridiod.Plan.StepTest do
   alias Peridiod.Binary.Installer
   alias Peridiod.Plan.Step
 
+  # Path-only test installer — exercises the Cache.decrypt_to_tempfile code path.
+  defmodule PathOnlyInstaller do
+    use Peridiod.Binary.Installer
+    def execution_model, do: :parallel
+    def interfaces, do: [:path]
+
+    def path_install(_meta, path, _opts) do
+      if File.regular?(path),
+        do: {:stop, :normal, nil},
+        else: {:error, "file not found: #{path}", nil}
+    end
+  end
+
   describe "binary cache" do
     setup :start_cache
     setup :load_release_metadata_from_manifest
@@ -136,6 +149,38 @@ defmodule Peridiod.Plan.StepTest do
 
       assert_receive {Step, ^step_pid, :complete}
       assert Binary.installed?(cache_pid, binary_metadata)
+    end
+
+    test "complete cache path-only installer", %{
+      cache_pid: cache_pid,
+      kv_pid: kv_pid,
+      cache_dir: cache_dir,
+      release_metadata: %{bundle: %{binaries: binaries}}
+    } do
+      binary_metadata = List.first(binaries)
+      test_file = Peridiod.TestFixtures.binary_fixture_path() |> Path.join("1M.bin")
+      content = File.read!(test_file)
+      cache_file = Binary.cache_file(binary_metadata)
+      :ok = Cache.write(cache_pid, cache_file, content)
+      :ok = Binary.stamp_cached(cache_pid, binary_metadata)
+
+      step_opts = %{
+        binary_metadata: binary_metadata,
+        cache_pid: cache_pid,
+        kv_pid: kv_pid,
+        callback: self(),
+        installer_mod: PathOnlyInstaller,
+        installer_opts: %{},
+        source: :cache
+      }
+
+      {:ok, step_pid} = Step.start_link({Step.BinaryInstall, step_opts})
+      Step.execute(step_pid)
+
+      assert_receive {Step, ^step_pid, :complete}
+      assert Binary.installed?(cache_pid, binary_metadata)
+      # All decrypted temp files must be cleaned up after install
+      assert Path.wildcard(Path.join([cache_dir, ".tmp", ".tmp_*"])) == []
     end
   end
 

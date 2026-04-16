@@ -175,13 +175,15 @@ defmodule Peridiod.Cache.Encryption do
     file_nonce = :crypto.strong_rand_bytes(8)
     header = <<@version::8, file_nonce::binary-8, @chunk_size::32>>
 
-    with {:ok, in_file} <- File.open(plaintext_path, [:read, :binary]),
-         {:ok, out_file} <- File.open(encrypted_path, [:write, :binary]) do
-      IO.binwrite(out_file, header)
-      result = encrypt_file_chunks(in_file, out_file, file_nonce, dek, 0)
-      File.close(in_file)
-      File.close(out_file)
-      result
+    case File.open(plaintext_path, [:read, :binary], fn in_file ->
+           File.open(encrypted_path, [:write, :binary], fn out_file ->
+             IO.binwrite(out_file, header)
+             encrypt_file_chunks(in_file, out_file, file_nonce, dek, 0)
+           end)
+         end) do
+      {:ok, {:ok, result}} -> result
+      {:ok, {:error, reason}} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
     end
   end
 
