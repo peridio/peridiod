@@ -43,7 +43,7 @@ defmodule Peridiod.Plan.StepTest do
       {:ok, step_pid} = Step.start_link({step_mod, step_opts})
       Step.execute(step_pid)
 
-      assert_receive {Step, ^step_pid, {:error, :invalid_signature}}
+      assert_receive {Step, ^step_pid, {:error, {:checksum_mismatch, _}}}
     end
   end
 
@@ -102,7 +102,7 @@ defmodule Peridiod.Plan.StepTest do
       {:ok, step_pid} = Step.start_link({step_mod, step_opts})
       Step.execute(step_pid)
 
-      assert_receive {Step, ^step_pid, {:error, :invalid_hash}}
+      assert_receive {Step, ^step_pid, {:error, {:checksum_mismatch, _}}}
       refute Binary.installed?(cache_pid, binary_metadata)
     end
 

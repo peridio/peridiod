@@ -245,6 +245,25 @@ defmodule Peridiod.Distribution.Server do
     {:noreply, reset_update_state(state)}
   end
 
+  def handle_info({:download, {:error, {:checksum_mismatch, details}}}, state) do
+    Logger.error(
+      "[Distributions] Download integrity check failed: SHA-256 mismatch. " <>
+        "Expected: #{Base.encode16(details[:expected], case: :lower)}, " <>
+        "Got: #{Base.encode16(details[:actual], case: :lower)} - Update aborted."
+    )
+
+    {:noreply, reset_update_state(state)}
+  end
+
+  def handle_info({:download, {:error, {:size_mismatch, details}}}, state) do
+    Logger.error(
+      "[Distributions] Download integrity check failed: size mismatch. " <>
+        "Expected: #{details[:expected]} bytes, Got: #{details[:actual]} bytes - Update aborted."
+    )
+
+    {:noreply, reset_update_state(state)}
+  end
+
   def handle_info({:download, {:error, reason}}, state) do
     Logger.warning(
       "[Distributions] Transient HTTP download error (will retry): #{inspect(reason)}"

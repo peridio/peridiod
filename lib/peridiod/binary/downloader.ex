@@ -20,7 +20,8 @@ defmodule Peridiod.Binary.Downloader do
   alias Peridiod.Binary.{
     Downloader,
     Downloader.RetryConfig,
-    Downloader.TimeoutCalculation
+    Downloader.TimeoutCalculation,
+    Downloader.VerifyConfig
   }
 
   alias Peridiod.LogSanitizer
@@ -42,7 +43,9 @@ defmodule Peridiod.Binary.Downloader do
             max_timeout: nil,
             retry_timeout: nil,
             worst_case_timeout: nil,
-            worst_case_timeout_remaining_ms: nil
+            worst_case_timeout_remaining_ms: nil,
+            verify_config: nil,
+            hash_state: nil
 
   @type handler_event :: {:stream, binary()} | {:error, any()} | :complete
   @type event_handler_fun :: (handler_event -> any())
@@ -67,7 +70,9 @@ defmodule Peridiod.Binary.Downloader do
           max_timeout: timer(),
           retry_timeout: nil | timer(),
           worst_case_timeout: nil | timer(),
-          worst_case_timeout_remaining_ms: nil | non_neg_integer()
+          worst_case_timeout_remaining_ms: nil | non_neg_integer(),
+          verify_config: nil | VerifyConfig.t(),
+          hash_state: nil | :crypto.hash_state()
         }
 
   @type initialized_download :: %Downloader{
@@ -114,10 +119,33 @@ defmodule Peridiod.Binary.Downloader do
     }
   end
 
+  def child_spec(id, uri, fun, %RetryConfig{} = retry_args, %VerifyConfig{} = verify_config) do
+    %{
+      id: Module.concat(__MODULE__, id),
+      start: {__MODULE__, :start_link, [id, uri, fun, retry_args, verify_config]},
+      shutdown: 5000,
+      type: :worker,
+      restart: :transient
+    }
+  end
+
   @spec start_link(String.t(), String.t() | URI.t(), event_handler_fun(), RetryConfig.t()) ::
           GenServer.on_start()
   def start_link(id, uri, fun, %RetryConfig{} = retry_args) when is_function(fun, 1) do
     GenServer.start_link(__MODULE__, [id, uri, fun, retry_args])
+  end
+
+  @spec start_link(
+          String.t(),
+          String.t() | URI.t(),
+          event_handler_fun(),
+          RetryConfig.t(),
+          VerifyConfig.t()
+        ) ::
+          GenServer.on_start()
+  def start_link(id, uri, fun, %RetryConfig{} = retry_args, %VerifyConfig{} = verify_config)
+      when is_function(fun, 1) do
+    GenServer.start_link(__MODULE__, [id, uri, fun, retry_args, verify_config])
   end
 
   @spec start_link_with_resume(
@@ -131,6 +159,27 @@ defmodule Peridiod.Binary.Downloader do
   def start_link_with_resume(id, %URI{} = uri, fun, %RetryConfig{} = retry_args, existing_size)
       when is_function(fun, 1) do
     GenServer.start_link(__MODULE__, [id, uri, fun, retry_args, existing_size])
+  end
+
+  @spec start_link_with_resume(
+          String.t(),
+          URI.t(),
+          event_handler_fun(),
+          RetryConfig.t(),
+          non_neg_integer(),
+          VerifyConfig.t()
+        ) ::
+          GenServer.on_start()
+  def start_link_with_resume(
+        id,
+        %URI{} = uri,
+        fun,
+        %RetryConfig{} = retry_args,
+        existing_size,
+        %VerifyConfig{} = verify_config
+      )
+      when is_function(fun, 1) do
+    GenServer.start_link(__MODULE__, [id, uri, fun, retry_args, existing_size, verify_config])
   end
 
   def stop(pid) do
@@ -155,7 +204,30 @@ defmodule Peridiod.Binary.Downloader do
     {:ok, state}
   end
 
-  def init([id, %URI{} = uri, fun, %RetryConfig{} = retry_args, existing_size]) do
+  def init([id, %URI{} = uri, fun, %RetryConfig{} = retry_args, %VerifyConfig{} = verify_config]) do
+    timer = Process.send_after(self(), :max_timeout, retry_args.max_timeout)
+    Logger.info("[Stream Downloader #{id}] Started with integrity verification")
+
+    hash_state =
+      if verify_config.expected_hash, do: :crypto.hash_init(:sha256), else: nil
+
+    state =
+      reset(%Downloader{
+        id: id,
+        handler_fun: fun,
+        retry_args: retry_args,
+        max_timeout: timer,
+        uri: uri,
+        verify_config: verify_config,
+        hash_state: hash_state
+      })
+
+    send(self(), :resume)
+    {:ok, state}
+  end
+
+  def init([id, %URI{} = uri, fun, %RetryConfig{} = retry_args, existing_size])
+      when is_integer(existing_size) do
     timer = Process.send_after(self(), :max_timeout, retry_args.max_timeout)
     Logger.info("[Stream Downloader #{id}] Started with resume from #{existing_size} bytes")
 
@@ -169,6 +241,46 @@ defmodule Peridiod.Binary.Downloader do
       initial_downloaded_length: existing_size,
       retry_number: 0,
       content_length: 0
+    }
+
+    send(self(), :resume)
+    {:ok, state}
+  end
+
+  def init([
+        id,
+        %URI{} = uri,
+        fun,
+        %RetryConfig{} = retry_args,
+        existing_size,
+        %VerifyConfig{} = verify_config
+      ])
+      when is_integer(existing_size) do
+    timer = Process.send_after(self(), :max_timeout, retry_args.max_timeout)
+
+    Logger.info(
+      "[Stream Downloader #{id}] Started with resume from #{existing_size} bytes and integrity verification"
+    )
+
+    if verify_config.expected_hash do
+      Logger.warning(
+        "[Stream Downloader #{id}] Hash verification skipped for resumed download — " <>
+          "only bytes from resume point are available. Size verification still applies."
+      )
+    end
+
+    state = %Downloader{
+      id: id,
+      handler_fun: fun,
+      retry_args: retry_args,
+      max_timeout: timer,
+      uri: uri,
+      downloaded_length: existing_size,
+      initial_downloaded_length: existing_size,
+      retry_number: 0,
+      content_length: 0,
+      verify_config: verify_config,
+      hash_state: nil
     }
 
     send(self(), :resume)
@@ -297,8 +409,7 @@ defmodule Peridiod.Binary.Downloader do
        when downloaded != 0 and content_length > 0 and downloaded - initial >= content_length do
     # For range requests: downloaded_length - initial_downloaded_length should equal content_length
     # For full downloads: downloaded_length should equal content_length (initial is 0)
-    _ = state.handler_fun.(:complete)
-    {:stop, :normal, state}
+    verify_and_complete(state)
   end
 
   defp handle_responses([], %Downloader{} = state) do
@@ -400,7 +511,8 @@ defmodule Peridiod.Binary.Downloader do
         %Downloader{request_ref: request_ref, downloaded_length: downloaded} = state
       ) do
     _ = state.handler_fun.({:stream, data})
-    %Downloader{state | downloaded_length: downloaded + byte_size(data)}
+    hash_state = if state.hash_state, do: :crypto.hash_update(state.hash_state, data), else: nil
+    %Downloader{state | downloaded_length: downloaded + byte_size(data), hash_state: hash_state}
   end
 
   def handle_response({:done, request_ref}, %Downloader{request_ref: request_ref} = state) do
@@ -410,6 +522,46 @@ defmodule Peridiod.Binary.Downloader do
   # ignore other messages when redirecting
   def handle_response(_, %Downloader{status: nil} = state) do
     state
+  end
+
+  defp verify_and_complete(%Downloader{verify_config: nil} = state) do
+    _ = state.handler_fun.(:complete)
+    {:stop, :normal, state}
+  end
+
+  defp verify_and_complete(%Downloader{verify_config: %VerifyConfig{} = vc} = state) do
+    with :ok <- verify_size(state, vc),
+         :ok <- verify_hash(state, vc) do
+      _ = state.handler_fun.(:complete)
+      {:stop, :normal, state}
+    else
+      {:error, reason} ->
+        Logger.error(
+          "[Stream Downloader #{state.id}] Integrity verification failed: #{inspect(reason)}"
+        )
+
+        _ = state.handler_fun.({:error, reason})
+        {:stop, :normal, state}
+    end
+  end
+
+  defp verify_size(_state, %VerifyConfig{expected_size: nil}), do: :ok
+
+  defp verify_size(%Downloader{downloaded_length: actual}, %VerifyConfig{expected_size: expected}) do
+    if actual == expected,
+      do: :ok,
+      else: {:error, {:size_mismatch, expected: expected, actual: actual}}
+  end
+
+  defp verify_hash(%Downloader{hash_state: nil}, _vc), do: :ok
+  defp verify_hash(_state, %VerifyConfig{expected_hash: nil}), do: :ok
+
+  defp verify_hash(%Downloader{hash_state: hash_state}, %VerifyConfig{expected_hash: expected}) do
+    actual = :crypto.hash_final(hash_state)
+
+    if actual == expected,
+      do: :ok,
+      else: {:error, {:checksum_mismatch, expected: expected, actual: actual}}
   end
 
   defp reset(%Downloader{} = state) do
