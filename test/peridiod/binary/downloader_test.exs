@@ -116,16 +116,29 @@ defmodule Peridiod.Binary.DownloaderTest do
   end
 
   describe "integrity verification" do
+    # Only forward terminal events (:complete, {:error, ...}) to the test mailbox,
+    # not {:stream, data} chunks, to avoid flooding the mailbox with binary data.
+    defp verify_handler(test_pid) do
+      fn
+        {:stream, _} -> :ok
+        msg -> send(test_pid, {:handler_received, msg})
+      end
+    end
+
     @tag capture_log: true
     test "completes successfully with correct hash" do
       test_pid = self()
-      handler_fun = fn msg -> send(test_pid, {:handler_received, msg}) end
-
       verify_config = %VerifyConfig{expected_hash: @bin_1m_hash}
       url = URI.parse("http://localhost:4001/1M.bin")
 
       {:ok, pid} =
-        Downloader.start_link("test-hash-ok", url, handler_fun, %RetryConfig{}, verify_config)
+        Downloader.start_link(
+          "test-hash-ok",
+          url,
+          verify_handler(test_pid),
+          %RetryConfig{},
+          verify_config
+        )
 
       ref = Process.monitor(pid)
 
@@ -136,14 +149,18 @@ defmodule Peridiod.Binary.DownloaderTest do
     @tag capture_log: true
     test "fails with checksum mismatch on wrong hash" do
       test_pid = self()
-      handler_fun = fn msg -> send(test_pid, {:handler_received, msg}) end
-
       wrong_hash = :crypto.hash(:sha256, "wrong")
       verify_config = %VerifyConfig{expected_hash: wrong_hash}
       url = URI.parse("http://localhost:4001/1M.bin")
 
       {:ok, pid} =
-        Downloader.start_link("test-hash-bad", url, handler_fun, %RetryConfig{}, verify_config)
+        Downloader.start_link(
+          "test-hash-bad",
+          url,
+          verify_handler(test_pid),
+          %RetryConfig{},
+          verify_config
+        )
 
       ref = Process.monitor(pid)
 
@@ -157,13 +174,17 @@ defmodule Peridiod.Binary.DownloaderTest do
     @tag capture_log: true
     test "completes successfully with correct size" do
       test_pid = self()
-      handler_fun = fn msg -> send(test_pid, {:handler_received, msg}) end
-
       verify_config = %VerifyConfig{expected_size: @bin_1m_size}
       url = URI.parse("http://localhost:4001/1M.bin")
 
       {:ok, pid} =
-        Downloader.start_link("test-size-ok", url, handler_fun, %RetryConfig{}, verify_config)
+        Downloader.start_link(
+          "test-size-ok",
+          url,
+          verify_handler(test_pid),
+          %RetryConfig{},
+          verify_config
+        )
 
       ref = Process.monitor(pid)
 
@@ -174,13 +195,17 @@ defmodule Peridiod.Binary.DownloaderTest do
     @tag capture_log: true
     test "fails with size mismatch on wrong expected size" do
       test_pid = self()
-      handler_fun = fn msg -> send(test_pid, {:handler_received, msg}) end
-
       verify_config = %VerifyConfig{expected_size: 999}
       url = URI.parse("http://localhost:4001/1M.bin")
 
       {:ok, pid} =
-        Downloader.start_link("test-size-bad", url, handler_fun, %RetryConfig{}, verify_config)
+        Downloader.start_link(
+          "test-size-bad",
+          url,
+          verify_handler(test_pid),
+          %RetryConfig{},
+          verify_config
+        )
 
       ref = Process.monitor(pid)
 
@@ -194,8 +219,6 @@ defmodule Peridiod.Binary.DownloaderTest do
     @tag capture_log: true
     test "completes successfully with both correct hash and size" do
       test_pid = self()
-      handler_fun = fn msg -> send(test_pid, {:handler_received, msg}) end
-
       verify_config = %VerifyConfig{expected_hash: @bin_1m_hash, expected_size: @bin_1m_size}
       url = URI.parse("http://localhost:4001/1M.bin")
 
@@ -203,7 +226,7 @@ defmodule Peridiod.Binary.DownloaderTest do
         Downloader.start_link(
           "test-hash-size-ok",
           url,
-          handler_fun,
+          verify_handler(test_pid),
           %RetryConfig{},
           verify_config
         )
@@ -217,10 +240,11 @@ defmodule Peridiod.Binary.DownloaderTest do
     @tag capture_log: true
     test "backward compatible without verify_config" do
       test_pid = self()
-      handler_fun = fn msg -> send(test_pid, {:handler_received, msg}) end
-
       url = URI.parse("http://localhost:4001/1M.bin")
-      {:ok, pid} = Downloader.start_link("test-no-verify", url, handler_fun, %RetryConfig{})
+
+      {:ok, pid} =
+        Downloader.start_link("test-no-verify", url, verify_handler(test_pid), %RetryConfig{})
+
       ref = Process.monitor(pid)
 
       assert_receive {:handler_received, :complete}, 5000
@@ -230,7 +254,6 @@ defmodule Peridiod.Binary.DownloaderTest do
     @tag capture_log: true
     test "partial resumed download skips hash verification but size still applies" do
       test_pid = self()
-      handler_fun = fn msg -> send(test_pid, {:handler_received, msg}) end
 
       # existing_size > 0 means this is a true partial resume — hash must be skipped
       # because the downloader only sees bytes from the resume point onward.
@@ -243,7 +266,7 @@ defmodule Peridiod.Binary.DownloaderTest do
         Downloader.start_link_with_resume(
           "test-resume-hash-skip",
           url,
-          handler_fun,
+          verify_handler(test_pid),
           %RetryConfig{},
           existing_size,
           verify_config

@@ -208,9 +208,7 @@ defmodule Peridiod.Binary.Downloader do
     timer = Process.send_after(self(), :max_timeout, retry_args.max_timeout)
     Logger.info("[Stream Downloader #{id}] Started with integrity verification")
 
-    hash_state =
-      if verify_config.expected_hash, do: :crypto.hash_init(:sha256), else: nil
-
+    # hash_state is initialized by reset/1 based on verify_config
     state =
       reset(%Downloader{
         id: id,
@@ -218,8 +216,7 @@ defmodule Peridiod.Binary.Downloader do
         retry_args: retry_args,
         max_timeout: timer,
         uri: uri,
-        verify_config: verify_config,
-        hash_state: hash_state
+        verify_config: verify_config
       })
 
     send(self(), :resume)

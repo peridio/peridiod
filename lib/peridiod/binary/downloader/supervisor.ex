@@ -21,13 +21,19 @@ defmodule Peridiod.Binary.Downloader.Supervisor do
   def start_child(id, uri, fun, opts) when is_list(opts) do
     parsed_uri = if is_binary(uri), do: URI.parse(uri), else: uri
     retry_config = Keyword.get(opts, :retry_config, %RetryConfig{})
-    verify_config = Keyword.get(opts, :verify_config)
 
     child_spec =
-      if verify_config do
-        Downloader.child_spec(id, parsed_uri, fun, retry_config, verify_config)
-      else
-        Downloader.child_spec(id, parsed_uri, fun, retry_config)
+      case Keyword.get(opts, :verify_config) do
+        nil ->
+          Downloader.child_spec(id, parsed_uri, fun, retry_config)
+
+        %Downloader.VerifyConfig{} = verify_config ->
+          Downloader.child_spec(id, parsed_uri, fun, retry_config, verify_config)
+
+        invalid ->
+          raise ArgumentError,
+                "expected :verify_config to be nil or %Peridiod.Binary.Downloader.VerifyConfig{}, " <>
+                  "got: #{inspect(invalid)}"
       end
 
     DynamicSupervisor.start_child(__MODULE__, child_spec)
