@@ -228,27 +228,31 @@ defmodule Peridiod.Binary.DownloaderTest do
     end
 
     @tag capture_log: true
-    test "resumed download skips hash verification and still completes" do
+    test "partial resumed download skips hash verification but size still applies" do
       test_pid = self()
       handler_fun = fn msg -> send(test_pid, {:handler_received, msg}) end
 
+      # existing_size > 0 means this is a true partial resume — hash must be skipped
+      # because the downloader only sees bytes from the resume point onward.
+      # Size verification still works since downloaded_length tracks the running total.
+      existing_size = 512
       verify_config = %VerifyConfig{expected_hash: @bin_1m_hash, expected_size: @bin_1m_size}
       url = URI.parse("http://localhost:4001/1M.bin")
 
-      # Start with existing_size = 0 via start_link_with_resume to simulate a resume path
       {:ok, pid} =
         Downloader.start_link_with_resume(
           "test-resume-hash-skip",
           url,
           handler_fun,
           %RetryConfig{},
-          0,
+          existing_size,
           verify_config
         )
 
       ref = Process.monitor(pid)
 
-      # Should complete (hash skipped for resume) but size should still pass
+      # Hash is skipped for partial resumes; size check passes since
+      # downloaded_length (existing + new bytes) will equal expected_size.
       assert_receive {:handler_received, :complete}, 5000
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
     end

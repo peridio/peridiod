@@ -262,12 +262,17 @@ defmodule Peridiod.Binary.Downloader do
       "[Stream Downloader #{id}] Started with resume from #{existing_size} bytes and integrity verification"
     )
 
-    if verify_config.expected_hash do
-      Logger.warning(
-        "[Stream Downloader #{id}] Hash verification skipped for resumed download — " <>
-          "only bytes from resume point are available. Size verification still applies."
-      )
-    end
+    hash_state =
+      if verify_config.expected_hash && existing_size > 0 do
+        Logger.warning(
+          "[Stream Downloader #{id}] Hash verification skipped for partial resume — " <>
+            "only bytes from resume point are available. Size verification still applies."
+        )
+
+        nil
+      else
+        if verify_config.expected_hash, do: :crypto.hash_init(:sha256), else: nil
+      end
 
     state = %Downloader{
       id: id,
@@ -280,7 +285,7 @@ defmodule Peridiod.Binary.Downloader do
       retry_number: 0,
       content_length: 0,
       verify_config: verify_config,
-      hash_state: nil
+      hash_state: hash_state
     }
 
     send(self(), :resume)
@@ -565,12 +570,19 @@ defmodule Peridiod.Binary.Downloader do
   end
 
   defp reset(%Downloader{} = state) do
+    hash_state =
+      case state.verify_config do
+        %VerifyConfig{expected_hash: hash} when not is_nil(hash) -> :crypto.hash_init(:sha256)
+        _ -> nil
+      end
+
     %Downloader{
       state
       | retry_number: 0,
         downloaded_length: 0,
         initial_downloaded_length: 0,
-        content_length: 0
+        content_length: 0,
+        hash_state: hash_state
     }
   end
 

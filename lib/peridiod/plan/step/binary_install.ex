@@ -148,7 +148,7 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
 
   def handle_info({:source, {:error, reason}}, state) do
     Binary.cache_rm(state.cache_pid, state.binary_metadata)
-    Installer.stream_finish(state.installer, :invalid_hash, nil)
+    Installer.stream_finish(state.installer, downloader_error_validity(reason), nil)
     {:error, reason, state}
   end
 
@@ -256,4 +256,8 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
         {:error, :cache_file_missing}
     end
   end
+
+  defp downloader_error_validity({:checksum_mismatch, _}), do: :invalid_hash
+  defp downloader_error_validity({:size_mismatch, _}), do: :invalid_hash
+  defp downloader_error_validity(_), do: :invalid_hash
 end
