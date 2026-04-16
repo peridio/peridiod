@@ -51,8 +51,9 @@ defmodule Peridiod.Cache.Encryption do
 
   defp load_dek(dek_path, dek_sig_path, public_key) do
     with {:ok, dek} <- File.read(dek_path),
+         :ok <- (if byte_size(dek) == 32, do: :ok, else: {:error, :invalid_dek_size}),
          {:ok, sig_hex} <- File.read(dek_sig_path),
-         {:ok, sig} <- Base.decode16(sig_hex, case: :mixed) do
+         {:ok, sig} <- decode_sig_hex(sig_hex) do
       hash = :crypto.hash(:sha256, dek) |> Base.encode16(case: :lower)
 
       if verified?(hash, :sha256, sig, public_key) do
@@ -61,6 +62,13 @@ defmodule Peridiod.Cache.Encryption do
         Logger.error("[Cache.Encryption] DEK signature verification failed — possible tampering")
         {:error, :dek_signature_invalid}
       end
+    end
+  end
+
+  defp decode_sig_hex(sig_hex) do
+    case Base.decode16(String.trim(sig_hex), case: :mixed) do
+      :error -> {:error, :invalid_dek_signature_format}
+      result -> result
     end
   end
 
@@ -210,7 +218,7 @@ defmodule Peridiod.Cache.Encryption do
          {:ok, in_file} <- File.open(encrypted_path, [:read, :binary]) do
       case IO.binread(in_file, @header_size) do
         <<@version::8, file_nonce::binary-8, _chunk_size::32>> ->
-          case File.open(temp_path, [:write, :binary]) do
+          case File.open(temp_path, [:write, :binary, :exclusive]) do
             {:ok, out_file} ->
               result = decrypt_file_chunks(in_file, out_file, file_nonce, dek, 0)
               File.close(in_file)
@@ -218,6 +226,7 @@ defmodule Peridiod.Cache.Encryption do
 
               case result do
                 :ok ->
+                  File.chmod(temp_path, 0o600)
                   {:ok, temp_path}
 
                 error ->

@@ -195,8 +195,7 @@ defmodule Peridiod.Cache do
 
     reply =
       with plaintext_hash <- hash(file_path, state.hash_algorithm),
-           true <-
-             :crypto.verify(:eddsa, :sha256, plaintext_hash, signature, [public_key, :ed25519]),
+           true <- Peridiod.Binary.valid_signature?(plaintext_hash, signature, public_key),
            :ok <- maybe_encrypt_file(file_path, state),
            hash <- hash(file_path, state.hash_algorithm),
            signature <- sign(hash, state.hash_algorithm, state.private_key),
@@ -402,6 +401,7 @@ defmodule Peridiod.Cache do
 
       error ->
         File.rm(tmp_path)
+        File.rm(file_path)
         error
     end
   end
