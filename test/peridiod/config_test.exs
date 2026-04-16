@@ -1,6 +1,8 @@
 defmodule Peridiod.ConfigTest do
   use ExUnit.Case
 
+  import ExUnit.CaptureLog
+
   defp build_config do
     Application.get_all_env(:peridiod)
     |> then(&struct(Peridiod.Config, &1))
@@ -27,8 +29,10 @@ defmodule Peridiod.ConfigTest do
     end
 
     test "verify: true resolves to :verify_peer" do
-      config = build_config()
-      assert config.ssl[:verify] == :verify_peer
+      with_config_file("test/fixtures/peridio.json", fn ->
+        config = build_config()
+        assert config.ssl[:verify] == :verify_peer
+      end)
     end
 
     test "verify: false resolves to :verify_none in non-prod env" do
@@ -36,6 +40,27 @@ defmodule Peridiod.ConfigTest do
         config = build_config()
         assert config.ssl[:verify] == :verify_none
       end)
+    end
+  end
+
+  describe "resolve_verify/2" do
+    test "returns :verify_peer unchanged" do
+      assert Peridiod.Config.resolve_verify(:verify_peer, true) == :verify_peer
+      assert Peridiod.Config.resolve_verify(:verify_peer, false) == :verify_peer
+    end
+
+    test "returns :verify_none when not in production" do
+      assert Peridiod.Config.resolve_verify(:verify_none, false) == :verify_none
+    end
+
+    test "forces :verify_peer and warns when :verify_none in production" do
+      log =
+        capture_log(fn ->
+          assert Peridiod.Config.resolve_verify(:verify_none, true) == :verify_peer
+        end)
+
+      assert log =~ "device_api_verify is set to :verify_none"
+      assert log =~ "Forcing :verify_peer"
     end
   end
 end

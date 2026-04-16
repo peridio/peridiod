@@ -9,7 +9,7 @@ defmodule Peridiod do
     @env == :test
   end
 
-  @spec env_prod? :: boolean()
+  @spec env_prod?() :: boolean()
   def env_prod?() do
     @env == :prod
   end
