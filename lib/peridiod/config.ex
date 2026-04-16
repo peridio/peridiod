@@ -236,6 +236,8 @@ defmodule Peridiod.Config do
         value when is_atom(value) -> value
       end
 
+    verify = resolve_verify(verify, Peridiod.env_prod?())
+
     network_monitor = Cloud.NetworkMonitor.config(config.network_monitor)
     trusted_signing_keys = Map.get(config, :trusted_signing_keys) |> load_trusted_signing_keys()
 
@@ -381,6 +383,18 @@ defmodule Peridiod.Config do
 
     %{base | socket: socket, ssl: ssl}
   end
+
+  def resolve_verify(:verify_none, true = _env_prod?) do
+    Logger.warning(
+      "[Config] device_api_verify is set to :verify_none, " <>
+        "but this is not allowed in production. Forcing :verify_peer. " <>
+        "Set device_api.verify to true in peridio-config.json to resolve this warning."
+    )
+
+    :verify_peer
+  end
+
+  def resolve_verify(verify, _env_prod?), do: verify
 
   def load_trusted_signing_keys(trusted_signing_keys) do
     Enum.reduce(trusted_signing_keys, [], fn key, signing_keys ->
