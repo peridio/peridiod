@@ -51,7 +51,7 @@ defmodule Peridiod.Cache.Encryption do
 
   defp load_dek(dek_path, dek_sig_path, public_key) do
     with {:ok, dek} <- File.read(dek_path),
-         :ok <- (if byte_size(dek) == 32, do: :ok, else: {:error, :invalid_dek_size}),
+         :ok <- if(byte_size(dek) == 32, do: :ok, else: {:error, :invalid_dek_size}),
          {:ok, sig_hex} <- File.read(dek_sig_path),
          {:ok, sig} <- decode_sig_hex(sig_hex) do
       hash = :crypto.hash(:sha256, dek) |> Base.encode16(case: :lower)
