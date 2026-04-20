@@ -49,6 +49,17 @@ defmodule Peridiod.Cache.Encryption do
     end
   end
 
+  @doc """
+  Delete the existing DEK and generate a fresh one signed with `private_key`.
+  Used when key rotation is detected (DEK signature no longer verifies under
+  the current key). Returns `{:ok, new_dek}` or `{:error, reason}`.
+  """
+  def regenerate_dek(cache_dir, private_key) do
+    File.rm(dek_path(cache_dir))
+    File.rm(dek_sig_path(cache_dir))
+    generate_and_save_dek(dek_path(cache_dir), dek_sig_path(cache_dir), private_key)
+  end
+
   defp load_dek(dek_path, dek_sig_path, public_key) do
     with {:ok, dek} <- File.read(dek_path),
          :ok <- if(byte_size(dek) == 32, do: :ok, else: {:error, :invalid_dek_size}),

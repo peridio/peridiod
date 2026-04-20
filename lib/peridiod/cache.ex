@@ -107,18 +107,35 @@ defmodule Peridiod.Cache do
         {:ok, nil}
       end
 
+    state = %{
+      path: cache_dir,
+      hash_algorithm: hash_algorithm,
+      private_key: private_key,
+      public_key: public_key,
+      dek: nil
+    }
+
     case dek_result do
       {:ok, dek} ->
         if dek != nil, do: cleanup_orphaned_plaintext(cache_dir)
+        {:ok, %{state | dek: dek}}
 
-        {:ok,
-         %{
-           path: cache_dir,
-           hash_algorithm: hash_algorithm,
-           private_key: private_key,
-           public_key: public_key,
-           dek: dek
-         }}
+      {:error, :dek_signature_invalid} ->
+        Logger.warning(
+          "[Cache] DEK signature invalid — device key may have been rotated. " <>
+            "Regenerating DEK; previously cached encrypted files will require re-download. " <>
+            "If key rotation was not expected, investigate for potential tampering."
+        )
+
+        case Encryption.regenerate_dek(cache_dir, private_key) do
+          {:ok, dek} ->
+            cleanup_orphaned_plaintext(cache_dir)
+            {:ok, %{state | dek: dek}}
+
+          {:error, reason} ->
+            Logger.error("[Cache] Failed to regenerate DEK: #{inspect(reason)}")
+            {:stop, reason}
+        end
 
       {:error, reason} ->
         Logger.error("[Cache] Failed to load or create DEK: #{inspect(reason)}")
@@ -398,23 +415,35 @@ defmodule Peridiod.Cache do
 
           error ->
             File.rm(tmp_path)
-            File.rm(file_path)
+
+            Logger.error(
+              "[Cache] Failed to replace #{file_path} with encrypted copy: #{inspect(error)}. Plaintext left in place; will be cleaned up on next startup."
+            )
+
             error
         end
 
       error ->
         File.rm(tmp_path)
-        File.rm(file_path)
+
+        Logger.error(
+          "[Cache] Failed to encrypt #{file_path}: #{inspect(error)}. Plaintext left in place; will be cleaned up on next startup."
+        )
+
         error
     end
   end
 
-  # Remove plaintext temp files left behind by decrypt_to_tempfile calls that were
-  # interrupted before the caller could clean up. Called on startup when encryption
-  # is enabled so plaintext never persists across restarts.
+  # Remove leftover plaintext artifacts from previous interrupted operations.
+  # Called on startup when encryption is enabled.
   defp cleanup_orphaned_plaintext(cache_dir) do
-    tmp_dir = Path.join(cache_dir, ".tmp")
+    # Decrypted temp files from interrupted decrypt_to_tempfile calls
+    cleanup_tmp_dir(Path.join(cache_dir, ".tmp"))
+    # Stray .enc files from interrupted maybe_encrypt_file calls
+    cleanup_enc_files(cache_dir)
+  end
 
+  defp cleanup_tmp_dir(tmp_dir) do
     case File.ls(tmp_dir) do
       {:ok, entries} ->
         Enum.each(entries, fn entry ->
@@ -432,6 +461,32 @@ defmodule Peridiod.Cache do
 
       {:error, :enoent} ->
         :ok
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp cleanup_enc_files(dir) do
+    case File.ls(dir) do
+      {:ok, entries} ->
+        Enum.each(entries, fn entry ->
+          path = Path.join(dir, entry)
+
+          case File.lstat(path) do
+            {:ok, %File.Stat{type: :directory}} when entry != ".tmp" ->
+              cleanup_enc_files(path)
+
+            {:ok, %File.Stat{type: :regular}} ->
+              if String.ends_with?(entry, ".enc") do
+                Logger.debug("[Cache] Removing stray .enc file: #{path}")
+                File.rm(path)
+              end
+
+            _ ->
+              :ok
+          end
+        end)
 
       _ ->
         :ok
