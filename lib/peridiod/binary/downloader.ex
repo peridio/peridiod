@@ -137,13 +137,19 @@ defmodule Peridiod.Binary.Downloader do
 
   @spec start_link(
           String.t(),
-          String.t() | URI.t(),
+          URI.t(),
           event_handler_fun(),
           RetryConfig.t(),
           VerifyConfig.t()
         ) ::
           GenServer.on_start()
-  def start_link(id, uri, fun, %RetryConfig{} = retry_args, %VerifyConfig{} = verify_config)
+  def start_link(
+        id,
+        %URI{} = uri,
+        fun,
+        %RetryConfig{} = retry_args,
+        %VerifyConfig{} = verify_config
+      )
       when is_function(fun, 1) do
     GenServer.start_link(__MODULE__, [id, uri, fun, retry_args, verify_config])
   end

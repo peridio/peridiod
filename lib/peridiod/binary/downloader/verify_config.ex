@@ -6,9 +6,11 @@ defmodule Peridiod.Binary.Downloader.VerifyConfig do
   download and verify it (and optionally the file size) on completion.
   Any field set to `nil` skips that verification.
 
-  Note: hash verification is skipped for resumed downloads because the
-  Downloader only sees bytes from the resume point onward. Size verification
-  still works for resumed downloads since `downloaded_length` tracks the total.
+  Note: hash verification is skipped only for partial resumed downloads where
+  bytes already exist locally (`existing_size > 0`), because the Downloader
+  only sees bytes from the resume point onward. A resume from byte 0 is treated
+  as a full download and hash verification applies normally. Size verification
+  works for all downloads since `downloaded_length` tracks the running total.
   """
 
   defstruct expected_hash: nil,
