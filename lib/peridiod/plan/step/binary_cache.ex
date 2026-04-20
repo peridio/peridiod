@@ -68,7 +68,8 @@ defmodule Peridiod.Plan.Step.BinaryCache do
     end
   end
 
-  def handle_info({:source, {:error, reason}}, state) do
+  def handle_info({:source, {:error, {integrity_error, _} = reason}}, state)
+      when integrity_error in [:checksum_mismatch, :size_mismatch] do
     Binary.cache_rm(state.cache_pid, state.binary_metadata)
     {:error, reason, state}
   end

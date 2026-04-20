@@ -146,7 +146,8 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
      %{state | hash_accumulator: hash, byte_counter: byte_counter, step_percent: step_percent}}
   end
 
-  def handle_info({:source, {:error, reason}}, state) do
+  def handle_info({:source, {:error, {integrity_error, _} = reason}}, state)
+      when integrity_error in [:checksum_mismatch, :size_mismatch] do
     Binary.cache_rm(state.cache_pid, state.binary_metadata)
     Installer.stream_finish(state.installer, downloader_error_validity(reason), nil)
     {:error, reason, state}
