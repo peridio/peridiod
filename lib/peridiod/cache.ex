@@ -129,6 +129,7 @@ defmodule Peridiod.Cache do
 
         case Encryption.regenerate_dek(cache_dir, private_key) do
           {:ok, dek} ->
+            purge_stale_encrypted_files(cache_dir)
             cleanup_orphaned_plaintext(cache_dir)
             {:ok, %{state | dek: dek}}
 
@@ -144,13 +145,7 @@ defmodule Peridiod.Cache do
   end
 
   def handle_call({:exists?, file}, _from, state) do
-    resp =
-      case do_read(file, state) do
-        {:ok, _content} -> true
-        _error -> false
-      end
-
-    {:reply, resp, state}
+    {:reply, do_exists?(file, state), state}
   end
 
   def handle_call({:read, file}, _from, state) do
@@ -197,6 +192,9 @@ defmodule Peridiod.Cache do
     file_path = Path.join([state.path, file])
     dir = Path.dirname(file_path)
 
+    # Chunks land as plaintext during streaming; write_stream_finish[_local] encrypts
+    # the completed file in one pass. cleanup_orphaned_plaintext/1 removes remnants
+    # if the process is interrupted before finish is called.
     reply =
       with :ok <- File.mkdir_p(dir),
            :ok <- File.write(file_path, data, [:append, :binary]) do
@@ -339,8 +337,15 @@ defmodule Peridiod.Cache do
         true ->
           with {:ok, raw} <- File.read(file_path) do
             case state.dek do
-              nil -> {:ok, raw}
-              dek -> Encryption.decrypt(raw, dek)
+              nil ->
+                {:ok, raw}
+
+              dek ->
+                case Encryption.decrypt(raw, dek) do
+                  # Backward compat: file predates encryption or encryption was disabled
+                  {:error, :invalid_format} -> {:ok, raw}
+                  result -> result
+                end
             end
           end
 
@@ -417,7 +422,7 @@ defmodule Peridiod.Cache do
             File.rm(tmp_path)
 
             Logger.error(
-              "[Cache] Failed to replace #{file_path} with encrypted copy: #{inspect(error)}. Plaintext left in place; will be cleaned up on next startup."
+              "[Cache] Failed to replace #{file_path} with encrypted copy: #{inspect(error)}. Plaintext left in place."
             )
 
             error
@@ -427,7 +432,7 @@ defmodule Peridiod.Cache do
         File.rm(tmp_path)
 
         Logger.error(
-          "[Cache] Failed to encrypt #{file_path}: #{inspect(error)}. Plaintext left in place; will be cleaned up on next startup."
+          "[Cache] Failed to encrypt #{file_path}: #{inspect(error)}. Plaintext left in place."
         )
 
         error
@@ -481,6 +486,51 @@ defmodule Peridiod.Cache do
               if String.ends_with?(entry, ".enc") do
                 Logger.debug("[Cache] Removing stray .enc file: #{path}")
                 File.rm(path)
+              end
+
+            _ ->
+              :ok
+          end
+        end)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp do_exists?(file, state) do
+    file_path = Path.join([state.path, file])
+    file_sig_path = file_path <> ".sig"
+
+    with {:ok, sig_hex} <- File.read(file_sig_path),
+         {:ok, sig} <- Base.decode16(sig_hex, case: :mixed),
+         true <- File.exists?(file_path) do
+      current_hash = hash(file_path, state.hash_algorithm)
+      verified?(current_hash, state.hash_algorithm, sig, state.public_key)
+    else
+      _ -> false
+    end
+  end
+
+  # After DEK rotation, purge files that were encrypted with the old DEK — they can
+  # no longer be decrypted and will be re-downloaded on the next update.
+  defp purge_stale_encrypted_files(dir) do
+    case File.ls(dir) do
+      {:ok, entries} ->
+        Enum.each(entries, fn entry ->
+          path = Path.join(dir, entry)
+
+          case File.lstat(path) do
+            {:ok, %File.Stat{type: :directory}} when entry not in [".tmp"] ->
+              purge_stale_encrypted_files(path)
+
+            {:ok, %File.Stat{type: :regular}} ->
+              if entry not in [".dek", ".dek.sig"] and
+                   not String.ends_with?(entry, ".sig") and
+                   Encryption.encrypted?(path) do
+                Logger.debug("[Cache] Purging encrypted file (stale DEK): #{path}")
+                File.rm(path)
+                File.rm(path <> ".sig")
               end
 
             _ ->

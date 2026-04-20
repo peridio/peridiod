@@ -26,6 +26,7 @@ defmodule Peridiod.Cache.Encryption do
   @chunk_size 65_536
   @tag_size 16
   @header_size 13
+  @max_chunk_len @chunk_size + @tag_size
   @aad "peridiod-cache-v1"
 
   # ---------------------------------------------------------------------------
@@ -265,7 +266,7 @@ defmodule Peridiod.Cache.Encryption do
         :ok
 
       <<len::32>> ->
-        if len < @tag_size do
+        if len < @tag_size or len > @max_chunk_len do
           {:error, :invalid_chunk_length}
         else
           case IO.binread(in_file, len) do
@@ -349,7 +350,7 @@ defmodule Peridiod.Cache.Encryption do
 
               {[eof_event], {:done, file}}
 
-            <<len::32>> = len_bytes when len >= @tag_size ->
+            <<len::32>> = len_bytes when len >= @tag_size and len <= @max_chunk_len ->
               case IO.binread(file, len) do
                 chunk_data when is_binary(chunk_data) and byte_size(chunk_data) == len ->
                   hash_acc =
