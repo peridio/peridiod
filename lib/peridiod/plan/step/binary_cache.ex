@@ -3,6 +3,7 @@ defmodule Peridiod.Plan.Step.BinaryCache do
 
   alias Peridiod.{Binary, Cache, Cloud}
   alias Peridiod.Binary.Downloader
+  alias Peridiod.Binary.Downloader.VerifyConfig
 
   def id(%{binary_metadata: %{prn: prn}}) do
     Module.concat(__MODULE__, prn)
@@ -37,10 +38,16 @@ defmodule Peridiod.Plan.Step.BinaryCache do
     pid = self()
     fun = &send(pid, {:source, &1})
 
+    verify_config = %VerifyConfig{
+      expected_hash: binary_metadata.hash,
+      expected_size: binary_metadata.size
+    }
+
     Downloader.Supervisor.start_child(
       binary_metadata.prn,
       uri,
-      fun
+      fun,
+      verify_config: verify_config
     )
   end
 
@@ -59,6 +66,12 @@ defmodule Peridiod.Plan.Step.BinaryCache do
       error ->
         {:error, error, %{state | step_percent: step_percent}}
     end
+  end
+
+  def handle_info({:source, {:error, {integrity_error, _} = reason}}, state)
+      when integrity_error in [:checksum_mismatch, :size_mismatch] do
+    Binary.cache_rm(state.cache_pid, state.binary_metadata)
+    {:error, reason, state}
   end
 
   def handle_info({:source, :complete}, state) do

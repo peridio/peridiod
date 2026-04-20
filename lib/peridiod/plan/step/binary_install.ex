@@ -5,6 +5,7 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
 
   alias Peridiod.{Binary, Cache, Cloud, Crypto}
   alias Peridiod.Binary.{Downloader, Installer}
+  alias Peridiod.Binary.Downloader.VerifyConfig
 
   def id(%{binary_metadata: %{prn: prn}}) do
     Module.concat(__MODULE__, prn)
@@ -96,10 +97,16 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
     pid = self()
     fun = &send(pid, {:source, &1})
 
+    verify_config = %VerifyConfig{
+      expected_hash: state.binary_metadata.hash,
+      expected_size: state.binary_metadata.size
+    }
+
     Downloader.Supervisor.start_child(
       state.binary_metadata.prn,
       uri,
-      fun
+      fun,
+      verify_config: verify_config
     )
   end
 
@@ -137,6 +144,13 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
 
     {:noreply,
      %{state | hash_accumulator: hash, byte_counter: byte_counter, step_percent: step_percent}}
+  end
+
+  def handle_info({:source, {:error, {integrity_error, _} = reason}}, state)
+      when integrity_error in [:checksum_mismatch, :size_mismatch] do
+    Binary.cache_rm(state.cache_pid, state.binary_metadata)
+    Installer.stream_error(state.installer, reason)
+    {:error, reason, state}
   end
 
   def handle_info({:source, {:eof, :invalid_signature, hash}}, state) do
