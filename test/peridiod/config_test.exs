@@ -61,18 +61,23 @@ defmodule Peridiod.ConfigTest do
     end
 
     test "file source: nonexistent certificate file raises ParseError" do
-      config_json = Jason.encode!(%{
-        "version" => 1,
-        "device_api" => %{"certificate_path" => "test/fixtures/peridio-cert.pem", "url" => "device.test.com", "verify" => true},
-        "fwup" => %{"devpath" => "/dev/mmcblk0", "public_keys" => []},
-        "node" => %{
-          "key_pair_source" => "file",
-          "key_pair_config" => %{
-            "certificate_path" => "/nonexistent/cert.pem",
-            "private_key_path" => "test/fixtures/device/device-private-key.pem"
+      config_json =
+        Jason.encode!(%{
+          "version" => 1,
+          "device_api" => %{
+            "certificate_path" => "test/fixtures/peridio-cert.pem",
+            "url" => "device.test.com",
+            "verify" => true
+          },
+          "fwup" => %{"devpath" => "/dev/mmcblk0", "public_keys" => []},
+          "node" => %{
+            "key_pair_source" => "file",
+            "key_pair_config" => %{
+              "certificate_path" => "/nonexistent/cert.pem",
+              "private_key_path" => "test/fixtures/device/device-private-key.pem"
+            }
           }
-        }
-      })
+        })
 
       tmp = System.tmp_dir!() |> Path.join("peridio-test-missing-cert.json")
       File.write!(tmp, config_json)

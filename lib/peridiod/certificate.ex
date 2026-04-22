@@ -42,7 +42,10 @@ defmodule Peridiod.Certificate.ParseError do
   defp remediation_hint("file"), do: "Verify the PEM file exists and is readable."
   defp remediation_hint("env"), do: "Verify the env var value is a valid PEM."
   defp remediation_hint("uboot-env"), do: "Verify the KV entry contains a valid PEM value."
-  defp remediation_hint("pkcs11"), do: "Verify p11tool can access the HSM and the cert ID or certificate path is correct."
+
+  defp remediation_hint("pkcs11"),
+    do: "Verify p11tool can access the HSM and the cert ID or certificate path is correct."
+
   defp remediation_hint(_), do: ""
 end
 
