@@ -1,0 +1,19 @@
+{
+    "version": 1,
+    "device_api": {
+      "certificate_path": "test/fixtures/peridio-cert.pem",
+      "url": "device.staging.cremini.peridio.com",
+      "verify": true
+    },
+    "fwup": {
+      "devpath": "/dev/mmcblk0",
+      "public_keys": []
+    },
+    "node": {
+      "key_pair_source": "file",
+      "key_pair_config": {
+        "certificate_path": "test/fixtures/device/corrupt-certificate.pem",
+        "private_key_path": "test/fixtures/device/device-private-key.pem"
+      }
+    }
+  }

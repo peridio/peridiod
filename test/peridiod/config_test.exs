@@ -43,6 +43,63 @@ defmodule Peridiod.ConfigTest do
     end
   end
 
+  describe "key_pair_source parse errors" do
+    test "file source: corrupt certificate raises ParseError" do
+      with_config_file("test/fixtures/peridio-corrupt-cert.json", fn ->
+        assert_raise Peridiod.Certificate.ParseError, ~r/corrupt-certificate\.pem/, fn ->
+          build_config()
+        end
+      end)
+    end
+
+    test "file source: corrupt private key raises ParseError" do
+      with_config_file("test/fixtures/peridio-corrupt-key.json", fn ->
+        assert_raise Peridiod.Certificate.ParseError, ~r/corrupt-private-key\.pem/, fn ->
+          build_config()
+        end
+      end)
+    end
+
+    test "file source: nonexistent certificate file raises ParseError" do
+      config_json = Jason.encode!(%{
+        "version" => 1,
+        "device_api" => %{"certificate_path" => "test/fixtures/peridio-cert.pem", "url" => "device.test.com", "verify" => true},
+        "fwup" => %{"devpath" => "/dev/mmcblk0", "public_keys" => []},
+        "node" => %{
+          "key_pair_source" => "file",
+          "key_pair_config" => %{
+            "certificate_path" => "/nonexistent/cert.pem",
+            "private_key_path" => "test/fixtures/device/device-private-key.pem"
+          }
+        }
+      })
+
+      tmp = System.tmp_dir!() |> Path.join("peridio-test-missing-cert.json")
+      File.write!(tmp, config_json)
+
+      try do
+        with_config_file(tmp, fn ->
+          error = assert_raise Peridiod.Certificate.ParseError, fn -> build_config() end
+          assert {:file_read_error, :enoent} = error.reason
+        end)
+      after
+        File.rm(tmp)
+      end
+    end
+
+    test "validate_identity!: missing identity raises ParseError" do
+      with_config_file("test/fixtures/peridio-missing-identity.json", fn ->
+        error =
+          assert_raise Peridiod.Certificate.ParseError, fn ->
+            build_config()
+          end
+
+        assert error.reason == :identity_not_configured
+        assert error.source == "env"
+      end)
+    end
+  end
+
   describe "resolve_verify/2" do
     test "returns :verify_peer unchanged" do
       assert Peridiod.Config.resolve_verify(:verify_peer, true) == :verify_peer

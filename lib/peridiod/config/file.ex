@@ -1,8 +1,6 @@
 defmodule Peridiod.Config.File do
   require Logger
 
-  import Peridiod.Utils, only: [private_key_from_pem_file: 1, public_key_from_pem_file: 1]
-
   def config(%{"certificate_path" => nil, "private_key_path" => nil}, base_config) do
     Logger.error("""
     [Config]
@@ -14,6 +12,18 @@ defmodule Peridiod.Config.File do
   end
 
   def config(%{"certificate_path" => cert_path, "private_key_path" => key_path}, base_config) do
+    cert =
+      Peridiod.Certificate.certificate_from_pem_file!(cert_path,
+        source: "file",
+        path: cert_path
+      )
+
+    key =
+      Peridiod.Certificate.private_key_from_pem_file!(key_path,
+        source: "file",
+        path: key_path
+      )
+
     ssl_opts =
       base_config.ssl
       |> Keyword.put(:certfile, cert_path)
@@ -22,8 +32,8 @@ defmodule Peridiod.Config.File do
     %{
       base_config
       | ssl: ssl_opts,
-        cache_private_key: load_private_key(key_path),
-        cache_public_key: load_public_key(cert_path)
+        cache_private_key: key,
+        cache_public_key: X509.Certificate.public_key(cert)
     }
   end
 
@@ -33,27 +43,5 @@ defmodule Peridiod.Config.File do
     )
 
     base_config
-  end
-
-  def load_private_key(pem_file) do
-    case private_key_from_pem_file(pem_file) do
-      {:ok, private_key} ->
-        private_key
-
-      {:error, error} ->
-        Logger.warning("[Config] Unable to load cache encryption private key: #{inspect(error)}")
-        nil
-    end
-  end
-
-  def load_public_key(pem_file) do
-    case public_key_from_pem_file(pem_file) do
-      {:ok, public_key} ->
-        public_key
-
-      {:error, error} ->
-        Logger.warning("[Config] Unable to load cache encryption public keyy: #{inspect(error)}")
-        nil
-    end
   end
 end
