@@ -27,9 +27,10 @@ defmodule Peridiod.Config.PKCS11 do
     base_config
   end
 
-  defp add_certificate(base_config, %{"cert_id" => cert_id}) do
+  defp add_certificate(base_config, %{"cert_id" => cert_id})
+       when is_binary(cert_id) and cert_id != "" do
     cert =
-      case System.cmd("p11tool", ["--export-stapled", cert_id]) do
+      case System.cmd("p11tool", ["--export-stapled", cert_id], stderr_to_stdout: true) do
         {cert_pem, 0} ->
           Peridiod.Certificate.certificate_from_pem!(cert_pem,
             source: "pkcs11",
@@ -55,7 +56,8 @@ defmodule Peridiod.Config.PKCS11 do
     }
   end
 
-  defp add_certificate(base_config, %{"certificate_path" => certificate_path}) do
+  defp add_certificate(base_config, %{"certificate_path" => certificate_path})
+       when is_binary(certificate_path) and certificate_path != "" do
     cert =
       Peridiod.Certificate.certificate_from_pem_file!(certificate_path,
         source: "pkcs11",

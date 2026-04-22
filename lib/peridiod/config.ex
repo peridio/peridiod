@@ -376,7 +376,11 @@ defmodule Peridiod.Config do
   end
 
   defp validate_identity!(_) do
-    raise "peridiod failed to build a valid configuration; check key_pair_source in peridio-config.json"
+    raise Peridiod.Certificate.ParseError,
+      field: :certificate,
+      source: nil,
+      path: nil,
+      reason: :invalid_configuration
   end
 
   defp add_socket_opts(config) do

@@ -13,7 +13,11 @@ defmodule Peridiod.Config.Env do
     base_config
   end
 
-  def config(%{"private_key" => key_env_var, "certificate" => cert_env_var}, base_config) do
+  def config(
+        %{"private_key" => key_env_var, "certificate" => cert_env_var},
+        base_config
+      )
+      when is_binary(key_env_var) and is_binary(cert_env_var) do
     with {:ok, key_raw} <- System.fetch_env(key_env_var),
          {:ok, cert_raw} <- System.fetch_env(cert_env_var) do
       key_pem = try_base64_decode(key_raw)
@@ -23,7 +27,7 @@ defmodule Peridiod.Config.Env do
       _e ->
         Logger.error("""
         [Config]
-        Unset error fetching the key / certificate from the environment")
+        Unable to fetch the key / certificate from the environment.
           key:  #{key_env_var}
           cert: #{cert_env_var}
         """)

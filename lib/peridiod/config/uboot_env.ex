@@ -4,7 +4,11 @@ defmodule Peridiod.Config.UBootEnv do
   alias PeridiodPersistence.KV
   import Peridiod.Utils, only: [try_base64_decode: 1, pem_certificate_trim: 1]
 
-  def config(%{"private_key" => key_kv_key, "certificate" => cert_kv_key}, base_config) do
+  def config(
+        %{"private_key" => key_kv_key, "certificate" => cert_kv_key},
+        base_config
+      )
+      when is_binary(key_kv_key) and is_binary(cert_kv_key) do
     key_pem = KV.get(key_kv_key) |> try_base64_decode()
     cert_pem = KV.get(cert_kv_key) |> try_base64_decode() |> pem_certificate_trim()
 

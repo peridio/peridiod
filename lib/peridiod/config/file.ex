@@ -11,7 +11,11 @@ defmodule Peridiod.Config.File do
     base_config
   end
 
-  def config(%{"certificate_path" => cert_path, "private_key_path" => key_path}, base_config) do
+  def config(
+        %{"certificate_path" => cert_path, "private_key_path" => key_path},
+        base_config
+      )
+      when is_binary(cert_path) and is_binary(key_path) do
     cert =
       Peridiod.Certificate.certificate_from_pem_file!(cert_path,
         source: "file",
