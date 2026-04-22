@@ -16,6 +16,35 @@ defmodule Peridiod.Cache.Encryption do
   `cache_dir/.dek`, with its signature at `cache_dir/.dek.sig`. The DEK is
   signed with the device's existing asymmetric key so that tampering is
   detectable on startup.
+
+  ## Threat model
+
+  This scheme provides:
+
+  - **At-rest encryption for compliance** (SOC 2 and similar): cache contents
+    are never persisted to disk in plaintext under normal operation.
+  - **Tamper detection**: the DEK is signed with the device key, so an attacker
+    cannot substitute a DEK of their own choosing (to plant attacker-controlled
+    cache content) without the signature check failing on next startup.
+  - **Logical access separation**: the DEK file is `chmod 0600`. Other users on
+    the same device cannot read cache contents, even if a bug leaves an
+    individual cache file with looser permissions.
+  - **Scoped exfiltration resistance**: a backup that captures cache binaries
+    but misses `.dek` (pattern-based copies, selective sync) yields opaque data.
+
+  It does **not** provide confidentiality against:
+
+  - An attacker with filesystem read access to `cache_dir/.dek` — they can
+    decrypt every cache file. On `file`, `env`, and `uboot-env` key sources the
+    device private key and the DEK are both on disk, so filesystem read access
+    generally defeats the entire scheme.
+  - Raw disk exfiltration (image dumps, recovered drives).
+
+  For stronger confidentiality the DEK would need to be *wrapped* (encrypted)
+  by the device key rather than stored in plaintext with a signature. That
+  requires encrypt/decrypt or key-agreement primitives in `Peridiod.Crypto`
+  (not present today) and, for `pkcs11` sources, `C_DeriveKey` / `C_Unwrap`
+  support on the token — neither is currently exercised.
   """
 
   import Peridiod.Crypto, only: [sign: 3, verified?: 4]
