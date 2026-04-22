@@ -9,8 +9,31 @@ defmodule Peridiod.Config.UBootEnv do
         base_config
       )
       when is_binary(key_kv_key) and is_binary(cert_kv_key) do
-    key_pem = KV.get(key_kv_key) |> try_base64_decode()
-    cert_pem = KV.get(cert_kv_key) |> try_base64_decode() |> pem_certificate_trim()
+    key_pem =
+      case KV.get(key_kv_key) do
+        nil ->
+          raise Peridiod.Certificate.ParseError,
+            field: :private_key,
+            source: "uboot-env",
+            path: key_kv_key,
+            reason: :not_found
+
+        raw ->
+          try_base64_decode(raw)
+      end
+
+    cert_pem =
+      case KV.get(cert_kv_key) do
+        nil ->
+          raise Peridiod.Certificate.ParseError,
+            field: :certificate,
+            source: "uboot-env",
+            path: cert_kv_key,
+            reason: :not_found
+
+        raw ->
+          try_base64_decode(raw) |> pem_certificate_trim()
+      end
 
     cert =
       Peridiod.Certificate.certificate_from_pem!(cert_pem,

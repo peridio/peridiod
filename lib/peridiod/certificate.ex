@@ -17,9 +17,9 @@ defmodule Peridiod.Certificate.ParseError do
     }
   end
 
-  defp compose_message(_field, source, _path, :identity_not_configured) do
+  defp compose_message(field, source, _path, :identity_not_configured) do
     """
-    Identity not configured for key_pair_source=#{source}: :identity_not_configured.
+    Identity not configured for #{field} with key_pair_source=#{source}: :identity_not_configured.
     peridiod cannot start with an invalid identity.
     Check node.key_pair_source and node.key_pair_config in peridio-config.json.\
     """
