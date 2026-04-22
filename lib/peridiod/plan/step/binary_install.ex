@@ -234,8 +234,26 @@ defmodule Peridiod.Plan.Step.BinaryInstall do
     binary_cache_file = Binary.cache_file(binary_metadata)
 
     case Cache.exists?(cache_pid, binary_cache_file) do
-      true -> Cache.decrypt_to_tempfile(cache_pid, binary_cache_file)
-      false -> {:error, :cache_file_missing}
+      true ->
+        case Cache.decrypt_to_tempfile(cache_pid, binary_cache_file) do
+          {:ok, _} = ok ->
+            ok
+
+          # Cached file predates encryption (stamp + valid plaintext sig, but no
+          # magic header). Drop the stale entry so the next attempt re-downloads;
+          # otherwise path-only installers stall in a permanent failure loop —
+          # init/1 returns the error before execute/1 runs, so the cache_rm in
+          # execute/1 and the stream :invalid_signature handler are never reached.
+          {:error, :invalid_format} = err ->
+            Binary.cache_rm(cache_pid, binary_metadata)
+            err
+
+          other ->
+            other
+        end
+
+      false ->
+        {:error, :cache_file_missing}
     end
   end
 

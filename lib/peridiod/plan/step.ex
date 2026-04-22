@@ -55,16 +55,31 @@ defmodule Peridiod.Plan.Step do
          %{
            callback: callback,
            step_mod: step_mod,
-           step_state: step_state
+           step_state: step_state,
+           init_error: nil
          }}
 
+      # Carry the error in state and surface it when execute is called, so
+      # start_link/1's contract stays {:ok, pid}. init/1 itself may only return
+      # 2-tuple stop (not 3-tuple), and callers of Step expect to pattern-match
+      # {:ok, pid} before dispatching :execute.
       {:error, error, _step_state} ->
-        try_send(callback, {:error, error})
-        {:stop, :normal, nil}
+        {:ok,
+         %{
+           callback: callback,
+           step_mod: step_mod,
+           step_state: nil,
+           init_error: error
+         }}
 
       {:stop, reason, _step_state} ->
-        {:stop, reason, nil}
+        {:stop, reason}
     end
+  end
+
+  def handle_cast(:execute, %{init_error: error} = state) when not is_nil(error) do
+    try_send(state.callback, {:error, error})
+    {:stop, :normal, state}
   end
 
   def handle_cast(:execute, state) do

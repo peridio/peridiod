@@ -182,6 +182,49 @@ defmodule Peridiod.Plan.StepTest do
       # All decrypted temp files must be cleaned up after install
       assert Path.wildcard(Path.join([cache_dir, ".tmp", ".tmp_*"])) == []
     end
+
+    test "path-only installer clears stale pre-encryption plaintext from cache", %{
+      cache_pid: cache_pid,
+      kv_pid: kv_pid,
+      release_metadata: %{bundle: %{binaries: binaries}}
+    } do
+      binary_metadata = List.first(binaries)
+      test_file = Peridiod.TestFixtures.binary_fixture_path() |> Path.join("1M.bin")
+      content = File.read!(test_file)
+
+      # Simulate the upgrade path: a cached binary written before encryption was
+      # enabled. Plaintext on disk with a signature over the plaintext bytes.
+      cache_file = Binary.cache_file(binary_metadata)
+      abs_path = Cache.abs_path(cache_pid, cache_file)
+      File.mkdir_p!(Path.dirname(abs_path))
+      File.write!(abs_path, content)
+
+      %{private_key: private_key} = :sys.get_state(cache_pid)
+      hash = Peridiod.Crypto.hash(abs_path, :sha256)
+      sig_hex = Peridiod.Crypto.sign(hash, :sha256, private_key)
+      File.write!(abs_path <> ".sig", sig_hex)
+
+      :ok = Binary.stamp_cached(cache_pid, binary_metadata)
+      assert Binary.cached?(cache_pid, binary_metadata)
+
+      step_opts = %{
+        binary_metadata: binary_metadata,
+        cache_pid: cache_pid,
+        kv_pid: kv_pid,
+        callback: self(),
+        installer_mod: PathOnlyInstaller,
+        installer_opts: %{},
+        source: :cache
+      }
+
+      {:ok, step_pid} = Step.start_link({Step.BinaryInstall, step_opts})
+      Step.execute(step_pid)
+
+      assert_receive {Step, ^step_pid, {:error, :invalid_format}}
+      # Stale plaintext entry must be removed so next attempt re-downloads
+      # instead of looping on the same decrypt failure.
+      refute Binary.cached?(cache_pid, binary_metadata)
+    end
   end
 
   describe "system reboot" do
