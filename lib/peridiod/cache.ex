@@ -411,6 +411,7 @@ defmodule Peridiod.Cache do
 
   defp maybe_encrypt_file(file_path, %{dek: dek}) do
     tmp_path = file_path <> ".enc"
+    sig_path = file_path <> ".sig"
 
     case Encryption.encrypt_file(file_path, tmp_path, dek) do
       :ok ->
@@ -420,9 +421,11 @@ defmodule Peridiod.Cache do
 
           error ->
             File.rm(tmp_path)
+            File.rm(file_path)
+            File.rm(sig_path)
 
             Logger.error(
-              "[Cache] Failed to replace #{file_path} with encrypted copy: #{inspect(error)}. Plaintext left in place."
+              "[Cache] Failed to replace #{file_path} with encrypted copy: #{inspect(error)}. Plaintext removed to preserve at-rest encryption guarantee; content will be re-downloaded."
             )
 
             error
@@ -430,9 +433,11 @@ defmodule Peridiod.Cache do
 
       error ->
         File.rm(tmp_path)
+        File.rm(file_path)
+        File.rm(sig_path)
 
         Logger.error(
-          "[Cache] Failed to encrypt #{file_path}: #{inspect(error)}. Plaintext left in place."
+          "[Cache] Failed to encrypt #{file_path}: #{inspect(error)}. Plaintext removed to preserve at-rest encryption guarantee; content will be re-downloaded."
         )
 
         error

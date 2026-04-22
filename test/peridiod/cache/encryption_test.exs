@@ -45,8 +45,8 @@ defmodule Peridiod.Cache.EncryptionTest do
   test "decrypt returns error for corrupted ciphertext" do
     plaintext = "secret data"
     encrypted = Encryption.encrypt(plaintext, @key)
-    # Flip a bit in the ciphertext body (after the 13-byte header + 4-byte chunk len)
-    <<header::binary-17, rest::binary>> = encrypted
+    # Flip a bit in the ciphertext body (after the 17-byte header + 4-byte chunk len)
+    <<header::binary-21, rest::binary>> = encrypted
     <<byte, tail::binary>> = rest
     corrupted = <<header::binary, Bitwise.bxor(byte, 0xFF), tail::binary>>
     assert {:error, :authentication_failed} = Encryption.decrypt(corrupted, @key)
@@ -55,6 +55,13 @@ defmodule Peridiod.Cache.EncryptionTest do
   test "decrypt returns error for invalid format" do
     assert {:error, :invalid_format} = Encryption.decrypt("not encrypted", @key)
     assert {:error, :invalid_format} = Encryption.decrypt(<<>>, @key)
+  end
+
+  test "decrypt returns :invalid_format for plaintext that starts with the version byte" do
+    # Without a magic prefix, arbitrary plaintext starting with 0x01 would
+    # false-match the header and surface confusing downstream errors.
+    plaintext_colliding_on_version = <<1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>
+    assert {:error, :invalid_format} = Encryption.decrypt(plaintext_colliding_on_version, @key)
   end
 
   test "each encrypt call produces different ciphertext" do

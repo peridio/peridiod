@@ -51,10 +51,12 @@ defmodule Peridiod.Cache.Encryption do
 
   require Logger
 
+  @magic "PDC1"
   @version 1
   @chunk_size 65_536
   @tag_size 16
-  @header_size 13
+  # 4-byte magic + 1-byte version + 8-byte file nonce + 4-byte chunk size
+  @header_size 17
   @max_chunk_len @chunk_size + @tag_size
   @aad "peridiod-cache-v1"
 
@@ -138,7 +140,7 @@ defmodule Peridiod.Cache.Encryption do
   """
   def encrypt(plaintext, dek) when is_binary(plaintext) and byte_size(dek) == 32 do
     file_nonce = :crypto.strong_rand_bytes(8)
-    header = <<@version::8, file_nonce::binary-8, @chunk_size::32>>
+    header = <<@magic, @version::8, file_nonce::binary-8, @chunk_size::32>>
     chunks = encrypt_chunks_binary(plaintext, file_nonce, dek, 0, [])
     IO.iodata_to_binary([header | Enum.reverse(chunks)])
   end
@@ -166,7 +168,7 @@ defmodule Peridiod.Cache.Encryption do
   """
   def decrypt(data, dek) when is_binary(data) and byte_size(dek) == 32 do
     case data do
-      <<@version::8, file_nonce::binary-8, _chunk_size::32, rest::binary>> ->
+      <<@magic, @version::8, file_nonce::binary-8, @chunk_size::32, rest::binary>> ->
         decrypt_chunks_binary(rest, file_nonce, dek, 0, [])
 
       _ ->
@@ -179,7 +181,7 @@ defmodule Peridiod.Cache.Encryption do
   end
 
   defp decrypt_chunks_binary(<<len::32, rest::binary>>, file_nonce, dek, idx, acc) do
-    if len < @tag_size do
+    if len < @tag_size or len > @max_chunk_len do
       {:error, :invalid_chunk_length}
     else
       case rest do
@@ -214,7 +216,7 @@ defmodule Peridiod.Cache.Encryption do
   """
   def encrypt_file(plaintext_path, encrypted_path, dek) when byte_size(dek) == 32 do
     file_nonce = :crypto.strong_rand_bytes(8)
-    header = <<@version::8, file_nonce::binary-8, @chunk_size::32>>
+    header = <<@magic, @version::8, file_nonce::binary-8, @chunk_size::32>>
 
     case File.open(plaintext_path, [:read, :binary], fn in_file ->
            File.open(encrypted_path, [:write, :binary], fn out_file ->
@@ -260,7 +262,7 @@ defmodule Peridiod.Cache.Encryption do
     with :ok <- File.mkdir_p(temp_dir),
          {:ok, in_file} <- File.open(encrypted_path, [:read, :binary]) do
       case IO.binread(in_file, @header_size) do
-        <<@version::8, file_nonce::binary-8, _chunk_size::32>> ->
+        <<@magic, @version::8, file_nonce::binary-8, @chunk_size::32>> ->
           case File.open(temp_path, [:write, :binary, :exclusive]) do
             {:ok, out_file} ->
               result = decrypt_file_chunks(in_file, out_file, file_nonce, dek, 0)
@@ -344,7 +346,7 @@ defmodule Peridiod.Cache.Encryption do
         case File.open(file_path, [:read, :binary]) do
           {:ok, file} ->
             case IO.binread(file, @header_size) do
-              <<@version::8, file_nonce::binary-8, _::32>> = header ->
+              <<@magic, @version::8, file_nonce::binary-8, @chunk_size::32>> = header ->
                 hash_acc = :crypto.hash_init(algorithm) |> :crypto.hash_update(header)
                 {:reading, file, file_nonce, 0, hash_acc}
 
@@ -429,12 +431,22 @@ defmodule Peridiod.Cache.Encryption do
   # ---------------------------------------------------------------------------
 
   @doc """
-  Returns `true` if the file at `file_path` starts with the encryption version byte.
+  Returns `true` if the file at `file_path` has a valid encryption header.
+
+  Validates all fixed header fields (magic, version, chunk size) — a single
+  byte prefix check is not reliable because arbitrary plaintext has a 1/256
+  chance of colliding with the version byte alone, which would cause stale-DEK
+  purging and format detection to misclassify plaintext as ciphertext.
   """
   def encrypted?(file_path) do
     case File.open(file_path, [:read, :binary]) do
       {:ok, file} ->
-        result = IO.binread(file, 1) == <<@version::8>>
+        result =
+          case IO.binread(file, @header_size) do
+            <<@magic, @version::8, _file_nonce::binary-8, @chunk_size::32>> -> true
+            _ -> false
+          end
+
         File.close(file)
         result
 
