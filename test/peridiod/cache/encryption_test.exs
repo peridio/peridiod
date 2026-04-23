@@ -57,11 +57,13 @@ defmodule Peridiod.Cache.EncryptionTest do
     assert {:error, :invalid_format} = Encryption.decrypt(<<>>, @key)
   end
 
-  test "decrypt returns :invalid_format for plaintext that starts with the version byte" do
-    # Without a magic prefix, arbitrary plaintext starting with 0x01 would
-    # false-match the header and surface confusing downstream errors.
-    plaintext_colliding_on_version = <<1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>
-    assert {:error, :invalid_format} = Encryption.decrypt(plaintext_colliding_on_version, @key)
+  test "decrypt returns :invalid_format for data with the magic prefix but invalid header fields" do
+    # The magic prefix alone isn't sufficient — the version byte and chunk size
+    # must also match. Input that starts with "PDC1" but has a zeroed-out
+    # version/chunk-size must be rejected at the header-match stage rather than
+    # surfacing a confusing downstream error.
+    malformed_with_magic_prefix = <<"PDC1", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>
+    assert {:error, :invalid_format} = Encryption.decrypt(malformed_with_magic_prefix, @key)
   end
 
   test "each encrypt call produces different ciphertext" do

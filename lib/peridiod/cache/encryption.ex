@@ -4,7 +4,8 @@ defmodule Peridiod.Cache.Encryption do
 
   Files are stored on disk in a chunked encrypted format:
 
-    [1 byte version][8 byte file nonce][4 byte chunk size as uint32-be]
+    [4 byte magic "PDC1"][1 byte version][8 byte file nonce]
+    [4 byte chunk size as uint32-be]
     [4 byte chunk len | ciphertext | 16-byte GCM tag] per chunk
 
   Each chunk uses a nonce derived from the per-file nonce and chunk index,
