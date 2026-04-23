@@ -1,6 +1,8 @@
 defmodule Peridiod.ConfigTest do
   use ExUnit.Case
 
+  alias PeridiodPersistence.KV
+
   import ExUnit.CaptureLog
 
   defp build_config do
@@ -103,6 +105,43 @@ defmodule Peridiod.ConfigTest do
         assert error.source == "env"
       end)
     end
+
+    test "uboot-env source: corrupt KV values raise ParseError" do
+      KV.put("peridio_key", "not-valid-pem")
+      KV.put("peridio_cert", "not-valid-pem")
+
+      on_exit(fn ->
+        KV.get_and_update("peridio_key", fn _ -> :pop end)
+        KV.get_and_update("peridio_cert", fn _ -> :pop end)
+      end)
+
+      with_config_file("test/fixtures/peridio-uboot-env-corrupt.json", fn ->
+        error =
+          assert_raise Peridiod.Certificate.ParseError, fn ->
+            build_config()
+          end
+
+        assert error.source == "uboot-env"
+      end)
+    end
+
+    test "uboot-env source: missing KV entry raises ParseError with :not_found" do
+      # peridio_key and peridio_cert are absent by default in the test KV store
+      with_config_file("test/fixtures/peridio-uboot-env-corrupt.json", fn ->
+        error =
+          assert_raise Peridiod.Certificate.ParseError, fn ->
+            build_config()
+          end
+
+        assert error.reason == :not_found
+        assert error.source == "uboot-env"
+      end)
+    end
+
+    # pkcs11 source deliberately not tested — requires a PKCS#11 engine (libpkcs11.so)
+    # and SoftHSM or p11tool to be present on the test machine. The core PEM parse
+    # logic exercised by the pkcs11 certificate_path path is covered by
+    # certificate_from_pem_file!/2 tests in certificate_test.exs.
   end
 
   describe "resolve_verify/2" do
