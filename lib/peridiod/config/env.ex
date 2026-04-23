@@ -18,21 +18,25 @@ defmodule Peridiod.Config.Env do
         base_config
       )
       when is_binary(key_env_var) and is_binary(cert_env_var) do
-    with {:ok, key_raw} <- System.fetch_env(key_env_var),
-         {:ok, cert_raw} <- System.fetch_env(cert_env_var) do
+    with {:key, {:ok, key_raw}} <- {:key, System.fetch_env(key_env_var)},
+         {:cert, {:ok, cert_raw}} <- {:cert, System.fetch_env(cert_env_var)} do
       key_pem = try_base64_decode(key_raw)
       cert_pem = try_base64_decode(cert_raw) |> pem_certificate_trim()
       set_ssl_opts(cert_pem, key_pem, cert_env_var, key_env_var, base_config)
     else
-      _e ->
-        Logger.error("""
-        [Config]
-        Unable to fetch the key / certificate from the environment.
-          key:  #{key_env_var}
-          cert: #{cert_env_var}
-        """)
+      {:key, :error} ->
+        raise Peridiod.Certificate.ParseError,
+          field: :private_key,
+          source: "env",
+          path: key_env_var,
+          reason: :not_found
 
-        base_config
+      {:cert, :error} ->
+        raise Peridiod.Certificate.ParseError,
+          field: :certificate,
+          source: "env",
+          path: cert_env_var,
+          reason: :not_found
     end
   end
 

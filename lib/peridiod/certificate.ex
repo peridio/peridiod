@@ -53,16 +53,22 @@ defmodule Peridiod.Certificate do
   alias Peridiod.Certificate.ParseError
 
   @spec certificate_from_pem(binary, keyword) ::
-          {:ok, X509.Certificate.t()} | {:error, {:parse_error, term}}
-  def certificate_from_pem(pem, _opts \\ []) when is_binary(pem) do
+          {:ok, X509.Certificate.t()} | {:error, {:parse_error, term} | :invalid_input}
+  def certificate_from_pem(pem, opts \\ [])
+
+  def certificate_from_pem(pem, _opts) when is_binary(pem) do
     case X509.Certificate.from_pem(pem) do
       {:ok, cert} -> {:ok, cert}
       {:error, reason} -> {:error, {:parse_error, reason}}
     end
   end
 
+  def certificate_from_pem(_pem, _opts), do: {:error, :invalid_input}
+
   @spec certificate_from_pem!(binary, keyword) :: X509.Certificate.t()
-  def certificate_from_pem!(pem, opts \\ []) when is_binary(pem) do
+  def certificate_from_pem!(pem, opts \\ [])
+
+  def certificate_from_pem!(pem, opts) when is_binary(pem) do
     case X509.Certificate.from_pem(pem) do
       {:ok, cert} ->
         cert
@@ -76,17 +82,31 @@ defmodule Peridiod.Certificate do
     end
   end
 
+  def certificate_from_pem!(_pem, opts) do
+    raise ParseError,
+      field: :certificate,
+      source: opts[:source],
+      path: opts[:path],
+      reason: :invalid_input
+  end
+
   @spec private_key_from_pem(binary, keyword) ::
-          {:ok, :public_key.private_key()} | {:error, {:parse_error, term}}
-  def private_key_from_pem(pem, _opts \\ []) when is_binary(pem) do
+          {:ok, :public_key.private_key()} | {:error, {:parse_error, term} | :invalid_input}
+  def private_key_from_pem(pem, opts \\ [])
+
+  def private_key_from_pem(pem, _opts) when is_binary(pem) do
     case X509.PrivateKey.from_pem(pem) do
       {:ok, key} -> {:ok, key}
       {:error, reason} -> {:error, {:parse_error, reason}}
     end
   end
 
+  def private_key_from_pem(_pem, _opts), do: {:error, :invalid_input}
+
   @spec private_key_from_pem!(binary, keyword) :: :public_key.private_key()
-  def private_key_from_pem!(pem, opts \\ []) when is_binary(pem) do
+  def private_key_from_pem!(pem, opts \\ [])
+
+  def private_key_from_pem!(pem, opts) when is_binary(pem) do
     case X509.PrivateKey.from_pem(pem) do
       {:ok, key} ->
         key
@@ -100,8 +120,18 @@ defmodule Peridiod.Certificate do
     end
   end
 
+  def private_key_from_pem!(_pem, opts) do
+    raise ParseError,
+      field: :private_key,
+      source: opts[:source],
+      path: opts[:path],
+      reason: :invalid_input
+  end
+
   @spec certificate_from_pem_file!(Path.t(), keyword) :: X509.Certificate.t()
-  def certificate_from_pem_file!(path, opts \\ []) do
+  def certificate_from_pem_file!(path, opts \\ [])
+
+  def certificate_from_pem_file!(path, opts) when is_binary(path) do
     opts = Keyword.put_new(opts, :path, path)
 
     case File.read(path) do
@@ -117,8 +147,18 @@ defmodule Peridiod.Certificate do
     end
   end
 
+  def certificate_from_pem_file!(_path, opts) do
+    raise ParseError,
+      field: :certificate,
+      source: opts[:source],
+      path: opts[:path],
+      reason: :invalid_input
+  end
+
   @spec private_key_from_pem_file!(Path.t(), keyword) :: :public_key.private_key()
-  def private_key_from_pem_file!(path, opts \\ []) do
+  def private_key_from_pem_file!(path, opts \\ [])
+
+  def private_key_from_pem_file!(path, opts) when is_binary(path) do
     opts = Keyword.put_new(opts, :path, path)
 
     case File.read(path) do
@@ -132,5 +172,13 @@ defmodule Peridiod.Certificate do
           path: opts[:path],
           reason: {:file_read_error, reason}
     end
+  end
+
+  def private_key_from_pem_file!(_path, opts) do
+    raise ParseError,
+      field: :private_key,
+      source: opts[:source],
+      path: opts[:path],
+      reason: :invalid_input
   end
 end
