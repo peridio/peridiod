@@ -1,5 +1,11 @@
 # peridiod releases
 
+## Unreleased
+
+* Enhancements
+  * [SOC2] Enforce `cache_dir` ownership and log subdir permissions — peridiod now checks the `cache_dir` and `{cache_dir}/log` owner against the daemon user at startup, warns if they differ, and corrects mode drift back to `0700` automatically.
+  * [SOC2] Tighten packaged `/var/peridiod` to mode `0700` and `peridiod-state` to `0600` in deb and rpm packages. **Note:** operators who previously read `/var/peridiod/peridiod-state` as a non-root user will need to adjust access accordingly.
+
 ## 3.4.1
 
 * Bug fixes

@@ -549,23 +549,45 @@ defmodule Peridiod.Cache do
   end
 
   defp init_cache_dir(cache_dir) do
-    case File.stat(cache_dir) do
-      {:ok, %File.Stat{mode: mode}} ->
+    euid = process_euid()
+    check_dir(cache_dir, euid)
+    check_dir(Path.join(cache_dir, "log"), euid)
+  end
+
+  defp process_euid do
+    case System.cmd("id", ["-u"]) do
+      {uid_str, 0} -> uid_str |> String.trim() |> String.to_integer()
+      _ -> nil
+    end
+  end
+
+  defp check_dir(path, euid) do
+    case File.stat(path) do
+      {:ok, %File.Stat{mode: mode, uid: uid}} ->
         perm = band(mode, 0o777)
 
         if perm != 0o700 do
           Logger.warning(
-            "[Cache] cache_dir #{cache_dir} has mode 0#{Integer.to_string(perm, 8)}, " <>
+            "[Cache] #{path} has mode 0#{Integer.to_string(perm, 8)}, " <>
               "expected 0700. Cached data may be readable by other users."
+          )
+
+          File.chmod(path, 0o700)
+        end
+
+        if not is_nil(euid) and uid != euid do
+          Logger.warning(
+            "[Cache] #{path} is owned by uid #{uid}, expected #{euid}. " <>
+              "Ensure #{path} is owned by the daemon user."
           )
         end
 
       {:error, :enoent} ->
-        :ok = File.mkdir_p(cache_dir)
-        File.chmod(cache_dir, 0o700)
+        :ok = File.mkdir_p(path)
+        File.chmod(path, 0o700)
 
       {:error, reason} ->
-        Logger.warning("[Cache] Cannot stat cache_dir #{cache_dir}: #{inspect(reason)}")
+        Logger.warning("[Cache] Cannot stat #{path}: #{inspect(reason)}")
     end
   end
 end
