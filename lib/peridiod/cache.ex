@@ -1,7 +1,12 @@
 defmodule Peridiod.Cache do
   use GenServer
 
+  import Bitwise, only: [band: 2]
   import Peridiod.Crypto
+
+  alias Peridiod.Cache.Encryption
+
+  require Logger
 
   @hash_algorithm :sha256
   @stream_chunk_size 4096
@@ -54,6 +59,30 @@ defmodule Peridiod.Cache do
     GenServer.call(pid_or_name, {:abs_path, file})
   end
 
+  @doc """
+  Returns the decrypted content of a cache file as a temporary file on disk.
+
+  When encryption is enabled, decrypts the file to a temp path under
+  `cache_dir/.tmp/` and returns `{:ok, temp_path}`. When encryption is
+  disabled, returns `{:ok, original_path}` (no copy is made).
+
+  The caller is responsible for removing the temp file when done; use
+  `cleanup_tempfile/2` to do so safely.
+  """
+  def decrypt_to_tempfile(pid_or_name \\ __MODULE__, file) do
+    GenServer.call(pid_or_name, {:decrypt_to_tempfile, file})
+  end
+
+  @doc """
+  Removes a temporary file previously returned by `decrypt_to_tempfile/2`.
+
+  Only removes files that live under `cache_dir/.tmp/`; silently succeeds for
+  any other path (e.g., the original cache path returned when encryption is off).
+  """
+  def cleanup_tempfile(pid_or_name \\ __MODULE__, path) when is_binary(path) do
+    GenServer.call(pid_or_name, {:cleanup_tempfile, path})
+  end
+
   def rm(pid_or_name \\ __MODULE__, file) do
     GenServer.call(pid_or_name, {:rm, file})
   end
@@ -67,24 +96,56 @@ defmodule Peridiod.Cache do
     public_key = config.cache_public_key
     cache_dir = config.cache_dir
     hash_algorithm = Map.get(config, :cache_hash_algorithm, @hash_algorithm)
+    encryption_enabled = Map.get(config, :cache_encryption_enabled, true)
 
-    {:ok,
-     %{
-       path: cache_dir,
-       hash_algorithm: hash_algorithm,
-       private_key: private_key,
-       public_key: public_key
-     }}
+    init_cache_dir(cache_dir)
+
+    dek_result =
+      if encryption_enabled do
+        Encryption.load_or_create_dek(cache_dir, private_key, public_key)
+      else
+        {:ok, nil}
+      end
+
+    state = %{
+      path: cache_dir,
+      hash_algorithm: hash_algorithm,
+      private_key: private_key,
+      public_key: public_key,
+      dek: nil
+    }
+
+    case dek_result do
+      {:ok, dek} ->
+        if dek != nil, do: cleanup_orphaned_plaintext(cache_dir)
+        {:ok, %{state | dek: dek}}
+
+      {:error, :dek_signature_invalid} ->
+        Logger.warning(
+          "[Cache] DEK signature invalid — device key may have been rotated. " <>
+            "Regenerating DEK; previously cached encrypted files will require re-download. " <>
+            "If key rotation was not expected, investigate for potential tampering."
+        )
+
+        case Encryption.regenerate_dek(cache_dir, private_key) do
+          {:ok, dek} ->
+            purge_stale_encrypted_files(cache_dir)
+            cleanup_orphaned_plaintext(cache_dir)
+            {:ok, %{state | dek: dek}}
+
+          {:error, reason} ->
+            Logger.error("[Cache] Failed to regenerate DEK: #{inspect(reason)}")
+            {:stop, reason}
+        end
+
+      {:error, reason} ->
+        Logger.error("[Cache] Failed to load or create DEK: #{inspect(reason)}")
+        {:stop, reason}
+    end
   end
 
   def handle_call({:exists?, file}, _from, state) do
-    resp =
-      case do_read(file, state) do
-        {:ok, _content} -> true
-        _error -> false
-      end
-
-    {:reply, resp, state}
+    {:reply, do_exists?(file, state), state}
   end
 
   def handle_call({:read, file}, _from, state) do
@@ -99,7 +160,19 @@ defmodule Peridiod.Cache do
       with true <- File.exists?(file_path),
            {:ok, signature_hex} <- File.read(file_sig_path),
            {:ok, signature} <- Base.decode16(signature_hex, case: :mixed) do
-        do_read_stream(file_path, state.hash_algorithm, signature, state.public_key)
+        case state.dek do
+          nil ->
+            do_read_stream(file_path, state.hash_algorithm, signature, state.public_key)
+
+          dek ->
+            Encryption.decrypt_stream(
+              file_path,
+              state.hash_algorithm,
+              signature,
+              state.public_key,
+              dek
+            )
+        end
       else
         false ->
           {:error, :enoent}
@@ -119,6 +192,9 @@ defmodule Peridiod.Cache do
     file_path = Path.join([state.path, file])
     dir = Path.dirname(file_path)
 
+    # Chunks land as plaintext during streaming; write_stream_finish[_local] encrypts
+    # the completed file in one pass. cleanup_orphaned_plaintext/1 removes remnants
+    # if the process is interrupted before finish is called.
     reply =
       with :ok <- File.mkdir_p(dir),
            :ok <- File.write(file_path, data, [:append, :binary]) do
@@ -135,8 +211,10 @@ defmodule Peridiod.Cache do
     file_sig_path = file_path <> ".sig"
 
     reply =
-      with hash <- hash(file_path, state.hash_algorithm),
-           true <- :crypto.verify(:eddsa, :sha256, hash, signature, [public_key, :ed25519]),
+      with plaintext_hash <- hash(file_path, state.hash_algorithm),
+           true <- Peridiod.Binary.valid_signature?(plaintext_hash, signature, public_key),
+           :ok <- maybe_encrypt_file(file_path, state),
+           hash <- hash(file_path, state.hash_algorithm),
            signature <- sign(hash, state.hash_algorithm, state.private_key),
            :ok <- File.write(file_sig_path, signature) do
         :ok
@@ -158,7 +236,8 @@ defmodule Peridiod.Cache do
     file_sig_path = file_path <> ".sig"
 
     reply =
-      with hash <- hash(file_path, state.hash_algorithm),
+      with :ok <- maybe_encrypt_file(file_path, state),
+           hash <- hash(file_path, state.hash_algorithm),
            signature <- sign(hash, state.hash_algorithm, state.private_key),
            :ok <- File.write(file_sig_path, signature) do
         :ok
@@ -195,6 +274,24 @@ defmodule Peridiod.Cache do
     {:reply, path, state}
   end
 
+  def handle_call({:decrypt_to_tempfile, file}, _from, state) do
+    {:reply, do_decrypt_to_tempfile(file, state), state}
+  end
+
+  def handle_call({:cleanup_tempfile, path}, _from, state) do
+    tmp_dir = Path.expand(Path.join(state.path, ".tmp"))
+    expanded = Path.expand(path)
+
+    reply =
+      if String.starts_with?(expanded, tmp_dir <> "/") do
+        File.rm(expanded)
+      else
+        :ok
+      end
+
+    {:reply, reply, state}
+  end
+
   def handle_call({:rm, file}, _from, state) do
     path = Path.join([state.path, file])
     file_sig_path = path <> ".sig"
@@ -207,40 +304,53 @@ defmodule Peridiod.Cache do
     {:reply, File.rm_rf(path), state}
   end
 
-  defp do_write(file, content, %{
-         hash_algorithm: hash_algorithm,
-         private_key: private_key,
-         path: path
-       }) do
-    file_path = Path.join([path, file])
+  defp do_write(file, content, state) do
+    file_path = Path.join([state.path, file])
     file_sig_path = file_path <> ".sig"
     dir = Path.dirname(file_path)
 
+    stored_content =
+      case state.dek do
+        nil -> content
+        dek -> Encryption.encrypt(content, dek)
+      end
+
     with :ok <- File.mkdir_p(dir),
-         :ok <- File.write(file_path, content),
-         hash <- hash(file_path, hash_algorithm),
-         signature <- sign(hash, hash_algorithm, private_key),
+         :ok <- File.write(file_path, stored_content),
+         hash <- hash(file_path, state.hash_algorithm),
+         signature <- sign(hash, state.hash_algorithm, state.private_key),
          :ok <- File.write(file_sig_path, signature) do
       :ok
     end
   end
 
-  defp do_read(file, %{
-         hash_algorithm: hash_algorithm,
-         public_key: public_key,
-         path: path
-       }) do
-    file_path = Path.join([path, file])
+  defp do_read(file, state) do
+    file_path = Path.join([state.path, file])
     file_sig_path = file_path <> ".sig"
 
     with {:ok, signature_hex} <- File.read(file_sig_path),
          {:ok, signature} <- Base.decode16(signature_hex, case: :mixed),
          true <- File.exists?(file_path) do
-      current_hash = hash(file_path, hash_algorithm)
+      current_hash = hash(file_path, state.hash_algorithm)
 
-      case verified?(current_hash, hash_algorithm, signature, public_key) do
-        true -> File.read(file_path)
-        false -> {:error, :invalid_signature}
+      case verified?(current_hash, state.hash_algorithm, signature, state.public_key) do
+        true ->
+          with {:ok, raw} <- File.read(file_path) do
+            case state.dek do
+              nil ->
+                {:ok, raw}
+
+              dek ->
+                case Encryption.decrypt(raw, dek) do
+                  # Backward compat: file predates encryption or encryption was disabled
+                  {:error, :invalid_format} -> {:ok, raw}
+                  result -> result
+                end
+            end
+          end
+
+        false ->
+          {:error, :invalid_signature}
       end
     else
       false -> {:error, :enoent}
@@ -265,5 +375,197 @@ defmodule Peridiod.Cache do
       end,
       fn _hash -> :ok end
     )
+  end
+
+  defp do_decrypt_to_tempfile(file, state) do
+    file_path = Path.join([state.path, file])
+    file_sig_path = file_path <> ".sig"
+
+    with {:ok, signature_hex} <- File.read(file_sig_path),
+         {:ok, signature} <- Base.decode16(signature_hex, case: :mixed),
+         true <- File.exists?(file_path) do
+      current_hash = hash(file_path, state.hash_algorithm)
+
+      case verified?(current_hash, state.hash_algorithm, signature, state.public_key) do
+        true ->
+          case state.dek do
+            nil ->
+              {:ok, file_path}
+
+            dek ->
+              temp_dir = Path.join(state.path, ".tmp")
+              Encryption.decrypt_to_tempfile(file_path, temp_dir, dek)
+          end
+
+        false ->
+          {:error, :invalid_signature}
+      end
+    else
+      false -> {:error, :enoent}
+      :error -> {:error, :invalid_signature}
+      error -> error
+    end
+  end
+
+  defp maybe_encrypt_file(_file_path, %{dek: nil}), do: :ok
+
+  defp maybe_encrypt_file(file_path, %{dek: dek}) do
+    tmp_path = file_path <> ".enc"
+    sig_path = file_path <> ".sig"
+
+    case Encryption.encrypt_file(file_path, tmp_path, dek) do
+      :ok ->
+        case File.rename(tmp_path, file_path) do
+          :ok ->
+            :ok
+
+          error ->
+            File.rm(tmp_path)
+            File.rm(file_path)
+            File.rm(sig_path)
+
+            Logger.error(
+              "[Cache] Failed to replace #{file_path} with encrypted copy: #{inspect(error)}. Plaintext removed to preserve at-rest encryption guarantee; content will be re-downloaded."
+            )
+
+            error
+        end
+
+      error ->
+        File.rm(tmp_path)
+        File.rm(file_path)
+        File.rm(sig_path)
+
+        Logger.error(
+          "[Cache] Failed to encrypt #{file_path}: #{inspect(error)}. Plaintext removed to preserve at-rest encryption guarantee; content will be re-downloaded."
+        )
+
+        error
+    end
+  end
+
+  # Remove leftover plaintext artifacts from previous interrupted operations.
+  # Called on startup when encryption is enabled.
+  defp cleanup_orphaned_plaintext(cache_dir) do
+    # Decrypted temp files from interrupted decrypt_to_tempfile calls
+    cleanup_tmp_dir(Path.join(cache_dir, ".tmp"))
+    # Stray .enc files from interrupted maybe_encrypt_file calls
+    cleanup_enc_files(cache_dir)
+  end
+
+  defp cleanup_tmp_dir(tmp_dir) do
+    case File.ls(tmp_dir) do
+      {:ok, entries} ->
+        Enum.each(entries, fn entry ->
+          path = Path.join(tmp_dir, entry)
+
+          case File.lstat(path) do
+            {:ok, %File.Stat{type: :regular}} ->
+              Logger.debug("[Cache] Removing leftover temp file: #{path}")
+              File.rm(path)
+
+            _ ->
+              :ok
+          end
+        end)
+
+      {:error, :enoent} ->
+        :ok
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp cleanup_enc_files(dir) do
+    case File.ls(dir) do
+      {:ok, entries} ->
+        Enum.each(entries, fn entry ->
+          path = Path.join(dir, entry)
+
+          case File.lstat(path) do
+            {:ok, %File.Stat{type: :directory}} when entry != ".tmp" ->
+              cleanup_enc_files(path)
+
+            {:ok, %File.Stat{type: :regular}} ->
+              if String.ends_with?(entry, ".enc") do
+                Logger.debug("[Cache] Removing stray .enc file: #{path}")
+                File.rm(path)
+              end
+
+            _ ->
+              :ok
+          end
+        end)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp do_exists?(file, state) do
+    file_path = Path.join([state.path, file])
+    file_sig_path = file_path <> ".sig"
+
+    with {:ok, sig_hex} <- File.read(file_sig_path),
+         {:ok, sig} <- Base.decode16(sig_hex, case: :mixed),
+         true <- File.exists?(file_path) do
+      current_hash = hash(file_path, state.hash_algorithm)
+      verified?(current_hash, state.hash_algorithm, sig, state.public_key)
+    else
+      _ -> false
+    end
+  end
+
+  # After DEK rotation, purge files that were encrypted with the old DEK — they can
+  # no longer be decrypted and will be re-downloaded on the next update.
+  defp purge_stale_encrypted_files(dir) do
+    case File.ls(dir) do
+      {:ok, entries} ->
+        Enum.each(entries, fn entry ->
+          path = Path.join(dir, entry)
+
+          case File.lstat(path) do
+            {:ok, %File.Stat{type: :directory}} when entry not in [".tmp"] ->
+              purge_stale_encrypted_files(path)
+
+            {:ok, %File.Stat{type: :regular}} ->
+              if entry not in [".dek", ".dek.sig"] and
+                   not String.ends_with?(entry, ".sig") and
+                   Encryption.encrypted?(path) do
+                Logger.debug("[Cache] Purging encrypted file (stale DEK): #{path}")
+                File.rm(path)
+                File.rm(path <> ".sig")
+              end
+
+            _ ->
+              :ok
+          end
+        end)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp init_cache_dir(cache_dir) do
+    case File.stat(cache_dir) do
+      {:ok, %File.Stat{mode: mode}} ->
+        perm = band(mode, 0o777)
+
+        if perm != 0o700 do
+          Logger.warning(
+            "[Cache] cache_dir #{cache_dir} has mode 0#{Integer.to_string(perm, 8)}, " <>
+              "expected 0700. Cached data may be readable by other users."
+          )
+        end
+
+      {:error, :enoent} ->
+        :ok = File.mkdir_p(cache_dir)
+        File.chmod(cache_dir, 0o700)
+
+      {:error, reason} ->
+        Logger.warning("[Cache] Cannot stat cache_dir #{cache_dir}: #{inspect(reason)}")
+    end
   end
 end

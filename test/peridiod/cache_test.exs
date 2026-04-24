@@ -86,7 +86,9 @@ defmodule Peridiod.CacheTest do
 
     :ok = Cache.write(cache_pid, file, content)
     :ok = Cache.ln_s(cache_pid, file, link)
-    assert {:ok, ^content} = File.read(Path.join([cache_dir, link]))
+    link_path = Path.join([cache_dir, link])
+    assert {:ok, %File.Stat{type: :symlink}} = File.lstat(link_path)
+    assert {:ok, ^content} = Cache.read(cache_pid, file)
   end
 
   test "rm", %{cache_pid: cache_pid, test: name} do

@@ -8,6 +8,7 @@ defmodule Peridiod.Config do
   require Logger
 
   defstruct cache_dir: "/var/lib/peridiod",
+            cache_encryption_enabled: true,
             cache_private_key: nil,
             cache_public_key: nil,
             cache_pid: Cache,
@@ -59,6 +60,7 @@ defmodule Peridiod.Config do
 
   @type t() :: %__MODULE__{
           cache_dir: Path.t(),
+          cache_encryption_enabled: boolean(),
           cache_private_key: private_key(),
           cache_public_key: public_key(),
           cache_pid: pid() | module(),
@@ -182,6 +184,7 @@ defmodule Peridiod.Config do
         config_file["device_api"]["certificate_path"]
       )
       |> override_if_set(:cache_dir, config_file["cache_dir"])
+      |> override_if_set(:cache_encryption_enabled, config_file["cache_encryption_enabled"])
       |> override_if_set(
         :distributions_cache_download,
         get_in(config_file, ["distributions", "cache_download"])
