@@ -13,22 +13,30 @@ defmodule Peridiod.Config.Env do
     base_config
   end
 
-  def config(%{"private_key" => key, "certificate" => cert}, base_config) do
-    with {:ok, key} <- System.fetch_env(key),
-         {:ok, cert} <- System.fetch_env(cert) do
-      key_pem = try_base64_decode(key)
-      cert_pem = try_base64_decode(cert) |> pem_certificate_trim()
-      set_ssl_opts(cert_pem, key_pem, base_config)
-    else
-      _e ->
-        Logger.error("""
-        [Config]
-        Unset error fetching the key / certificate from the environment")
-          key:  #{key}
-          cert: #{cert}
-        """)
-
+  def config(
+        %{"private_key" => key_env_var, "certificate" => cert_env_var},
         base_config
+      )
+      when is_binary(key_env_var) and is_binary(cert_env_var) do
+    with {:key, {:ok, key_raw}} <- {:key, System.fetch_env(key_env_var)},
+         {:cert, {:ok, cert_raw}} <- {:cert, System.fetch_env(cert_env_var)} do
+      key_pem = try_base64_decode(key_raw)
+      cert_pem = try_base64_decode(cert_raw) |> pem_certificate_trim()
+      set_ssl_opts(cert_pem, key_pem, cert_env_var, key_env_var, base_config)
+    else
+      {:key, :error} ->
+        raise Peridiod.Certificate.ParseError,
+          field: :private_key,
+          source: "env",
+          path: key_env_var,
+          reason: :not_found
+
+      {:cert, :error} ->
+        raise Peridiod.Certificate.ParseError,
+          field: :certificate,
+          source: "env",
+          path: cert_env_var,
+          reason: :not_found
     end
   end
 
@@ -40,67 +48,29 @@ defmodule Peridiod.Config.Env do
     base_config
   end
 
-  defp set_ssl_opts(cert_pem, key_pem, base_config) do
+  defp set_ssl_opts(cert_pem, key_pem, cert_env_var, key_env_var, base_config) do
+    cert =
+      Peridiod.Certificate.certificate_from_pem!(cert_pem,
+        source: "env",
+        path: cert_env_var
+      )
+
+    key =
+      Peridiod.Certificate.private_key_from_pem!(key_pem,
+        source: "env",
+        path: key_env_var
+      )
+
     ssl_opts =
       base_config.ssl
-      |> Keyword.put(:cert, cert_pem_to_der(cert_pem))
-      |> Keyword.put(:key, {:ECPrivateKey, key_pem_to_der(key_pem)})
+      |> Keyword.put(:cert, X509.Certificate.to_der(cert))
+      |> Keyword.put(:key, {:ECPrivateKey, X509.PrivateKey.to_der(key)})
 
     %{
       base_config
       | ssl: ssl_opts,
-        cache_private_key: load_private_key(key_pem),
-        cache_public_key: load_public_key(cert_pem)
+        cache_private_key: key,
+        cache_public_key: X509.Certificate.public_key(cert)
     }
-  end
-
-  defp cert_pem_to_der(cert_pem) do
-    case X509.Certificate.from_pem(cert_pem) do
-      {:ok, cert_erl} ->
-        cert_erl |> X509.Certificate.to_der()
-
-      {error, _} ->
-        Logger.error(
-          "[Config] An error occurred while reading the certificate from env:\n#{error}"
-        )
-
-        ""
-    end
-  end
-
-  defp key_pem_to_der(key_pem) do
-    case X509.PrivateKey.from_pem(key_pem) do
-      {:ok, key_erl} ->
-        key_erl |> X509.PrivateKey.to_der()
-
-      {error, _} ->
-        Logger.error(
-          "[Config] An error occurred while reading the private key from env:\n#{error}"
-        )
-
-        ""
-    end
-  end
-
-  def load_private_key(private_pem) do
-    case X509.PrivateKey.from_pem(private_pem) do
-      {:ok, private_key} ->
-        private_key
-
-      {:error, error} ->
-        Logger.warning("[Config] Unable to load cache encryption private key: #{inspect(error)}")
-        nil
-    end
-  end
-
-  def load_public_key(certificate_pem) do
-    case X509.Certificate.from_pem(certificate_pem) do
-      {:ok, certificate} ->
-        X509.Certificate.public_key(certificate)
-
-      {:error, error} ->
-        Logger.warning("[Config] Unable to load cache encryption public keyy: #{inspect(error)}")
-        nil
-    end
   end
 end

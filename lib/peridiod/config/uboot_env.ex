@@ -4,20 +4,53 @@ defmodule Peridiod.Config.UBootEnv do
   alias PeridiodPersistence.KV
   import Peridiod.Utils, only: [try_base64_decode: 1, pem_certificate_trim: 1]
 
-  def config(%{"private_key" => key, "certificate" => cert}, base_config) do
-    key_pem = KV.get(key) |> try_base64_decode()
-    cert_pem = KV.get(cert) |> try_base64_decode() |> pem_certificate_trim()
+  def config(
+        %{"private_key" => key_kv_key, "certificate" => cert_kv_key},
+        base_config
+      )
+      when is_binary(key_kv_key) and is_binary(cert_kv_key) do
+    key_pem =
+      case KV.get(key_kv_key) do
+        nil ->
+          raise Peridiod.Certificate.ParseError,
+            field: :private_key,
+            source: "uboot-env",
+            path: key_kv_key,
+            reason: :not_found
 
-    cert = cert_from_pem(cert_pem)
-    cert_der = X509.Certificate.to_der(cert)
+        raw ->
+          try_base64_decode(raw)
+      end
 
-    key = key_from_pem(key_pem)
-    key_der = X509.PrivateKey.to_der(key)
+    cert_pem =
+      case KV.get(cert_kv_key) do
+        nil ->
+          raise Peridiod.Certificate.ParseError,
+            field: :certificate,
+            source: "uboot-env",
+            path: cert_kv_key,
+            reason: :not_found
+
+        raw ->
+          try_base64_decode(raw) |> pem_certificate_trim()
+      end
+
+    cert =
+      Peridiod.Certificate.certificate_from_pem!(cert_pem,
+        source: "uboot-env",
+        path: cert_kv_key
+      )
+
+    key =
+      Peridiod.Certificate.private_key_from_pem!(key_pem,
+        source: "uboot-env",
+        path: key_kv_key
+      )
 
     ssl_opts =
       base_config.ssl
-      |> Keyword.put(:cert, cert_der)
-      |> Keyword.put(:key, {:ECPrivateKey, key_der})
+      |> Keyword.put(:cert, X509.Certificate.to_der(cert))
+      |> Keyword.put(:key, {:ECPrivateKey, X509.PrivateKey.to_der(key)})
 
     %{
       base_config
@@ -33,33 +66,5 @@ defmodule Peridiod.Config.UBootEnv do
     )
 
     base_config
-  end
-
-  defp cert_from_pem(cert_pem) do
-    case X509.Certificate.from_pem(cert_pem) do
-      {:ok, cert} ->
-        cert
-
-      {error, _} ->
-        Logger.error(
-          "[Config] An error occurred while reading the certificate from uboot_env:\n#{error}"
-        )
-
-        ""
-    end
-  end
-
-  defp key_from_pem(key_pem) do
-    case X509.PrivateKey.from_pem(key_pem) do
-      {:ok, key} ->
-        key
-
-      {error, _} ->
-        Logger.error(
-          "[Config] An error occurred while reading the private key from uboot_env:\n#{error}"
-        )
-
-        ""
-    end
   end
 end

@@ -111,6 +111,7 @@ defmodule Peridiod.Config do
     config
     |> base_config()
     |> build_config(resolve_config())
+    |> validate_identity!()
     |> add_socket_opts()
   end
 
@@ -350,6 +351,37 @@ defmodule Peridiod.Config do
   end
 
   def deep_merge(_val1, val2), do: val2
+
+  defp validate_identity!(%Config{} = config) do
+    ssl = config.ssl
+
+    cond do
+      !Keyword.has_key?(ssl, :cert) and !Keyword.has_key?(ssl, :certfile) ->
+        raise Peridiod.Certificate.ParseError,
+          field: :certificate,
+          source: config.key_pair_source,
+          path: nil,
+          reason: :identity_not_configured
+
+      !Keyword.has_key?(ssl, :key) and !Keyword.has_key?(ssl, :keyfile) ->
+        raise Peridiod.Certificate.ParseError,
+          field: :private_key,
+          source: config.key_pair_source,
+          path: nil,
+          reason: :identity_not_configured
+
+      true ->
+        config
+    end
+  end
+
+  defp validate_identity!(_) do
+    raise Peridiod.Certificate.ParseError,
+      field: :certificate,
+      source: nil,
+      path: nil,
+      reason: :invalid_configuration
+  end
 
   defp add_socket_opts(config) do
     # PhoenixClient requires these SSL options be passed as

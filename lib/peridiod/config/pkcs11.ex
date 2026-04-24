@@ -27,25 +27,35 @@ defmodule Peridiod.Config.PKCS11 do
     base_config
   end
 
-  defp add_certificate(base_config, %{"cert_id" => cert_id}) do
-    cert =
-      case System.cmd("p11tool", ["--export-stapled", cert_id]) do
-        {cert_pem, 0} ->
-          cert_pem |> X509.Certificate.from_pem!()
+  defp add_certificate(base_config, %{"cert_id" => cert_id})
+       when is_binary(cert_id) and cert_id != "" do
+    unless System.find_executable("p11tool") do
+      raise Peridiod.Certificate.ParseError,
+        field: :certificate,
+        source: "pkcs11",
+        path: "cert_id=#{cert_id}",
+        reason: :p11tool_not_found
+    end
 
-        {error, _} ->
-          Logger.error(
-            "[Config] An error occurred while reading the certificate from pkcs11:\n#{error}"
+    cert =
+      case System.cmd("p11tool", ["--export-stapled", cert_id], stderr_to_stdout: true) do
+        {cert_pem, 0} ->
+          Peridiod.Certificate.certificate_from_pem!(cert_pem,
+            source: "pkcs11",
+            path: "cert_id=#{cert_id}"
           )
 
-          ""
+        {error, exit_code} ->
+          raise Peridiod.Certificate.ParseError,
+            field: :certificate,
+            source: "pkcs11",
+            path: "cert_id=#{cert_id}",
+            reason: {:p11tool_error, error, exit_code}
       end
-
-    cert_der = X509.Certificate.to_der(cert)
 
     ssl_opts =
       base_config.ssl
-      |> Keyword.put(:cert, cert_der)
+      |> Keyword.put(:cert, X509.Certificate.to_der(cert))
 
     %{
       base_config
@@ -54,7 +64,14 @@ defmodule Peridiod.Config.PKCS11 do
     }
   end
 
-  defp add_certificate(base_config, %{"certificate_path" => certificate_path}) do
+  defp add_certificate(base_config, %{"certificate_path" => certificate_path})
+       when is_binary(certificate_path) and certificate_path != "" do
+    cert =
+      Peridiod.Certificate.certificate_from_pem_file!(certificate_path,
+        source: "pkcs11",
+        path: certificate_path
+      )
+
     ssl_opts =
       base_config.ssl
       |> Keyword.put(:certfile, certificate_path)
@@ -62,7 +79,7 @@ defmodule Peridiod.Config.PKCS11 do
     %{
       base_config
       | ssl: ssl_opts,
-        cache_public_key: Peridiod.Config.File.load_public_key(certificate_path)
+        cache_public_key: X509.Certificate.public_key(cert)
     }
   end
 
