@@ -19,17 +19,19 @@ defmodule Peridiod.Certificate.ParseError do
 
   defp compose_message(field, source, _path, :identity_not_configured) do
     """
-    Identity not configured for #{field} with key_pair_source=#{source}: :identity_not_configured.
+    Identity not configured for #{field} with key_pair_source=#{source || "unknown"}: :identity_not_configured.
     peridiod cannot start with an invalid identity.
     Check node.key_pair_source and node.key_pair_config in peridio-config.json.\
     """
   end
 
   defp compose_message(field, source, path, reason) do
+    src = source || "unknown"
+
     """
-    Failed to parse #{field} from #{source}#{path_clause(source, path)}: #{inspect(reason)}.
+    Failed to parse #{field} from #{src}#{path_clause(src, path)}: #{inspect(reason)}.
     peridiod cannot start with an invalid identity.
-    #{remediation_hint(source)}\
+    #{remediation_hint(src)}\
     """
   end
 

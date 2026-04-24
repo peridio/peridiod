@@ -29,6 +29,14 @@ defmodule Peridiod.Config.PKCS11 do
 
   defp add_certificate(base_config, %{"cert_id" => cert_id})
        when is_binary(cert_id) and cert_id != "" do
+    unless System.find_executable("p11tool") do
+      raise Peridiod.Certificate.ParseError,
+        field: :certificate,
+        source: "pkcs11",
+        path: "cert_id=#{cert_id}",
+        reason: :p11tool_not_found
+    end
+
     cert =
       case System.cmd("p11tool", ["--export-stapled", cert_id], stderr_to_stdout: true) do
         {cert_pem, 0} ->
