@@ -555,14 +555,34 @@ defmodule Peridiod.Cache do
   end
 
   defp process_euid do
-    case System.cmd("id", ["-u"]) do
-      {uid_str, 0} -> uid_str |> String.trim() |> String.to_integer()
-      _ -> nil
+    case System.find_executable("id") do
+      nil ->
+        Logger.warning("[Cache] Cannot determine effective uid: `id` executable not found")
+        nil
+
+      id_path ->
+        try do
+          case System.cmd(id_path, ["-u"]) do
+            {uid_str, 0} -> uid_str |> String.trim() |> String.to_integer()
+            _ -> nil
+          end
+        rescue
+          error ->
+            Logger.warning("[Cache] Cannot determine effective uid: #{Exception.message(error)}")
+
+            nil
+        end
     end
   end
 
   defp check_dir(path, euid) do
-    case File.stat(path) do
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: type}} when type != :directory ->
+        Logger.warning(
+          "[Cache] #{path} is not a directory (type: #{type}). " <>
+            "Skipping permission check to avoid operating on unintended targets."
+        )
+
       {:ok, %File.Stat{mode: mode, uid: uid}} ->
         perm = band(mode, 0o777)
 
@@ -572,7 +592,15 @@ defmodule Peridiod.Cache do
               "expected 0700. Cached data may be readable by other users."
           )
 
-          File.chmod(path, 0o700)
+          case File.chmod(path, 0o700) do
+            :ok ->
+              :ok
+
+            {:error, reason} ->
+              Logger.warning(
+                "[Cache] Failed to correct permissions on #{path}: #{inspect(reason)}"
+              )
+          end
         end
 
         if not is_nil(euid) and uid != euid do
@@ -584,7 +612,14 @@ defmodule Peridiod.Cache do
 
       {:error, :enoent} ->
         :ok = File.mkdir_p(path)
-        File.chmod(path, 0o700)
+
+        case File.chmod(path, 0o700) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning("[Cache] Failed to set permissions on #{path}: #{inspect(reason)}")
+        end
 
       {:error, reason} ->
         Logger.warning("[Cache] Cannot stat #{path}: #{inspect(reason)}")
