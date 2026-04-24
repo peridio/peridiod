@@ -40,8 +40,8 @@ cp peridiod-state %{buildroot}/var/peridiod/peridiod-state
 mkdir -p /var/peridiod
 
 # Ensure proper permissions
-chmod 755 /var/peridiod
-chmod 644 /var/peridiod/peridiod-state
+chmod 700 /var/peridiod
+chmod 600 /var/peridiod/peridiod-state
 
 %files
 /usr/lib/peridiod/*
@@ -49,7 +49,7 @@ chmod 644 /var/peridiod/peridiod-state
 /etc/peridiod/peridio.json
 /etc/peridiod/peridiod.env
 %dir /var/peridiod
-%config(noreplace) %attr(644, root, root) /var/peridiod/peridiod-state
+%config(noreplace) %attr(600, root, root) /var/peridiod/peridiod-state
 
 %changelog
 $PERIDIOD_CHANGELOG
