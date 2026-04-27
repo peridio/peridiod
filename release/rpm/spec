@@ -42,7 +42,9 @@ mkdir -p /var/peridiod
 
 # Ensure proper permissions
 chmod 700 /var/peridiod
-chmod 600 /var/peridiod/peridiod-state
+if [ -e /var/peridiod/peridiod-state ]; then
+  chmod 600 /var/peridiod/peridiod-state
+fi
 
 %files
 /usr/lib/peridiod/*

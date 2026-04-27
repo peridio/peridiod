@@ -551,7 +551,16 @@ defmodule Peridiod.Cache do
   defp init_cache_dir(cache_dir) do
     euid = process_euid()
     check_dir(cache_dir, euid)
-    check_dir(Path.join(cache_dir, "log"), euid)
+
+    case File.lstat(cache_dir) do
+      {:ok, %File.Stat{type: :symlink}} ->
+        Logger.warning(
+          "[Cache] Skipping log directory initialization for symlinked cache_dir: #{cache_dir}"
+        )
+
+      _ ->
+        check_dir(Path.join(cache_dir, "log"), euid)
+    end
   end
 
   defp process_euid do
@@ -581,7 +590,7 @@ defmodule Peridiod.Cache do
         # Inspect the symlink target's mode/uid for warnings, but refuse to
         # chmod through the symlink to avoid modifying unintended targets.
         case File.stat(path) do
-          {:ok, %File.Stat{mode: mode, uid: uid}} ->
+          {:ok, %File.Stat{type: :directory, mode: mode, uid: uid}} ->
             perm = band(mode, 0o777)
 
             if perm != 0o700 do
@@ -597,6 +606,12 @@ defmodule Peridiod.Cache do
                   "Ensure the target directory is owned by the daemon user."
               )
             end
+
+          {:ok, %File.Stat{type: type}} ->
+            Logger.warning(
+              "[Cache] #{path} is a symlink pointing to a non-directory (type: #{type}). " <>
+                "Skipping permission check."
+            )
 
           {:error, reason} ->
             Logger.warning(
