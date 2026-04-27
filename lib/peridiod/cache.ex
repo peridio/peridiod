@@ -549,23 +549,122 @@ defmodule Peridiod.Cache do
   end
 
   defp init_cache_dir(cache_dir) do
-    case File.stat(cache_dir) do
-      {:ok, %File.Stat{mode: mode}} ->
+    euid = process_euid()
+    check_dir(cache_dir, euid)
+
+    case File.lstat(cache_dir) do
+      {:ok, %File.Stat{type: :symlink}} ->
+        Logger.warning(
+          "[Cache] Skipping log directory initialization for symlinked cache_dir: #{cache_dir}"
+        )
+
+      _ ->
+        check_dir(Path.join(cache_dir, "log"), euid)
+    end
+  end
+
+  defp process_euid do
+    case System.find_executable("id") do
+      nil ->
+        Logger.warning("[Cache] Cannot determine effective uid: `id` executable not found")
+        nil
+
+      id_path ->
+        try do
+          case System.cmd(id_path, ["-u"]) do
+            {uid_str, 0} -> uid_str |> String.trim() |> String.to_integer()
+            _ -> nil
+          end
+        rescue
+          error ->
+            Logger.warning("[Cache] Cannot determine effective uid: #{Exception.message(error)}")
+
+            nil
+        end
+    end
+  end
+
+  defp check_dir(path, euid) do
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: :symlink}} ->
+        # Inspect the symlink target's mode/uid for warnings, but refuse to
+        # chmod through the symlink to avoid modifying unintended targets.
+        case File.stat(path) do
+          {:ok, %File.Stat{type: :directory, mode: mode, uid: uid}} ->
+            perm = band(mode, 0o777)
+
+            if perm != 0o700 do
+              Logger.warning(
+                "[Cache] #{path} is a symlink; target has mode 0#{Integer.to_string(perm, 8)}, " <>
+                  "expected 0700. Skipping chmod — ensure the target directory has mode 0700."
+              )
+            end
+
+            if not is_nil(euid) and uid != euid do
+              Logger.warning(
+                "[Cache] #{path} is a symlink; target is owned by uid #{uid}, expected #{euid}. " <>
+                  "Ensure the target directory is owned by the daemon user."
+              )
+            end
+
+          {:ok, %File.Stat{type: type}} ->
+            Logger.warning(
+              "[Cache] #{path} is a symlink pointing to a non-directory (type: #{type}). " <>
+                "Skipping permission check."
+            )
+
+          {:error, reason} ->
+            Logger.warning(
+              "[Cache] #{path} is a symlink but cannot stat target: #{inspect(reason)}"
+            )
+        end
+
+      {:ok, %File.Stat{type: type}} when type != :directory ->
+        Logger.warning(
+          "[Cache] #{path} is not a directory (type: #{type}). " <>
+            "Skipping permission check to avoid operating on unintended targets."
+        )
+
+      {:ok, %File.Stat{mode: mode, uid: uid}} ->
         perm = band(mode, 0o777)
 
         if perm != 0o700 do
           Logger.warning(
-            "[Cache] cache_dir #{cache_dir} has mode 0#{Integer.to_string(perm, 8)}, " <>
+            "[Cache] #{path} has mode 0#{Integer.to_string(perm, 8)}, " <>
               "expected 0700. Cached data may be readable by other users."
+          )
+
+          case File.chmod(path, 0o700) do
+            :ok ->
+              :ok
+
+            {:error, reason} ->
+              Logger.warning(
+                "[Cache] Failed to correct permissions on #{path}: #{inspect(reason)}"
+              )
+          end
+        end
+
+        if not is_nil(euid) and uid != euid do
+          Logger.warning(
+            "[Cache] #{path} is owned by uid #{uid}, expected #{euid}. " <>
+              "Ensure #{path} is owned by the daemon user."
           )
         end
 
       {:error, :enoent} ->
-        :ok = File.mkdir_p(cache_dir)
-        File.chmod(cache_dir, 0o700)
+        :ok = File.mkdir_p(path)
+
+        case File.chmod(path, 0o700) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning("[Cache] Failed to set permissions on #{path}: #{inspect(reason)}")
+        end
 
       {:error, reason} ->
-        Logger.warning("[Cache] Cannot stat cache_dir #{cache_dir}: #{inspect(reason)}")
+        Logger.warning("[Cache] Cannot stat #{path}: #{inspect(reason)}")
     end
   end
 end
