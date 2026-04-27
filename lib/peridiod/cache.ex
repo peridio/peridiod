@@ -577,6 +577,33 @@ defmodule Peridiod.Cache do
 
   defp check_dir(path, euid) do
     case File.lstat(path) do
+      {:ok, %File.Stat{type: :symlink}} ->
+        # Inspect the symlink target's mode/uid for warnings, but refuse to
+        # chmod through the symlink to avoid modifying unintended targets.
+        case File.stat(path) do
+          {:ok, %File.Stat{mode: mode, uid: uid}} ->
+            perm = band(mode, 0o777)
+
+            if perm != 0o700 do
+              Logger.warning(
+                "[Cache] #{path} is a symlink; target has mode 0#{Integer.to_string(perm, 8)}, " <>
+                  "expected 0700. Skipping chmod — ensure the target directory has mode 0700."
+              )
+            end
+
+            if not is_nil(euid) and uid != euid do
+              Logger.warning(
+                "[Cache] #{path} is a symlink; target is owned by uid #{uid}, expected #{euid}. " <>
+                  "Ensure the target directory is owned by the daemon user."
+              )
+            end
+
+          {:error, reason} ->
+            Logger.warning(
+              "[Cache] #{path} is a symlink but cannot stat target: #{inspect(reason)}"
+            )
+        end
+
       {:ok, %File.Stat{type: type}} when type != :directory ->
         Logger.warning(
           "[Cache] #{path} is not a directory (type: #{type}). " <>

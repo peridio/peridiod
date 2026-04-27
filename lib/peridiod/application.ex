@@ -36,8 +36,6 @@ defmodule Peridiod.Application do
     :logger.remove_handler(:peridiod_cache_log)
 
     with :ok <- File.mkdir_p(log_dir),
-         :ok <- File.chmod(cache_dir, 0o700),
-         :ok <- File.chmod(log_dir, 0o700),
          :ok <-
            :logger.add_handler(:peridiod_cache_log, :logger_std_h, %{
              config: %{
