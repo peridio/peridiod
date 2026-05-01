@@ -255,7 +255,8 @@ defmodule Peridiod.Config do
       |> Map.put(:ssl,
         server_name_indication: to_charlist(config.device_api_host),
         verify: verify,
-        cacertfile: config.device_api_ca_certificate_path
+        cacertfile: config.device_api_ca_certificate_path,
+        versions: [:"tlsv1.2", :"tlsv1.3"]
       )
 
     case config.key_pair_source do
