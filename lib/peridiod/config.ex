@@ -414,7 +414,6 @@ defmodule Peridiod.Config do
     ssl =
       base.ssl
       |> Keyword.put_new(:verify, :verify_peer)
-      |> Keyword.put_new(:versions, [:"tlsv1.2"])
       |> Keyword.put_new(:server_name_indication, to_charlist(base.device_api_sni))
 
     %{base | socket: socket, ssl: ssl}
