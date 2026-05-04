@@ -28,6 +28,7 @@ mkdir -p %{buildroot}/usr/lib/systemd/system
 mkdir -p %{buildroot}/usr/lib/peridiod
 mkdir -p %{buildroot}/etc/peridiod
 mkdir -p %{buildroot}/var/peridiod
+chmod 700 %{buildroot}/var/peridiod
 
 cp -r peridiod/* %{buildroot}/usr/lib/peridiod
 cp peridiod.service %{buildroot}/usr/lib/systemd/system
@@ -40,16 +41,18 @@ cp peridiod-state %{buildroot}/var/peridiod/peridiod-state
 mkdir -p /var/peridiod
 
 # Ensure proper permissions
-chmod 755 /var/peridiod
-chmod 644 /var/peridiod/peridiod-state
+chmod 700 /var/peridiod
+if [ -e /var/peridiod/peridiod-state ]; then
+  chmod 600 /var/peridiod/peridiod-state
+fi
 
 %files
 /usr/lib/peridiod/*
 /usr/lib/systemd/system/peridiod.service
 /etc/peridiod/peridio.json
 /etc/peridiod/peridiod.env
-%dir /var/peridiod
-%config(noreplace) %attr(644, root, root) /var/peridiod/peridiod-state
+%dir %attr(700, root, root) /var/peridiod
+%config(noreplace) %attr(600, root, root) /var/peridiod/peridiod-state
 
 %changelog
 $PERIDIOD_CHANGELOG

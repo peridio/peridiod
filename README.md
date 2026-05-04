@@ -11,3 +11,18 @@ Peridio offers several ways to integrate peridiod into your build workflow via t
 * As part of an existing [Elixir based application](https://github.com/peridio/peridio-nerves-example).
 
 See the [Peridio Daemon Docs](https://docs.peridio.com/peridio-core/tools/peridio-daemon/overview) for more information
+
+## Filesystem permissions
+
+peridiod stores cached firmware binaries, encryption key material, HMAC signatures, and log files under `cache_dir`. This directory and its `log/` subdirectory must be restricted to the daemon user to prevent exposure of sensitive data to other local users.
+
+| Path | Required mode | Required owner |
+|---|---|---|
+| `cache_dir` (default `/var/lib/peridiod`) | `0700` | daemon user (root by default) |
+| `{cache_dir}/log` | `0700` | daemon user (root by default) |
+
+Packaged installs (deb/rpm) set `cache_dir` to `/var/peridiod` and create it at `0700` automatically.
+
+If peridiod detects a drift from these requirements at startup it logs a warning and attempts to correct the mode, but continues running. If ownership does not match the daemon user, a warning is logged.
+
+**Symlinks:** If `cache_dir` or `{cache_dir}/log` is a symlink, peridiod will inspect the target's mode and ownership and warn on non-compliance, but will not attempt to `chmod` through the symlink. In this case you must ensure the target directory has mode `0700` and the correct owner before starting the daemon.
