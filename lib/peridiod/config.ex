@@ -256,7 +256,7 @@ defmodule Peridiod.Config do
         server_name_indication: to_charlist(config.device_api_host),
         verify: verify,
         cacertfile: config.device_api_ca_certificate_path,
-        versions: [:"tlsv1.2", :"tlsv1.3"]
+        versions: [:"tlsv1.3", :"tlsv1.2"]
       )
 
     case config.key_pair_source do

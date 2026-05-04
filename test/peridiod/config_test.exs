@@ -29,7 +29,8 @@ defmodule Peridiod.ConfigTest do
     test "ssl options include both TLS 1.2 and TLS 1.3" do
       with_config_file("test/fixtures/peridio.json", fn ->
         config = build_config()
-        assert config.ssl[:versions] == [:"tlsv1.2", :"tlsv1.3"]
+        assert :"tlsv1.2" in config.ssl[:versions]
+        assert :"tlsv1.3" in config.ssl[:versions]
       end)
     end
   end
