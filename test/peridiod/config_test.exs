@@ -25,6 +25,16 @@ defmodule Peridiod.ConfigTest do
     end
   end
 
+  describe "tls versions" do
+    test "ssl options include both TLS 1.2 and TLS 1.3" do
+      with_config_file("test/fixtures/peridio.json", fn ->
+        config = build_config()
+        assert :"tlsv1.2" in config.ssl[:versions]
+        assert :"tlsv1.3" in config.ssl[:versions]
+      end)
+    end
+  end
+
   describe "device_api_verify" do
     test "struct default is :verify_peer" do
       assert %Peridiod.Config{}.device_api_verify == :verify_peer
