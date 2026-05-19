@@ -666,15 +666,13 @@ defmodule Peridiod.Binary.Downloader do
 
   @doc false
   def bound_interface_transport_opts do
-    case Process.whereis(NetworkMonitor) do
-      nil ->
-        []
-
-      _pid ->
-        case NetworkMonitor.get_bound_interface() do
-          nil -> []
-          ifname -> [bind_to_device: ifname]
-        end
+    try do
+      case NetworkMonitor.get_bound_interface() do
+        nil -> []
+        ifname -> [bind_to_device: ifname]
+      end
+    catch
+      :exit, _ -> []
     end
   end
 end

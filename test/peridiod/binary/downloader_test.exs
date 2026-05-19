@@ -302,5 +302,14 @@ defmodule Peridiod.Binary.DownloaderTest do
 
       assert Downloader.bound_interface_transport_opts() == [bind_to_device: "eth0"]
     end
+
+    test "returns empty transport opts when NetworkMonitor is not running" do
+      pid = Process.whereis(NetworkMonitor)
+      ref = Process.monitor(pid)
+      Process.exit(pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :killed}
+
+      assert Downloader.bound_interface_transport_opts() == []
+    end
   end
 end
