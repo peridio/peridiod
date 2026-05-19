@@ -615,7 +615,10 @@ defmodule Peridiod.Binary.Downloader do
 
     transport_opts = bound_interface_transport_opts()
 
-    with {:ok, conn} <- Mint.HTTP.connect(String.to_existing_atom(scheme), host, port, transport_opts: transport_opts),
+    with {:ok, conn} <-
+           Mint.HTTP.connect(String.to_existing_atom(scheme), host, port,
+             transport_opts: transport_opts
+           ),
          {:ok, conn, request_ref} <- Mint.HTTP.request(conn, "GET", path, request_headers, nil) do
       {:ok,
        %Downloader{
@@ -661,9 +664,12 @@ defmodule Peridiod.Binary.Downloader do
   defp add_user_agent_header(headers, _),
     do: [{"User-Agent", "Peridiod/#{Application.spec(:peridiod)[:vsn]}"} | headers]
 
-  defp bound_interface_transport_opts do
+  @doc false
+  def bound_interface_transport_opts do
     case Process.whereis(NetworkMonitor) do
-      nil -> []
+      nil ->
+        []
+
       _pid ->
         case NetworkMonitor.get_bound_interface() do
           nil -> []

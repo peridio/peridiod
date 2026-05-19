@@ -3,6 +3,7 @@ defmodule Peridiod.Binary.DownloaderTest do
   alias Peridiod.Binary.Downloader
   alias Peridiod.Binary.Downloader.RetryConfig
   alias Peridiod.Binary.Downloader.VerifyConfig
+  alias Peridiod.Cloud.NetworkMonitor
 
   # SHA-256 of test/fixtures/binaries/1M.bin
   @bin_1m_hash Base.decode16!("a073ad730e540107fbb92ee48baab97c9bc16105333a42b15a53bcc183f6f5c2",
@@ -278,6 +279,28 @@ defmodule Peridiod.Binary.DownloaderTest do
       # downloaded_length (existing + new bytes) will equal expected_size.
       assert_receive {:handler_received, :complete}, 5000
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
+    end
+  end
+
+  describe "interface binding" do
+    test "returns empty transport opts when no interface is bound" do
+      # NetworkMonitor starts with bound_interface: nil in the test environment
+      assert NetworkMonitor.get_bound_interface() == nil
+      assert Downloader.bound_interface_transport_opts() == []
+    end
+
+    test "returns bind_to_device transport opt for the currently bound interface" do
+      original = :sys.get_state(NetworkMonitor)
+
+      on_exit(fn ->
+        :sys.replace_state(NetworkMonitor, fn _ -> original end)
+      end)
+
+      :sys.replace_state(NetworkMonitor, fn state ->
+        %{state | bound_interface: {"eth0", %NetworkMonitor.InterfaceInfo{}}}
+      end)
+
+      assert Downloader.bound_interface_transport_opts() == [bind_to_device: "eth0"]
     end
   end
 end
