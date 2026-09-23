@@ -154,6 +154,133 @@ defmodule Peridiod.ConfigTest do
     # certificate_from_pem_file!/2 tests in certificate_test.exs.
   end
 
+  describe "device_api CA pinning" do
+    # Mirrors production's chain shape: a self-signed root issues a non-self-signed
+    # intermediate CA (the thing peridiod pins), which issues the leaf the server
+    # presents. Exercises a real TLS handshake so it also proves the `cacerts` +
+    # `partial_chain` combination (not just `cacertfile`) trusts a pinned CA that
+    # isn't self-signed, which plain :ssl path validation does not do by default.
+    defp issue_chain(leaf_sans) do
+      root_key = X509.PrivateKey.new_ec(:secp256r1)
+      root = X509.Certificate.self_signed(root_key, "/O=Test/CN=Test Root CA", template: :root_ca)
+
+      intermediate_key = X509.PrivateKey.new_ec(:secp256r1)
+
+      intermediate =
+        X509.Certificate.new(
+          X509.PublicKey.derive(intermediate_key),
+          "/O=Test/CN=Test Intermediate CA",
+          root,
+          root_key,
+          template: :ca
+        )
+
+      leaf_key = X509.PrivateKey.new_ec(:secp256r1)
+
+      leaf =
+        X509.Certificate.new(
+          X509.PublicKey.derive(leaf_key),
+          "/O=Test/CN=Test Leaf",
+          intermediate,
+          intermediate_key,
+          template: :server,
+          extensions: [subject_alt_name: X509.Certificate.Extension.subject_alt_name(leaf_sans)]
+        )
+
+      %{
+        intermediate_pem: X509.Certificate.to_pem(intermediate),
+        chain_pem: X509.Certificate.to_pem(leaf) <> X509.Certificate.to_pem(intermediate),
+        leaf_key_pem: X509.PrivateKey.to_pem(leaf_key)
+      }
+    end
+
+    defp start_tls_server(chain_pem, key_pem) do
+      certfile = write_tmp!(chain_pem, ".pem")
+      keyfile = write_tmp!(key_pem, ".pem")
+
+      {:ok, listen_socket} =
+        :ssl.listen(0, certfile: to_charlist(certfile), keyfile: to_charlist(keyfile))
+
+      {:ok, {_ip, port}} = :ssl.sockname(listen_socket)
+
+      {:ok, pid} =
+        Task.start_link(fn ->
+          case :ssl.transport_accept(listen_socket, 5000) do
+            {:ok, tls_socket} -> :ssl.handshake(tls_socket, 5000)
+            {:error, _} -> :ok
+          end
+        end)
+
+      on_exit(fn ->
+        :ssl.close(listen_socket)
+        File.rm(certfile)
+        File.rm(keyfile)
+      end)
+
+      {port, pid}
+    end
+
+    defp write_tmp!(content, suffix) do
+      path =
+        Path.join(System.tmp_dir!(), "eng2676-#{System.unique_integer([:positive])}#{suffix}")
+
+      File.write!(path, content)
+      path
+    end
+
+    defp build_config_for(ca_pem, port) do
+      ca_path = write_tmp!(ca_pem, ".pem")
+      on_exit(fn -> File.rm(ca_path) end)
+
+      config_json =
+        Jason.encode!(%{
+          "version" => 1,
+          "device_api" => %{
+            "certificate_path" => ca_path,
+            "url" => "localhost:#{port}",
+            "verify" => true
+          },
+          "fwup" => %{"devpath" => "/dev/mmcblk0", "public_keys" => []},
+          "node" => %{
+            "key_pair_source" => "file",
+            "key_pair_config" => %{
+              "private_key_path" => "test/fixtures/device/device-private-key.pem",
+              "certificate_path" => "test/fixtures/device/device-certificate.pem"
+            }
+          }
+        })
+
+      config_path = write_tmp!(config_json, ".json")
+      on_exit(fn -> File.rm(config_path) end)
+
+      with_config_file(config_path, fn -> build_config() end)
+    end
+
+    test "accepts a leaf issued by the pinned (non-self-signed) intermediate CA" do
+      %{intermediate_pem: intermediate_pem, chain_pem: chain_pem, leaf_key_pem: leaf_key_pem} =
+        issue_chain(["localhost"])
+
+      {port, _server} = start_tls_server(chain_pem, leaf_key_pem)
+      config = build_config_for(intermediate_pem, port)
+
+      assert {:ok, socket} =
+               :ssl.connect(~c"localhost", port, config.ssl ++ [active: false], 5000)
+
+      :ssl.close(socket)
+    end
+
+    test "rejects a leaf issued by a CA that was not pinned" do
+      %{chain_pem: chain_pem, leaf_key_pem: leaf_key_pem} = issue_chain(["localhost"])
+      %{intermediate_pem: other_intermediate_pem} = issue_chain(["localhost"])
+
+      {port, _server} = start_tls_server(chain_pem, leaf_key_pem)
+      config = build_config_for(other_intermediate_pem, port)
+
+      assert {:error, {:tls_alert, {:unknown_ca, _}}} =
+               :ssl.connect(~c"localhost", port, config.ssl ++ [active: false], 5000)
+    end
+  end
+
   describe "resolve_verify/2" do
     test "returns :verify_peer unchanged" do
       assert Peridiod.Config.resolve_verify(:verify_peer, true) == :verify_peer

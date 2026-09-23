@@ -252,12 +252,7 @@ defmodule Peridiod.Config do
       |> Map.put(:socket,
         url: "wss://#{config.device_api_host}:#{config.device_api_port}/socket/websocket"
       )
-      |> Map.put(:ssl,
-        server_name_indication: to_charlist(config.device_api_host),
-        verify: verify,
-        cacertfile: config.device_api_ca_certificate_path,
-        versions: [:"tlsv1.3", :"tlsv1.2"]
-      )
+      |> Map.put(:ssl, device_api_ssl_opts(config, verify))
 
     case config.key_pair_source do
       "file" ->
@@ -430,6 +425,67 @@ defmodule Peridiod.Config do
   end
 
   def resolve_verify(verify, _env_prod?), do: verify
+
+  defp device_api_ssl_opts(config, verify) do
+    base_opts = [
+      server_name_indication: to_charlist(config.device_api_host),
+      verify: verify,
+      versions: [:"tlsv1.3", :"tlsv1.2"]
+    ]
+
+    case load_trusted_cacerts(config.device_api_ca_certificate_path) do
+      [] ->
+        base_opts
+
+      cacerts ->
+        # cacerts (rather than cacertfile) + partial_chain lets a pinned cert be an
+        # intermediate/root CA, not just an exact leaf match: :ssl's default path
+        # validation only trusts self-signed roots, so a non-self-signed pinned CA
+        # (like "Peridio Server Root CA", itself issued by a legacy NervesHub root)
+        # needs partial_chain to be accepted as a trust anchor.
+        base_opts ++
+          [cacerts: cacerts, partial_chain: &trusted_partial_chain(cacerts, &1)]
+    end
+  end
+
+  defp load_trusted_cacerts(nil), do: []
+
+  defp load_trusted_cacerts(path) do
+    case File.read(path) do
+      {:ok, pem} ->
+        certs =
+          pem
+          |> :public_key.pem_decode()
+          |> Enum.flat_map(fn
+            {:Certificate, der, _} -> [der]
+            _ -> []
+          end)
+
+        if certs == [] do
+          raise Peridiod.Certificate.ParseError,
+            field: :device_api_ca_certificate,
+            source: "file",
+            path: path,
+            reason: :no_certificates_found
+        end
+
+        certs
+
+      {:error, reason} ->
+        raise Peridiod.Certificate.ParseError,
+          field: :device_api_ca_certificate,
+          source: "file",
+          path: path,
+          reason: {:file_read_error, reason}
+    end
+  end
+
+  defp trusted_partial_chain(cacerts, certs_in_chain) do
+    case Enum.find(certs_in_chain, &(&1 in cacerts)) do
+      nil -> :unknown_ca
+      trusted -> {:trusted_ca, trusted}
+    end
+  end
 
   def load_trusted_signing_keys(trusted_signing_keys) do
     Enum.reduce(trusted_signing_keys, [], fn key, signing_keys ->
