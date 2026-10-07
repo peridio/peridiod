@@ -36,11 +36,11 @@ defmodule Peridiod.MixProject do
   #
   # Safe to suppress here specifically: cowlib only enters this project transitively
   # via plug_cowboy, which is `only: :test` (see deps/0) — `mix deps.tree --only prod`
-  # confirms cowboy/cowlib are absent from the production release entirely. Both
-  # advisories are also encoder-side paths (cow_cookie:cookie/1 builds Cookie request
-  # headers, cow_http_struct_hd:escape_string/2 encodes structured headers) that would
-  # only be reachable from a cowboy HTTP *server*, which peridiod never runs in
-  # production regardless.
+  # confirms cowboy/cowlib are absent from the production release entirely. That is
+  # the whole justification. Both advisories are in header encoders
+  # (cow_cookie:cookie/1 builds client-side Cookie request headers,
+  # cow_http_struct_hd:escape_string/2 encodes structured headers), which do not need
+  # a cowboy HTTP server, so they would apply if cowlib were ever part of a release.
   #
   # NOT self-cleaning: hex.audit only warns on a stale entry, it doesn't fail the
   # build, so this list can silently outlive the fix. Tracked in ENG-2677 to re-check
