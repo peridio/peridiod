@@ -25,6 +25,7 @@ defmodule Peridiod.Binary.Downloader do
   }
 
   alias Peridiod.Cloud.NetworkMonitor
+  alias Peridiod.Binary.HttpError
   alias Peridiod.LogSanitizer
 
   require Logger
@@ -46,7 +47,9 @@ defmodule Peridiod.Binary.Downloader do
             worst_case_timeout: nil,
             worst_case_timeout_remaining_ms: nil,
             verify_config: nil,
-            hash_state: nil
+            hash_state: nil,
+            error_body: "",
+            error_done: false
 
   @type handler_event :: {:stream, binary()} | {:error, any()} | :complete
   @type event_handler_fun :: (handler_event -> any())
@@ -73,7 +76,9 @@ defmodule Peridiod.Binary.Downloader do
           worst_case_timeout: nil | timer(),
           worst_case_timeout_remaining_ms: nil | non_neg_integer(),
           verify_config: nil | VerifyConfig.t(),
-          hash_state: nil | :crypto.hash_state()
+          hash_state: nil | :crypto.hash_state(),
+          error_body: binary(),
+          error_done: boolean()
         }
 
   @type initialized_download :: %Downloader{
@@ -211,7 +216,13 @@ defmodule Peridiod.Binary.Downloader do
     {:ok, state}
   end
 
-  def init([id, %URI{} = uri, fun, %RetryConfig{} = retry_args, %VerifyConfig{} = verify_config]) do
+  def init([
+        id,
+        %URI{} = uri,
+        fun,
+        %RetryConfig{} = retry_args,
+        %VerifyConfig{} = verify_config
+      ]) do
     timer = Process.send_after(self(), :max_timeout, retry_args.max_timeout)
     Logger.info("[Stream Downloader #{id}] Started with integrity verification")
 
@@ -397,8 +408,8 @@ defmodule Peridiod.Binary.Downloader do
 
   defp handle_responses([response | rest], %Downloader{} = state) do
     case handle_response(response, state) do
-      # this `status != nil` thing seems really weird. Shouldn't be needed.
-      %Downloader{status: status} = state when status != nil and status >= 400 ->
+      # a failed response is only final once its body has been read
+      %Downloader{error_done: true} = state ->
         # Normal exit prevents supervisor restart
         {:stop, :normal, state}
 
@@ -439,15 +450,13 @@ defmodule Peridiod.Binary.Downloader do
     %Downloader{state | status: status}
   end
 
-  # the handle_responses/2 function checks this value again because this function only handles state
+  # The error is reported once the body has arrived, see the `:done` clause
   def handle_response(
         {:status, request_ref, status},
-        %Downloader{request_ref: request_ref, uri: uri} = state
+        %Downloader{request_ref: request_ref} = state
       )
       when status >= 400 do
-    # Send fatal error with URL for logging, then mark for clean shutdown
-    state.handler_fun.({:fatal_http_error, status, uri})
-    %Downloader{state | status: status}
+    %Downloader{state | status: status, error_body: "", error_done: false}
   end
 
   def handle_response(
@@ -456,6 +465,15 @@ defmodule Peridiod.Binary.Downloader do
       )
       when status >= 200 and status < 300 do
     %Downloader{state | status: status}
+  end
+
+  # headers of a failed response aren't a download
+  def handle_response(
+        {:headers, request_ref, _headers},
+        %Downloader{request_ref: request_ref, status: status} = state
+      )
+      when is_integer(status) and status >= 400 do
+    state
   end
 
   # handles HTTP redirects.
@@ -515,6 +533,15 @@ defmodule Peridiod.Binary.Downloader do
     })
   end
 
+  # the body of a failed response is an error document, not firmware
+  def handle_response(
+        {:data, request_ref, data},
+        %Downloader{request_ref: request_ref, status: status, error_body: body} = state
+      )
+      when is_integer(status) and status >= 400 do
+    %Downloader{state | error_body: HttpError.append_body(body, data)}
+  end
+
   def handle_response(
         {:data, request_ref, data},
         %Downloader{request_ref: request_ref, downloaded_length: downloaded} = state
@@ -522,6 +549,16 @@ defmodule Peridiod.Binary.Downloader do
     _ = state.handler_fun.({:stream, data})
     hash_state = if state.hash_state, do: :crypto.hash_update(state.hash_state, data), else: nil
     %Downloader{state | downloaded_length: downloaded + byte_size(data), hash_state: hash_state}
+  end
+
+  def handle_response(
+        {:done, request_ref},
+        %Downloader{request_ref: request_ref, status: status, uri: uri} = state
+      )
+      when is_integer(status) and status >= 400 do
+    detail = HttpError.parse(state.error_body)
+    state.handler_fun.({:fatal_http_error, status, uri, detail})
+    %Downloader{state | error_done: true}
   end
 
   def handle_response({:done, request_ref}, %Downloader{request_ref: request_ref} = state) do
@@ -586,7 +623,9 @@ defmodule Peridiod.Binary.Downloader do
         downloaded_length: 0,
         initial_downloaded_length: 0,
         content_length: 0,
-        hash_state: hash_state
+        hash_state: hash_state,
+        error_body: "",
+        error_done: false
     }
   end
 

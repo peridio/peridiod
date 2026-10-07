@@ -22,6 +22,28 @@ defmodule PeridiodTest.StaticRouter do
     send_resp(conn, 404, "Not Found")
   end
 
+  # S3 style error documents
+  get "/s3/expired-token" do
+    send_resp(
+      conn,
+      400,
+      s3_error("ExpiredToken", "The provided token has expired.")
+    )
+  end
+
+  get "/s3/request-expired" do
+    send_resp(conn, 403, s3_error("AccessDenied", "Request has expired"))
+  end
+
+  get "/s3/invalid-argument" do
+    send_resp(conn, 400, s3_error("InvalidArgument", "Invalid argument."))
+  end
+
+  defp s3_error(code, message) do
+    ~s(<?xml version="1.0" encoding="UTF-8"?>\n) <>
+      "<Error><Code>#{code}</Code><Message>#{message}</Message></Error>"
+  end
+
   match _ do
     send_resp(conn, 404, "Not Found")
   end

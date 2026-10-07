@@ -236,9 +236,9 @@ defmodule Peridiod.Distribution.Server do
     end
   end
 
-  def handle_info({:download, {:fatal_http_error, status, uri}}, state) do
+  def handle_info({:download, {:fatal_http_error, status, uri, detail}}, state) do
     Logger.error(
-      "[Distributions] Fatal HTTP error #{status} downloading firmware. " <>
+      "[Distributions] Fatal HTTP error #{status}#{error_code_suffix(detail)} downloading firmware. " <>
         "URL: #{LogSanitizer.sanitize_uri(uri)} - Update aborted, ready for new update."
     )
 
@@ -632,6 +632,9 @@ defmodule Peridiod.Distribution.Server do
   end
 
   defp get_file_info(_), do: %{size: "invalid path", hash: "invalid path"}
+
+  defp error_code_suffix(%{code: code}) when is_binary(code), do: " (#{code})"
+  defp error_code_suffix(_detail), do: ""
 
   defp start_downloader(firmware_uuid, firmware_url, updater_fun) do
     Downloader.Supervisor.start_child(firmware_uuid, firmware_url, updater_fun)

@@ -3,6 +3,35 @@ defmodule Peridiod.Binary.ChunkDownloaderTest do
   alias Peridiod.Binary.ChunkDownloader
   alias Peridiod.Binary.Downloader.RetryConfig
 
+  describe "S3 error detail" do
+    @tag capture_log: true
+    test "reports the S3 error code from a 400 response" do
+      test_pid = self()
+      handler_fun = fn message -> send(test_pid, {:handler_received, message}) end
+      url = URI.parse("http://localhost:4001/s3/expired-token")
+
+      {:ok, pid} =
+        ChunkDownloader.start(
+          "test-chunk-s3",
+          url,
+          0,
+          0,
+          1000,
+          "test-chunk-s3.part0000",
+          handler_fun,
+          %RetryConfig{}
+        )
+
+      ref = Process.monitor(pid)
+
+      assert_receive {:handler_received,
+                      {:fatal_http_error, 400, %URI{}, %{code: "ExpiredToken"}}},
+                     2000
+
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
+    end
+  end
+
   describe "fatal HTTP error handling" do
     @tag capture_log: true
     test "sends fatal_http_error message on HTTP 400" do
@@ -27,7 +56,7 @@ defmodule Peridiod.Binary.ChunkDownloaderTest do
       ref = Process.monitor(downloader_pid)
 
       # Should receive fatal error message
-      assert_receive {:handler_received, {:fatal_http_error, 400, %URI{} = uri}}, 2000
+      assert_receive {:handler_received, {:fatal_http_error, 400, %URI{} = uri, _detail}}, 2000
       assert URI.to_string(uri) =~ "/error/400"
 
       # Should exit with :normal (not crash)
@@ -56,7 +85,7 @@ defmodule Peridiod.Binary.ChunkDownloaderTest do
 
       ref = Process.monitor(downloader_pid)
 
-      assert_receive {:handler_received, {:fatal_http_error, 403, %URI{}}}, 2000
+      assert_receive {:handler_received, {:fatal_http_error, 403, %URI{}, _detail}}, 2000
       assert_receive {:DOWN, ^ref, :process, ^downloader_pid, :normal}, 2000
     end
 
@@ -83,7 +112,7 @@ defmodule Peridiod.Binary.ChunkDownloaderTest do
       ref = Process.monitor(downloader_pid)
 
       assert_receive {:DOWN, ^ref, :process, ^downloader_pid, :normal}, 2000
-      assert_received {:handler_received, {:fatal_http_error, 404, %URI{}}}
+      assert_received {:handler_received, {:fatal_http_error, 404, %URI{}, _detail}}
     end
   end
 
@@ -116,7 +145,7 @@ defmodule Peridiod.Binary.ChunkDownloaderTest do
       ref = Process.monitor(downloader_pid)
 
       # Should receive fatal error and exit normally
-      assert_receive {:handler_received, {:fatal_http_error, 400, %URI{}}}, 2000
+      assert_receive {:handler_received, {:fatal_http_error, 400, %URI{}, _detail}}, 2000
       assert_receive {:DOWN, ^ref, :process, ^downloader_pid, :normal}, 2000
 
       # Verify we're still alive (not linked, so crash didn't propagate)
@@ -220,8 +249,8 @@ defmodule Peridiod.Binary.ChunkDownloaderTest do
         {:error, reason} ->
           send(test_pid, {:handler_received, {:error, reason}})
 
-        {:fatal_http_error, status, uri} ->
-          send(test_pid, {:handler_received, {:fatal_http_error, status, uri}})
+        {:fatal_http_error, status, uri, detail} ->
+          send(test_pid, {:handler_received, {:fatal_http_error, status, uri, detail}})
       end
 
       url = URI.parse("http://localhost:4001/1M.bin")
