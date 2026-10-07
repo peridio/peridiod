@@ -10,6 +10,7 @@
   * [Distributions] The device channel now rejoins with `currently_downloading_uuid` set when the cloud closes it during a firmware download, as it already did on connect.
 
 * Bug fixes
+  * [Distributions] A firmware download no longer crashes the distribution server when fwup exits early, for example because it refuses the firmware, while chunks are still arriving. The server used to restart without remembering which firmware it was downloading, so the next channel join reported none.
   * [Distributions] Stopping parallel chunk downloads after an HTTP error no longer crashes the parallel downloader when a chunk has already exited, which could prevent the error from being reported.
 
 * Security

@@ -346,7 +346,7 @@ defmodule Peridiod.Distribution.Server do
 
         case Cache.write_stream_update(state.config.cache_pid, rel_path, data) do
           :ok ->
-            _ = if state.fwup, do: Fwup.Stream.send_chunk(state.fwup, data)
+            stream_to_fwup(state, data)
             state
 
           {:error, reason} ->
@@ -355,7 +355,7 @@ defmodule Peridiod.Distribution.Server do
         end
       else
         # Stream download data directly to fwup
-        _ = if state.fwup, do: Fwup.Stream.send_chunk(state.fwup, data)
+        stream_to_fwup(state, data)
         state
       end
 
@@ -721,6 +721,18 @@ defmodule Peridiod.Distribution.Server do
   end
 
   defp get_file_info(_), do: %{size: "invalid path", hash: "invalid path"}
+
+  # fwup can exit on its own, for example when it refuses the firmware, while the
+  # download keeps arriving. Its exit is reported as an fwup message, so a chunk for a
+  # fwup that is gone is dropped here and must not take the server down. If it did, the
+  # server would restart without remembering which firmware it was downloading.
+  defp stream_to_fwup(%State{fwup: nil}, _data), do: :ok
+
+  defp stream_to_fwup(%State{fwup: fwup}, data) do
+    Fwup.Stream.send_chunk(fwup, data)
+  catch
+    :exit, _reason -> :ok
+  end
 
   defp error_code_suffix(%{code: code}) when is_binary(code), do: " (#{code})"
   defp error_code_suffix(_detail), do: ""

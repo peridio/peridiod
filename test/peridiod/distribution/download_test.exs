@@ -142,6 +142,40 @@ defmodule Peridiod.Distribution.DownloadTest do
     end
   end
 
+  describe "fwup exits while the firmware is still downloading" do
+    setup :setup_stream_download_server
+
+    @tag capture_log: true
+    test "a chunk for the dead fwup doesn't crash the server", %{config: config} do
+      {:ok, server} = Distribution.Server.start_link(config, [])
+      dead_fwup = spawn(fn -> :ok end)
+      ref = Process.monitor(dead_fwup)
+      assert_receive {:DOWN, ^ref, :process, ^dead_fwup, _}
+
+      {:ok, dist} =
+        Distribution.parse(%{
+          "firmware_url" => "http://127.0.0.1:1/never",
+          "firmware_meta" => %{
+            "uuid" => "fwup-gone",
+            "version" => "1.0.0",
+            "platform" => "test",
+            "architecture" => "test",
+            "product" => "test"
+          }
+        })
+
+      :sys.replace_state(server, &%{&1 | fwup: dead_fwup, distribution: dist})
+      send(server, {:download, {:stream, "more firmware"}})
+
+      # still the same process, still knows what it was downloading
+      assert Process.alive?(server)
+      assert %{distribution: %{firmware_meta: %{uuid: "fwup-gone"}}} = :sys.get_state(server)
+      assert Distribution.Server.currently_downloading_uuid(server) == "fwup-gone"
+
+      GenServer.stop(server)
+    end
+  end
+
   describe "fatal HTTP error handling - streamed downloads" do
     setup :setup_stream_download_server
 
