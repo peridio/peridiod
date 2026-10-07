@@ -69,7 +69,7 @@ defmodule Peridiod.MixProject do
       {:x509, "~> 0.8"},
       {:plug, "~> 1.11", only: :test},
       {:plug_cowboy, "~> 2.5", only: :test},
-      {:req, "~> 0.5"}
+      {:req, "~> 0.6 and >= 0.6.1"}
     ]
   end
 end
