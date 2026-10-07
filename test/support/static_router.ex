@@ -22,6 +22,11 @@ defmodule PeridiodTest.StaticRouter do
     send_resp(conn, 404, "Not Found")
   end
 
+  # A presigned URL that can expire, see PeridiodTest.FakeS3
+  get "/sim/:token/:file" do
+    PeridiodTest.FakeS3.serve(conn, token, file)
+  end
+
   # S3 style error documents
   get "/s3/expired-token" do
     send_resp(
