@@ -176,10 +176,15 @@ defmodule Peridiod.Distribution.DownloadTest do
           }
         })
 
-      :sys.replace_state(
-        server,
-        &%{&1 | fwup: hung_fwup, distribution: dist, downloaded_bytes: 7}
-      )
+      :sys.replace_state(server, fn state ->
+        %{
+          state
+          | fwup: hung_fwup,
+            distribution: dist,
+            downloaded_bytes: 7,
+            awaiting_url: make_ref()
+        }
+      end)
 
       send(server, {:download, {:stream, "a chunk fwup never takes"}})
 
@@ -190,6 +195,8 @@ defmodule Peridiod.Distribution.DownloadTest do
       # would skip bytes it never got
       assert state.downloaded_bytes == 7
       assert state.fwup == nil
+      # the update is over, so a refresh that was waiting for it is too
+      assert state.awaiting_url == nil
       # the server still knows what it was downloading
       assert state.distribution.firmware_meta.uuid == "fwup-stalled"
       refute Process.alive?(hung_fwup)
@@ -708,6 +715,74 @@ defmodule Peridiod.Distribution.DownloadTest do
     end
 
     @tag capture_log: true
+    test "a wait left over from a failed update can't abort its replacement", %{config: config} do
+      {:ok, server} = start_server(config)
+      Distribution.Server.apply_update(server, distribution("replace-a", @unreachable_url))
+
+      send(server, expired_message())
+      assert_receive :new_url_requested, 2000
+      %{awaiting_url: old_wait} = :sys.get_state(server)
+
+      # fwup fails while the refresh is still waiting for its new URL
+      send(server, {:fwup, {:error, 1, "fwup failed"}})
+
+      assert %{status: {:fwup_error, _}, awaiting_url: nil, url_wait_timer: nil} =
+               :sys.get_state(server)
+
+      # a replacement update is accepted
+      Distribution.Server.apply_update(server, distribution("replace-b", @unreachable_url))
+      assert %{status: {:updating, _}} = :sys.get_state(server)
+
+      # and the old wait's timeout arrives
+      send(server, {:url_wait_timeout, old_wait})
+
+      refute_receive :new_url_requested, 200
+      state = :sys.get_state(server)
+      assert {:updating, _} = state.status
+      assert state.distribution.firmware_meta.uuid == "replace-b"
+
+      GenServer.stop(server)
+    end
+
+    @tag capture_log: true
+    test "an update that finishes ends a pending wait", %{config: config} do
+      {:ok, server} = start_server(config)
+
+      Distribution.Server.apply_update(
+        server,
+        distribution("finished-while-waiting", @unreachable_url)
+      )
+
+      send(server, expired_message())
+      assert_receive :new_url_requested, 2000
+      assert %{awaiting_url: wait_ref} = :sys.get_state(server)
+      assert is_reference(wait_ref)
+
+      send(server, {:fwup, {:ok, 0, "done"}})
+
+      assert %{status: :idle, awaiting_url: nil, url_wait_timer: nil} = :sys.get_state(server)
+
+      GenServer.stop(server)
+    end
+
+    @tag capture_log: true
+    test "a replacement update clears a wait that was still pending", %{config: config} do
+      {:ok, server} = start_server(config)
+
+      :sys.replace_state(
+        server,
+        &%{&1 | awaiting_url: make_ref(), expired_url: URI.parse(@expired_url)}
+      )
+
+      Distribution.Server.apply_update(server, distribution("replacement", @unreachable_url))
+
+      assert %{awaiting_url: nil, expired_url: nil, status: {:updating, _}} =
+               :sys.get_state(server)
+
+      GenServer.stop(server)
+    end
+
+    @tag capture_log: true
     test "an error a new URL can't fix aborts without asking for one", %{config: config} do
       {:ok, server} = start_server(config)
 
@@ -766,6 +841,21 @@ defmodule Peridiod.Distribution.DownloadTest do
 
   describe "expired firmware URL - cached downloads" do
     setup :setup_cache_download_server
+
+    @tag capture_log: true
+    test "a replacement update clears a wait that was still pending", %{config: config} do
+      {:ok, server} = start_server(config)
+      :sys.replace_state(server, &%{&1 | awaiting_url: make_ref()})
+
+      Distribution.Server.apply_update(
+        server,
+        distribution("replacement-cached", @unreachable_url)
+      )
+
+      assert %{awaiting_url: nil, status: {:updating, _}} = :sys.get_state(server)
+
+      GenServer.stop(server)
+    end
 
     @tag capture_log: true
     test "resumes from the .part file on disk", %{config: config} do

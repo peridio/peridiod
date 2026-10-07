@@ -229,7 +229,7 @@ defmodule Peridiod.Distribution.Server do
       {:ok, 0, _message} ->
         Logger.info("[Distributions] FWUP Finished")
         try_send(state.callback, {__MODULE__, :install, :complete})
-        {:noreply, %State{state | fwup: nil, distribution: nil, status: :idle}}
+        {:noreply, cancel_url_wait(%State{state | fwup: nil, distribution: nil, status: :idle})}
 
       {:progress, percent} ->
         try_send(state.callback, {__MODULE__, :install, {:percent, percent}})
@@ -237,7 +237,7 @@ defmodule Peridiod.Distribution.Server do
 
       {:error, _, message} ->
         try_send(state.callback, {__MODULE__, :install, {:error, message}})
-        {:noreply, %State{state | status: {:fwup_error, message}}}
+        {:noreply, cancel_url_wait(%State{state | status: {:fwup_error, message}})}
 
       _ ->
         {:noreply, state}
@@ -532,6 +532,7 @@ defmodule Peridiod.Distribution.Server do
          %Distribution{} = distribution,
          %{distributions_cache_download: true} = state
        ) do
+    state = cancel_url_wait(state)
     handler_fun = download_handler_fun()
     firmware_uuid = distribution.firmware_meta.uuid
     firmware_url = distribution.firmware_url
@@ -647,6 +648,7 @@ defmodule Peridiod.Distribution.Server do
 
   @spec do_apply_firmware(Distribution.t(), State.t()) :: State.t()
   defp do_apply_firmware(%Distribution{} = distribution, state) do
+    state = cancel_url_wait(state)
     handler_fun = download_handler_fun()
     firmware_uuid = distribution.firmware_meta.uuid
     firmware_url = distribution.firmware_url
@@ -756,7 +758,9 @@ defmodule Peridiod.Distribution.Server do
       message = "fwup did not take a chunk of firmware: #{inspect(reason)}"
       Logger.error("[Distributions] #{message}")
       try_send(state.callback, {__MODULE__, :install, {:error, message}})
-      {:fwup_failed, %State{maybe_stop_fwup(state) | status: {:fwup_error, message}}}
+
+      {:fwup_failed,
+       cancel_url_wait(%State{maybe_stop_fwup(state) | status: {:fwup_error, message}})}
 
     # fwup is gone, which it reports as an fwup message of its own
     :exit, _reason ->
