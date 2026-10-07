@@ -142,6 +142,62 @@ defmodule Peridiod.Distribution.DownloadTest do
     end
   end
 
+  defmodule HungFwup do
+    @moduledoc false
+    # alive, but never answers a chunk
+    use GenServer
+
+    def init(_), do: {:ok, nil}
+    def handle_call({:send_chunk, _chunk}, _from, state), do: {:noreply, state}
+  end
+
+  describe "fwup is alive but doesn't take a chunk in time" do
+    setup :setup_stream_download_server
+
+    setup do
+      Application.put_env(:peridiod, :fwup_chunk_timeout_ms, 50)
+      on_exit(fn -> Application.delete_env(:peridiod, :fwup_chunk_timeout_ms) end)
+    end
+
+    @tag capture_log: true
+    test "the update fails and the missed chunk doesn't move the resume offset", %{config: config} do
+      {:ok, server} = Distribution.Server.start_link(config, [])
+      {:ok, hung_fwup} = GenServer.start(HungFwup, nil)
+
+      {:ok, dist} =
+        Distribution.parse(%{
+          "firmware_url" => "http://127.0.0.1:1/never",
+          "firmware_meta" => %{
+            "uuid" => "fwup-stalled",
+            "version" => "1.0.0",
+            "platform" => "test",
+            "architecture" => "test",
+            "product" => "test"
+          }
+        })
+
+      :sys.replace_state(
+        server,
+        &%{&1 | fwup: hung_fwup, distribution: dist, downloaded_bytes: 7}
+      )
+
+      send(server, {:download, {:stream, "a chunk fwup never takes"}})
+
+      state = :sys.get_state(server)
+      assert {:fwup_error, message} = state.status
+      assert message =~ "did not take a chunk"
+      # dropping it and carrying on would feed fwup a stream with a hole, and a resume
+      # would skip bytes it never got
+      assert state.downloaded_bytes == 7
+      assert state.fwup == nil
+      # the server still knows what it was downloading
+      assert state.distribution.firmware_meta.uuid == "fwup-stalled"
+      refute Process.alive?(hung_fwup)
+
+      GenServer.stop(server)
+    end
+  end
+
   describe "fwup exits while the firmware is still downloading" do
     setup :setup_stream_download_server
 

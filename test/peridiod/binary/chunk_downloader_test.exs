@@ -11,6 +11,29 @@ defmodule Peridiod.Binary.ChunkDownloaderTest do
 
       assert :ok = ChunkDownloader.stop(pid)
     end
+
+    test "a chunk that exits normally while being stopped is already gone" do
+      pid =
+        spawn(fn ->
+          receive do
+            {:system, _from, {:terminate, _reason}} -> exit(:normal)
+          end
+        end)
+
+      assert :ok = ChunkDownloader.stop(pid)
+    end
+
+    test "an exit that doesn't show the chunk is gone is not swallowed" do
+      # A chunk that fails while it is told to stop may still be writing its file
+      pid =
+        spawn(fn ->
+          receive do
+            {:system, _from, {:terminate, _reason}} -> exit(:boom)
+          end
+        end)
+
+      assert {{:boom, _}, {GenServer, :stop, _}} = catch_exit(ChunkDownloader.stop(pid))
+    end
   end
 
   describe "a failed response whose body never finishes" do

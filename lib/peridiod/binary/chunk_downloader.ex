@@ -149,12 +149,25 @@ defmodule Peridiod.Binary.ChunkDownloader do
 
   # A chunk can exit on its own between the caller deciding to stop it and the
   # stop arriving, e.g. when several chunks hit the same HTTP error at once.
-  # That must not take the caller down with it.
+  # That must not take the caller down with it. Any other exit means the chunk may
+  # still be running and writing its file, so it is not swallowed.
   def stop(pid) do
     GenServer.stop(pid)
   catch
-    :exit, _reason -> :ok
+    :exit, reason ->
+      if already_gone?(reason), do: :ok, else: exit(reason)
   end
+
+  # GenServer.stop wraps what happened to the process: {:noproc, {GenServer, :stop, args}}
+  # when it was already gone, {{reason, {:sys, :terminate, args}}, {GenServer, :stop, args}}
+  # when it exited while being stopped
+  defp already_gone?({reason, {GenServer, :stop, _args}}), do: already_gone?(reason)
+  defp already_gone?({reason, {:sys, :terminate, _args}}), do: already_gone?(reason)
+  defp already_gone?(:noproc), do: true
+  defp already_gone?(:normal), do: true
+  defp already_gone?(:shutdown), do: true
+  defp already_gone?({:shutdown, _}), do: true
+  defp already_gone?(_reason), do: false
 
   @impl GenServer
   def init([

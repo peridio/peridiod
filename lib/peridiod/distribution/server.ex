@@ -353,19 +353,21 @@ defmodule Peridiod.Distribution.Server do
         case Cache.write_stream_update(state.config.cache_pid, rel_path, data) do
           :ok ->
             stream_to_fwup(state, data)
-            state
 
           {:error, reason} ->
             Logger.error("[Distributions] Failed to cache download data: #{inspect(reason)}")
-            state
+            {:ok, state}
         end
       else
         # Stream download data directly to fwup
         stream_to_fwup(state, data)
-        state
       end
 
-    {:noreply, count_downloaded(updated_state, data)}
+    case updated_state do
+      {:ok, state} -> {:noreply, count_downloaded(state, data)}
+      # fwup missed the chunk, so it wasn't sent and must not move the resume offset
+      {:fwup_failed, state} -> {:noreply, state}
+    end
   end
 
   def handle_info({:EXIT, _, error}, state) do
@@ -742,13 +744,27 @@ defmodule Peridiod.Distribution.Server do
     :exit, reason -> raise "fwup is not running: #{inspect(reason)}"
   end
 
-  defp stream_to_fwup(%State{fwup: nil}, _data), do: :ok
+  defp stream_to_fwup(%State{fwup: nil} = state, _data), do: {:ok, state}
 
-  defp stream_to_fwup(%State{fwup: fwup}, data) do
-    Fwup.Stream.send_chunk(fwup, data)
+  defp stream_to_fwup(%State{fwup: fwup} = state, data) do
+    Fwup.Stream.send_chunk(fwup, data, fwup_chunk_timeout_ms())
+    {:ok, state}
   catch
-    :exit, _reason -> :ok
+    # The call timed out: fwup is alive and missed this chunk. Carrying on would feed it a
+    # stream with a hole and count the bytes as sent, so a resume would skip them.
+    :exit, {:timeout, _call} = reason ->
+      message = "fwup did not take a chunk of firmware: #{inspect(reason)}"
+      Logger.error("[Distributions] #{message}")
+      try_send(state.callback, {__MODULE__, :install, {:error, message}})
+      {:fwup_failed, %State{maybe_stop_fwup(state) | status: {:fwup_error, message}}}
+
+    # fwup is gone, which it reports as an fwup message of its own
+    :exit, _reason ->
+      {:ok, state}
   end
+
+  # how long fwup gets to take a chunk
+  defp fwup_chunk_timeout_ms, do: Application.get_env(:peridiod, :fwup_chunk_timeout_ms, 60_000)
 
   defp error_code_suffix(%{code: code}) when is_binary(code), do: " (#{code})"
   defp error_code_suffix(_detail), do: ""
@@ -1155,6 +1171,9 @@ defmodule Peridiod.Distribution.Server do
     end
   end
 
+  # A download that is only streamed to fwup always starts at zero (start_downloader), so
+  # the bytes counted are the offset. Only the cached download starts at a nonzero offset,
+  # and it takes its offset from the .part file above.
   defp resume_offset(%State{downloaded_bytes: downloaded_bytes}), do: downloaded_bytes
 
   defp handle_cached_download_complete(%State{} = state) do
