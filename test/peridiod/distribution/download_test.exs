@@ -176,6 +176,84 @@ defmodule Peridiod.Distribution.DownloadTest do
     end
   end
 
+  describe "fwup exits while a cached chunk is being streamed to it" do
+    setup :setup_parallel_download_server
+
+    defp server_with_dead_fwup(config) do
+      {:ok, server} = Distribution.Server.start_link(config, [])
+      dead_fwup = spawn(fn -> :ok end)
+      ref = Process.monitor(dead_fwup)
+      assert_receive {:DOWN, ^ref, :process, ^dead_fwup, _}
+      :sys.replace_state(server, &%{&1 | fwup: dead_fwup})
+      server
+    end
+
+    @tag capture_log: true
+    test "a small chunk fails the update instead of crashing the server", %{config: config} do
+      server = server_with_dead_fwup(config)
+      chunk = Path.join(System.tmp_dir!(), "small-chunk-#{System.unique_integer([:positive])}")
+      File.write!(chunk, "a small chunk")
+      on_exit(fn -> File.rm(chunk) end)
+
+      send(server, {:async_stream_small_chunk_file, chunk})
+
+      assert %{status: {:fwup_error, _}} = :sys.get_state(server)
+      assert Process.alive?(server)
+
+      GenServer.stop(server)
+    end
+
+    @tag capture_log: true
+    test "a large chunk fails the update instead of crashing the server", %{config: config} do
+      server = server_with_dead_fwup(config)
+      chunk = Path.join(System.tmp_dir!(), "large-chunk-#{System.unique_integer([:positive])}")
+      File.write!(chunk, "a large chunk")
+      on_exit(fn -> File.rm(chunk) end)
+
+      :sys.replace_state(server, fn state ->
+        %{state | async_streaming: %{file_path: chunk, offset: 0, file_size: 13}}
+      end)
+
+      send(server, {:async_stream_file, chunk, 0})
+
+      assert %{status: {:fwup_error, _}, async_streaming: nil} = :sys.get_state(server)
+      assert Process.alive?(server)
+
+      GenServer.stop(server)
+    end
+  end
+
+  describe "restoring the refresh budget" do
+    setup :setup_parallel_download_server
+
+    alias Peridiod.Distribution.UrlRefresh
+
+    @tag capture_log: true
+    test "a restarted parallel download only does it for new bytes", %{config: config} do
+      {:ok, server} = Distribution.Server.start_link(config, [])
+
+      :sys.replace_state(server, fn state ->
+        %{
+          state
+          | url_refresh: %UrlRefresh{attempts: 2},
+            parallel_progress_bytes: 500,
+            next_chunk_to_stream: 0
+        }
+      end)
+
+      # what the restart already had on disk moves nothing
+      send(server, {:download, {:chunk_complete, 1, "firmware.bin.part0001"}})
+      send(server, {:download, {:progress, %{downloaded: 500}}})
+      assert %{url_refresh: %{attempts: 2}, parallel_progress_bytes: 500} = :sys.get_state(server)
+
+      # bytes beyond the highest seen are progress
+      send(server, {:download, {:progress, %{downloaded: 501}}})
+      assert %{url_refresh: %{attempts: 0}, parallel_progress_bytes: 501} = :sys.get_state(server)
+
+      GenServer.stop(server)
+    end
+  end
+
   describe "fatal HTTP error handling - streamed downloads" do
     setup :setup_stream_download_server
 

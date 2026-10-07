@@ -59,6 +59,7 @@ defmodule Peridiod.Distribution.Server do
             expired_url: nil | URI.t(),
             url_wait_timer: nil | reference(),
             downloaded_bytes: non_neg_integer(),
+            parallel_progress_bytes: non_neg_integer(),
             parallel_total_size: nil | pos_integer()
           }
 
@@ -83,6 +84,7 @@ defmodule Peridiod.Distribution.Server do
               expired_url: nil,
               url_wait_timer: nil,
               downloaded_bytes: 0,
+              parallel_progress_bytes: 0,
               parallel_total_size: nil
   end
 
@@ -302,10 +304,15 @@ defmodule Peridiod.Distribution.Server do
     {:noreply, state}
   end
 
-  # Handle parallel download progress (silently track progress)
+  # Handle parallel download progress. The total includes what was already on disk, so
+  # only a total above the highest seen is new data and restores the refresh budget.
+  def handle_info({:download, {:progress, %{downloaded: downloaded}}}, state)
+      when is_integer(downloaded) and downloaded > state.parallel_progress_bytes do
+    {:noreply, %State{url_refresh_succeeded(state) | parallel_progress_bytes: downloaded}}
+  end
+
   def handle_info({:download, {:progress, _progress_info}}, state) do
-    # Progress tracking without logging to reduce noise
-    {:noreply, url_refresh_succeeded(state)}
+    {:noreply, state}
   end
 
   # Handle parallel chunk completion: stream in-order to fwup
@@ -321,7 +328,6 @@ defmodule Peridiod.Distribution.Server do
 
   def handle_info({:download, {:chunk_complete, chunk_number, rel_path}}, %State{} = state) do
     Logger.info("[Distributions] Chunk ##{chunk_number} completed: #{Path.basename(rel_path)}")
-    state = url_refresh_succeeded(state)
 
     state =
       if is_map(state.ready_chunk_files) do
@@ -373,7 +379,7 @@ defmodule Peridiod.Distribution.Server do
         {:ok, data} ->
           if state.fwup do
             try do
-              :ok = Fwup.Stream.send_chunk(state.fwup, data, 2000)
+              send_chunk_to_fwup!(state.fwup, data, 2000)
 
               Logger.debug(
                 "[Distributions] Small chunk streamed successfully: #{Path.basename(file_path)}"
@@ -533,7 +539,8 @@ defmodule Peridiod.Distribution.Server do
       | status: {:updating, 0},
         distribution: distribution,
         url_refresh: UrlRefresh.new(state.config),
-        downloaded_bytes: 0
+        downloaded_bytes: 0,
+        parallel_progress_bytes: 0
     }
 
     Logger.info(
@@ -664,7 +671,8 @@ defmodule Peridiod.Distribution.Server do
         fwup: fwup,
         distribution: distribution,
         url_refresh: UrlRefresh.new(state.config),
-        downloaded_bytes: 0
+        downloaded_bytes: 0,
+        parallel_progress_bytes: 0
     }
   end
 
@@ -726,6 +734,14 @@ defmodule Peridiod.Distribution.Server do
   # download keeps arriving. Its exit is reported as an fwup message, so a chunk for a
   # fwup that is gone is dropped here and must not take the server down. If it did, the
   # server would restart without remembering which firmware it was downloading.
+  # For the paths that already turn a failure into an fwup error with `rescue`.
+  # GenServer.call exits when fwup is gone and `rescue` does not catch exits, so raise.
+  defp send_chunk_to_fwup!(fwup, data, timeout \\ 60_000) do
+    :ok = Fwup.Stream.send_chunk(fwup, data, timeout)
+  catch
+    :exit, reason -> raise "fwup is not running: #{inspect(reason)}"
+  end
+
   defp stream_to_fwup(%State{fwup: nil}, _data), do: :ok
 
   defp stream_to_fwup(%State{fwup: fwup}, data) do
@@ -1019,6 +1035,7 @@ defmodule Peridiod.Distribution.Server do
         total_chunks: nil,
         url_refresh: nil,
         downloaded_bytes: 0,
+        parallel_progress_bytes: 0,
         parallel_total_size: nil
     }
   end
@@ -1318,7 +1335,7 @@ defmodule Peridiod.Distribution.Server do
               # Send chunk to FWUP
               if state.fwup do
                 try do
-                  :ok = Fwup.Stream.send_chunk(state.fwup, data)
+                  send_chunk_to_fwup!(state.fwup, data)
 
                   # Schedule next chunk
                   next_offset = offset + byte_size(data)
