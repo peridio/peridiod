@@ -269,7 +269,7 @@ defmodule Peridiod.Binary.ParallelDownloader do
 
   # Handle fatal HTTP error on chunk - abort entire download
   def handle_info(
-        {:chunk_fatal_http_error, chunk_number, status, uri},
+        {:chunk_fatal_http_error, chunk_number, status, uri, detail},
         %ParallelDownloader{} = state
       ) do
     Logger.error(
@@ -280,7 +280,7 @@ defmodule Peridiod.Binary.ParallelDownloader do
     stop_all_active_downloads(state)
 
     # Propagate fatal error to Distribution.Server
-    _ = state.handler_fun.({:fatal_http_error, status, uri})
+    _ = state.handler_fun.({:fatal_http_error, status, uri, detail})
 
     {:stop, :normal, state}
   end
@@ -518,9 +518,9 @@ defmodule Peridiod.Binary.ParallelDownloader do
             send(parent_pid, {:chunk_error, chunk_number, {:file_write_error, reason}})
         end
 
-      {:fatal_http_error, status, uri} ->
+      {:fatal_http_error, status, uri, detail} ->
         # Forward fatal HTTP error to parent - this will abort the entire download
-        send(parent_pid, {:chunk_fatal_http_error, chunk_number, status, uri})
+        send(parent_pid, {:chunk_fatal_http_error, chunk_number, status, uri, detail})
 
       {:error, reason} ->
         send(parent_pid, {:chunk_error, chunk_number, reason})

@@ -47,6 +47,8 @@ defmodule Peridiod.Config do
             update_poll_enabled: false,
             update_poll_interval: 300_000,
             update_resume_max_boot_count: 10,
+            distributions_url_refresh_max_attempts: 3,
+            distributions_url_refresh_wait_ms: 5_000,
             targets: ["portable"],
             trusted_signing_keys: [],
             trusted_signing_key_dir: nil,
@@ -97,6 +99,8 @@ defmodule Peridiod.Config do
           remote_access_tunnels: map(),
           update_poll_enabled: boolean,
           update_poll_interval: non_neg_integer(),
+          distributions_url_refresh_max_attempts: non_neg_integer(),
+          distributions_url_refresh_wait_ms: non_neg_integer(),
           targets: [String.t()],
           trusted_signing_keys: [SigningKey.t()],
           trusted_signing_key_dir: Path.t(),
@@ -153,6 +157,23 @@ defmodule Peridiod.Config do
 
   defp config_path() do
     System.get_env("PERIDIO_CONFIG_FILE", default_path())
+  end
+
+  # A wrong type in the config file would otherwise raise later, inside a running server.
+  defp validate_non_negative_integer(config, key) do
+    case Map.fetch!(config, key) do
+      value when is_integer(value) and value >= 0 ->
+        config
+
+      value ->
+        default = Map.fetch!(%Config{}, key)
+
+        Logger.warning(
+          "[Config] #{key} must be a non-negative integer, got #{inspect(value)}. Using #{default}."
+        )
+
+        Map.put(config, key, default)
+    end
   end
 
   defp build_config(%Config{} = config, config_file) do
@@ -228,6 +249,16 @@ defmodule Peridiod.Config do
         :update_resume_max_boot_count,
         config_file["update_resume_max_boot_count"]
       )
+      |> override_if_set(
+        :distributions_url_refresh_max_attempts,
+        config_file["distributions_url_refresh_max_attempts"]
+      )
+      |> override_if_set(
+        :distributions_url_refresh_wait_ms,
+        config_file["distributions_url_refresh_wait_ms"]
+      )
+      |> validate_non_negative_integer(:distributions_url_refresh_max_attempts)
+      |> validate_non_negative_integer(:distributions_url_refresh_wait_ms)
       |> override_if_set(
         :trusted_signing_key_threshold,
         config_file["trusted_signing_key_threshold"]

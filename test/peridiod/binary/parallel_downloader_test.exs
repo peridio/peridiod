@@ -36,8 +36,8 @@ defmodule Peridiod.Binary.ParallelDownloaderTest do
         {:error, reason} ->
           send(test_pid, {:handler_received, {:error, reason}})
 
-        {:fatal_http_error, status, uri} ->
-          send(test_pid, {:handler_received, {:fatal_http_error, status, uri}})
+        {:fatal_http_error, status, uri, detail} ->
+          send(test_pid, {:handler_received, {:fatal_http_error, status, uri, detail}})
       end
 
       # Download a 1MB file in 256KB chunks with 2 parallel downloads
@@ -72,6 +72,37 @@ defmodule Peridiod.Binary.ParallelDownloaderTest do
       # Should have completed 4 chunks (1MB / 256KB = 4)
       count = :counters.get(completed_chunks, 1)
       assert count == 4
+    end
+  end
+
+  describe "fatal HTTP error detail" do
+    setup :start_cache
+
+    @tag capture_log: true
+    test "forwards the S3 error code from a failed chunk", %{cache_pid: cache_pid} do
+      test_pid = self()
+      handler_fun = fn message -> send(test_pid, {:handler_received, message}) end
+
+      {:ok, downloader_pid} =
+        ParallelDownloader.start_link(
+          "test-parallel-s3-error",
+          "http://localhost:4001/s3/expired-token",
+          1_048_576,
+          262_144,
+          2,
+          "test-parallel-s3-error.bin",
+          cache_pid,
+          handler_fun,
+          %RetryConfig{}
+        )
+
+      assert_receive {:handler_received,
+                      {:fatal_http_error, 400, %URI{}, %{code: "ExpiredToken"}}},
+                     5000
+
+      # the whole download is aborted, not just the failed chunk
+      refute_receive {:handler_received, :complete}, 500
+      refute Process.alive?(downloader_pid)
     end
   end
 

@@ -9,7 +9,8 @@ defmodule Peridiod.Distribution.Server do
   """
   use GenServer
 
-  alias Peridiod.{Client, Distribution, Cache, LogSanitizer}
+  alias Peridiod.{Client, Cloud, Distribution, Cache, LogSanitizer}
+  alias Peridiod.Distribution.UrlRefresh
 
   alias Peridiod.Binary.{
     Downloader,
@@ -51,7 +52,15 @@ defmodule Peridiod.Distribution.Server do
             async_streaming:
               nil
               | %{file_path: String.t(), offset: non_neg_integer(), file_size: non_neg_integer()},
-            pending_download_plan: nil | any()
+            pending_download_plan: nil | any(),
+            url_refresh: nil | UrlRefresh.t(),
+            url_refresh_requester: (-> any()),
+            awaiting_url: nil | reference(),
+            expired_url: nil | URI.t(),
+            url_wait_timer: nil | reference(),
+            downloaded_bytes: non_neg_integer(),
+            parallel_progress_bytes: non_neg_integer(),
+            parallel_total_size: nil | pos_integer()
           }
 
     defstruct status: :idle,
@@ -68,7 +77,15 @@ defmodule Peridiod.Distribution.Server do
               total_chunks: nil,
               config: nil,
               async_streaming: nil,
-              pending_download_plan: nil
+              pending_download_plan: nil,
+              url_refresh: nil,
+              url_refresh_requester: &Cloud.Socket.refresh_update/0,
+              awaiting_url: nil,
+              expired_url: nil,
+              url_wait_timer: nil,
+              downloaded_bytes: 0,
+              parallel_progress_bytes: 0,
+              parallel_total_size: nil
   end
 
   @doc """
@@ -212,7 +229,7 @@ defmodule Peridiod.Distribution.Server do
       {:ok, 0, _message} ->
         Logger.info("[Distributions] FWUP Finished")
         try_send(state.callback, {__MODULE__, :install, :complete})
-        {:noreply, %State{state | fwup: nil, distribution: nil, status: :idle}}
+        {:noreply, cancel_url_wait(%State{state | fwup: nil, distribution: nil, status: :idle})}
 
       {:progress, percent} ->
         try_send(state.callback, {__MODULE__, :install, {:percent, percent}})
@@ -220,7 +237,7 @@ defmodule Peridiod.Distribution.Server do
 
       {:error, _, message} ->
         try_send(state.callback, {__MODULE__, :install, {:error, message}})
-        {:noreply, %State{state | status: {:fwup_error, message}}}
+        {:noreply, cancel_url_wait(%State{state | status: {:fwup_error, message}})}
 
       _ ->
         {:noreply, state}
@@ -236,14 +253,48 @@ defmodule Peridiod.Distribution.Server do
     end
   end
 
-  def handle_info({:download, {:fatal_http_error, status, uri}}, state) do
-    Logger.error(
-      "[Distributions] Fatal HTTP error #{status} downloading firmware. " <>
-        "URL: #{LogSanitizer.sanitize_uri(uri)} - Update aborted, ready for new update."
-    )
+  def handle_info({:download, {:fatal_http_error, status, uri, detail}}, state) do
+    case refresh_decision(state, status, detail) do
+      {:retry, wait, url_refresh} ->
+        Logger.warning(
+          "[Distributions] Firmware URL expired (HTTP #{status}#{error_code_suffix(detail)}), " <>
+            "asking for a new one (attempt #{url_refresh.attempts}/#{url_refresh.max_attempts})"
+        )
 
-    {:noreply, reset_update_state(state)}
+        {:noreply, request_new_url(%State{state | expired_url: uri}, url_refresh, wait)}
+
+      {:abort, reason} ->
+        Logger.error(
+          "[Distributions] Fatal HTTP error #{status}#{error_code_suffix(detail)} downloading firmware " <>
+            "(#{inspect(reason)}). URL: #{LogSanitizer.sanitize_uri(uri)} - Update aborted, ready for new update."
+        )
+
+        {:noreply, reset_update_state(state)}
+    end
   end
+
+  # No new URL arrived in time, ask again or give up
+  def handle_info({:url_wait_timeout, wait_ref}, %State{awaiting_url: wait_ref} = state) do
+    case UrlRefresh.next_after_timeout(state.url_refresh) do
+      {:retry, wait, url_refresh} ->
+        Logger.warning(
+          "[Distributions] No new firmware URL yet, asking again " <>
+            "(attempt #{url_refresh.attempts}/#{url_refresh.max_attempts})"
+        )
+
+        {:noreply, request_new_url(state, url_refresh, wait)}
+
+      {:abort, reason} ->
+        Logger.error(
+          "[Distributions] Could not get a new firmware URL (#{inspect(reason)}) - Update aborted, ready for new update."
+        )
+
+        {:noreply, reset_update_state(state)}
+    end
+  end
+
+  # A timeout for an attempt that already got its answer, or an update that ended
+  def handle_info({:url_wait_timeout, _wait_ref}, state), do: {:noreply, state}
 
   def handle_info({:download, {:error, reason}}, state) do
     Logger.warning(
@@ -253,13 +304,28 @@ defmodule Peridiod.Distribution.Server do
     {:noreply, state}
   end
 
-  # Handle parallel download progress (silently track progress)
+  # Handle parallel download progress. The total includes what was already on disk, so
+  # only a total above the highest seen is new data and restores the refresh budget.
+  def handle_info({:download, {:progress, %{downloaded: downloaded}}}, state)
+      when is_integer(downloaded) and downloaded > state.parallel_progress_bytes do
+    {:noreply, %State{url_refresh_succeeded(state) | parallel_progress_bytes: downloaded}}
+  end
+
   def handle_info({:download, {:progress, _progress_info}}, state) do
-    # Progress tracking without logging to reduce noise
     {:noreply, state}
   end
 
   # Handle parallel chunk completion: stream in-order to fwup
+  # A restarted parallel download announces the chunks it already had again. They
+  # were streamed to fwup the first time.
+  def handle_info(
+        {:download, {:chunk_complete, chunk_number, _rel_path}},
+        %State{next_chunk_to_stream: next} = state
+      )
+      when is_integer(next) and chunk_number < next do
+    {:noreply, state}
+  end
+
   def handle_info({:download, {:chunk_complete, chunk_number, rel_path}}, %State{} = state) do
     Logger.info("[Distributions] Chunk ##{chunk_number} completed: #{Path.basename(rel_path)}")
 
@@ -286,20 +352,22 @@ defmodule Peridiod.Distribution.Server do
 
         case Cache.write_stream_update(state.config.cache_pid, rel_path, data) do
           :ok ->
-            _ = if state.fwup, do: Fwup.Stream.send_chunk(state.fwup, data)
-            state
+            stream_to_fwup(state, data)
 
           {:error, reason} ->
             Logger.error("[Distributions] Failed to cache download data: #{inspect(reason)}")
-            state
+            {:ok, state}
         end
       else
         # Stream download data directly to fwup
-        _ = if state.fwup, do: Fwup.Stream.send_chunk(state.fwup, data)
-        state
+        stream_to_fwup(state, data)
       end
 
-    {:noreply, updated_state}
+    case updated_state do
+      {:ok, state} -> {:noreply, count_downloaded(state, data)}
+      # fwup missed the chunk, so it wasn't sent and must not move the resume offset
+      {:fwup_failed, state} -> {:noreply, state}
+    end
   end
 
   def handle_info({:EXIT, _, error}, state) do
@@ -313,7 +381,7 @@ defmodule Peridiod.Distribution.Server do
         {:ok, data} ->
           if state.fwup do
             try do
-              :ok = Fwup.Stream.send_chunk(state.fwup, data, 2000)
+              send_chunk_to_fwup!(state.fwup, data, 2000)
 
               Logger.debug(
                 "[Distributions] Small chunk streamed successfully: #{Path.basename(file_path)}"
@@ -399,6 +467,18 @@ defmodule Peridiod.Distribution.Server do
   end
 
   @spec maybe_update_firmware(Distribution.t(), State.t()) :: State.t()
+  # The cloud sends the pending update again when the device rejoins its channel. If
+  # it is the firmware we are already downloading, its URL is freshly signed.
+  defp maybe_update_firmware(
+         %Distribution{firmware_meta: %{uuid: uuid}} = distribution,
+         %State{
+           status: {:updating, _percent},
+           distribution: %Distribution{firmware_meta: %{uuid: uuid}}
+         } = state
+       ) do
+    adopt_firmware_url(distribution, state)
+  end
+
   defp maybe_update_firmware(
          %Distribution{} = _distribution,
          %State{status: {:updating, _percent}} = state
@@ -452,10 +532,19 @@ defmodule Peridiod.Distribution.Server do
          %Distribution{} = distribution,
          %{distributions_cache_download: true} = state
        ) do
+    state = cancel_url_wait(state)
     handler_fun = download_handler_fun()
     firmware_uuid = distribution.firmware_meta.uuid
     firmware_url = distribution.firmware_url
-    state = %{state | status: {:updating, 0}, distribution: distribution}
+
+    state = %{
+      state
+      | status: {:updating, 0},
+        distribution: distribution,
+        url_refresh: UrlRefresh.new(state.config),
+        downloaded_bytes: 0,
+        parallel_progress_bytes: 0
+    }
 
     Logger.info(
       "[Distributions] Downloading firmware to disk cache (with live FWUP stream): #{LogSanitizer.sanitize_uri(firmware_url)}"
@@ -518,6 +607,13 @@ defmodule Peridiod.Distribution.Server do
               {nil, nil}
           end
 
+        # a restarted parallel download needs the size again
+        parallel_total_size =
+          case plan do
+            {:parallel, total_size, _final_rel_path} -> total_size
+            _ -> nil
+          end
+
         state_with_fwup =
           %State{
             state
@@ -525,7 +621,8 @@ defmodule Peridiod.Distribution.Server do
               download_file_path: file_path,
               next_chunk_to_stream: next_chunk,
               ready_chunk_files: %{},
-              total_chunks: total_chunks
+              total_chunks: total_chunks,
+              parallel_total_size: parallel_total_size
           }
 
         # Check if we need pre-streaming and handle accordingly
@@ -551,6 +648,7 @@ defmodule Peridiod.Distribution.Server do
 
   @spec do_apply_firmware(Distribution.t(), State.t()) :: State.t()
   defp do_apply_firmware(%Distribution{} = distribution, state) do
+    state = cancel_url_wait(state)
     handler_fun = download_handler_fun()
     firmware_uuid = distribution.firmware_meta.uuid
     firmware_url = distribution.firmware_url
@@ -575,7 +673,10 @@ defmodule Peridiod.Distribution.Server do
       | status: {:updating, 0},
         download: download,
         fwup: fwup,
-        distribution: distribution
+        distribution: distribution,
+        url_refresh: UrlRefresh.new(state.config),
+        downloaded_bytes: 0,
+        parallel_progress_bytes: 0
     }
   end
 
@@ -632,6 +733,45 @@ defmodule Peridiod.Distribution.Server do
   end
 
   defp get_file_info(_), do: %{size: "invalid path", hash: "invalid path"}
+
+  # fwup can exit on its own, for example when it refuses the firmware, while the
+  # download keeps arriving. Its exit is reported as an fwup message, so a chunk for a
+  # fwup that is gone is dropped here and must not take the server down. If it did, the
+  # server would restart without remembering which firmware it was downloading.
+  # For the paths that already turn a failure into an fwup error with `rescue`.
+  # GenServer.call exits when fwup is gone and `rescue` does not catch exits, so raise.
+  defp send_chunk_to_fwup!(fwup, data, timeout \\ 60_000) do
+    :ok = Fwup.Stream.send_chunk(fwup, data, timeout)
+  catch
+    :exit, reason -> raise "fwup is not running: #{inspect(reason)}"
+  end
+
+  defp stream_to_fwup(%State{fwup: nil} = state, _data), do: {:ok, state}
+
+  defp stream_to_fwup(%State{fwup: fwup} = state, data) do
+    Fwup.Stream.send_chunk(fwup, data, fwup_chunk_timeout_ms())
+    {:ok, state}
+  catch
+    # The call timed out: fwup is alive and missed this chunk. Carrying on would feed it a
+    # stream with a hole and count the bytes as sent, so a resume would skip them.
+    :exit, {:timeout, _call} = reason ->
+      message = "fwup did not take a chunk of firmware: #{inspect(reason)}"
+      Logger.error("[Distributions] #{message}")
+      try_send(state.callback, {__MODULE__, :install, {:error, message}})
+
+      {:fwup_failed,
+       cancel_url_wait(%State{maybe_stop_fwup(state) | status: {:fwup_error, message}})}
+
+    # fwup is gone, which it reports as an fwup message of its own
+    :exit, _reason ->
+      {:ok, state}
+  end
+
+  # how long fwup gets to take a chunk
+  defp fwup_chunk_timeout_ms, do: Application.get_env(:peridiod, :fwup_chunk_timeout_ms, 60_000)
+
+  defp error_code_suffix(%{code: code}) when is_binary(code), do: " (#{code})"
+  defp error_code_suffix(_detail), do: ""
 
   defp start_downloader(firmware_uuid, firmware_url, updater_fun) do
     Downloader.Supervisor.start_child(firmware_uuid, firmware_url, updater_fun)
@@ -897,6 +1037,7 @@ defmodule Peridiod.Distribution.Server do
   defp reset_update_state(%State{} = state) do
     state = maybe_stop_fwup(state)
     state = maybe_cancel_timer(state)
+    state = cancel_url_wait(state)
 
     # Notify callback of the failure
     try_send(state.callback, {__MODULE__, :install, {:error, :http_download_failed}})
@@ -911,9 +1052,133 @@ defmodule Peridiod.Distribution.Server do
         pending_download_plan: nil,
         next_chunk_to_stream: nil,
         ready_chunk_files: %{},
-        total_chunks: nil
+        total_chunks: nil,
+        url_refresh: nil,
+        downloaded_bytes: 0,
+        parallel_progress_bytes: 0,
+        parallel_total_size: nil
     }
   end
+
+  defp refresh_decision(%State{url_refresh: %UrlRefresh{} = url_refresh}, status, detail),
+    do: UrlRefresh.next(url_refresh, status, detail)
+
+  # no update in progress to refresh
+  defp refresh_decision(%State{}, status, detail),
+    do: UrlRefresh.next(%UrlRefresh{max_attempts: 0}, status, detail)
+
+  # Ask the cloud for a new URL, and give up waiting for the answer after `wait` ms.
+  # The answer arrives as an update for the same firmware, see `adopt_firmware_url/2`.
+  defp request_new_url(%State{} = state, %UrlRefresh{} = url_refresh, wait) do
+    if state.url_wait_timer, do: Process.cancel_timer(state.url_wait_timer)
+    _ = state.url_refresh_requester.()
+    # The attempt number can't tell waits apart: it goes back to 0 whenever data flows, and
+    # a timeout already in the mailbox can't be cancelled. A ref per wait can.
+    wait_ref = make_ref()
+    timer = Process.send_after(self(), {:url_wait_timeout, wait_ref}, wait)
+
+    %State{
+      state
+      | url_refresh: url_refresh,
+        awaiting_url: wait_ref,
+        url_wait_timer: timer
+    }
+  end
+
+  defp cancel_url_wait(%State{url_wait_timer: timer} = state) do
+    if timer, do: Process.cancel_timer(timer)
+    %State{state | awaiting_url: nil, url_wait_timer: nil, expired_url: nil}
+  end
+
+  # Use the URL from an update for the firmware being downloaded. If the download
+  # stopped for want of one, carry on with it.
+  defp adopt_firmware_url(
+         %Distribution{firmware_url: url},
+         %State{distribution: current, awaiting_url: nil} = state
+       ) do
+    Logger.info("[Distributions] Received a fresh URL for the firmware being downloaded")
+    %State{state | distribution: %{current | firmware_url: url}}
+  end
+
+  # the same URL that just failed isn't the answer
+  defp adopt_firmware_url(%Distribution{firmware_url: url}, %State{expired_url: url} = state),
+    do: state
+
+  defp adopt_firmware_url(%Distribution{firmware_url: url}, %State{distribution: current} = state) do
+    Logger.info("[Distributions] Received a new firmware URL, resuming download")
+    state = cancel_url_wait(%State{state | distribution: %{current | firmware_url: url}})
+
+    case resume_download(state) do
+      {:ok, state} ->
+        state
+
+      {:error, reason} ->
+        Logger.error(
+          "[Distributions] Could not resume firmware download: #{inspect(reason)} - Update aborted, ready for new update."
+        )
+
+        reset_update_state(state)
+    end
+  end
+
+  # data flowing again means the URL works
+  defp url_refresh_succeeded(%State{url_refresh: %UrlRefresh{} = url_refresh} = state),
+    do: %State{state | url_refresh: UrlRefresh.reset(url_refresh)}
+
+  defp url_refresh_succeeded(%State{} = state), do: state
+
+  defp count_downloaded(%State{} = state, data) do
+    state = url_refresh_succeeded(state)
+    %State{state | downloaded_bytes: state.downloaded_bytes + byte_size(data)}
+  end
+
+  # Starts the download again with the new URL, from the bytes already received.
+  # Parallel downloads pick up the chunk files already on disk by themselves.
+  defp resume_download(%State{distribution: distribution} = state) do
+    firmware_uuid = distribution.firmware_meta.uuid
+    firmware_url = distribution.firmware_url
+    handler_fun = download_handler_fun()
+
+    result =
+      if state.parallel_total_size do
+        start_parallel_downloader(
+          firmware_uuid,
+          firmware_url,
+          handler_fun,
+          state.parallel_total_size,
+          state.config,
+          nil
+        )
+      else
+        case resume_offset(state) do
+          offset when offset > 0 ->
+            start_downloader_with_resume(firmware_uuid, firmware_url, handler_fun, offset)
+
+          _ ->
+            start_downloader(firmware_uuid, firmware_url, handler_fun)
+        end
+      end
+
+    with {:ok, download} <- result do
+      {:ok, %State{state | download: download}}
+    end
+  end
+
+  # With a disk cache the .part file is what has been kept, otherwise it is what was
+  # streamed to fwup.
+  defp resume_offset(%State{distributions_cache_download: true} = state) do
+    abs_path = Cache.abs_path(state.config.cache_pid, state.download_file_path)
+
+    case File.stat(abs_path) do
+      {:ok, %File.Stat{size: size}} -> size
+      _ -> 0
+    end
+  end
+
+  # A download that is only streamed to fwup always starts at zero (start_downloader), so
+  # the bytes counted are the offset. Only the cached download starts at a nonzero offset,
+  # and it takes its offset from the .part file above.
+  defp resume_offset(%State{downloaded_bytes: downloaded_bytes}), do: downloaded_bytes
 
   defp handle_cached_download_complete(%State{} = state) do
     firmware_uuid = state.distribution && state.distribution.firmware_meta.uuid
@@ -1096,7 +1361,7 @@ defmodule Peridiod.Distribution.Server do
               # Send chunk to FWUP
               if state.fwup do
                 try do
-                  :ok = Fwup.Stream.send_chunk(state.fwup, data)
+                  send_chunk_to_fwup!(state.fwup, data)
 
                   # Schedule next chunk
                   next_offset = offset + byte_size(data)

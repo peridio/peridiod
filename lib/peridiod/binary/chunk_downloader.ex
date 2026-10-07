@@ -11,7 +11,8 @@ defmodule Peridiod.Binary.ChunkDownloader do
   alias Peridiod.Binary.{
     ChunkDownloader,
     Downloader.RetryConfig,
-    Downloader.TimeoutCalculation
+    Downloader.TimeoutCalculation,
+    HttpError
   }
 
   alias Peridiod.LogSanitizer
@@ -36,7 +37,9 @@ defmodule Peridiod.Binary.ChunkDownloader do
             retry_timeout: nil,
             worst_case_timeout: nil,
             worst_case_timeout_remaining_ms: nil,
-            chunk_file_path: nil
+            chunk_file_path: nil,
+            error_body: "",
+            error_done: false
 
   @type handler_event :: {:stream, binary()} | {:error, any()} | :complete
   @type event_handler_fun :: (handler_event -> any())
@@ -144,9 +147,27 @@ defmodule Peridiod.Binary.ChunkDownloader do
     ])
   end
 
+  # A chunk can exit on its own between the caller deciding to stop it and the
+  # stop arriving, e.g. when several chunks hit the same HTTP error at once.
+  # That must not take the caller down with it. Any other exit means the chunk may
+  # still be running and writing its file, so it is not swallowed.
   def stop(pid) do
     GenServer.stop(pid)
+  catch
+    :exit, reason ->
+      if already_gone?(reason), do: :ok, else: exit(reason)
   end
+
+  # GenServer.stop wraps what happened to the process: {:noproc, {GenServer, :stop, args}}
+  # when it was already gone, {{reason, {:sys, :terminate, args}}, {GenServer, :stop, args}}
+  # when it exited while being stopped
+  defp already_gone?({reason, {GenServer, :stop, _args}}), do: already_gone?(reason)
+  defp already_gone?({reason, {:sys, :terminate, _args}}), do: already_gone?(reason)
+  defp already_gone?(:noproc), do: true
+  defp already_gone?(:normal), do: true
+  defp already_gone?(:shutdown), do: true
+  defp already_gone?({:shutdown, _}), do: true
+  defp already_gone?(_reason), do: false
 
   @impl GenServer
   def init([
@@ -301,6 +322,20 @@ defmodule Peridiod.Binary.ChunkDownloader do
     end
   end
 
+  # the error body did not finish in time, report what there is
+  def handle_info(
+        {:error_body_timeout, request_ref},
+        %ChunkDownloader{request_ref: request_ref, error_done: false, status: status} = state
+      )
+      when is_integer(status) and status >= 400 do
+    {:stop, :normal, report_fatal_error(state)}
+  end
+
+  # for a response that finished, or a request that has since been replaced
+  def handle_info({:error_body_timeout, _request_ref}, %ChunkDownloader{} = state) do
+    {:noreply, state, state.retry_args.idle_timeout}
+  end
+
   def handle_info(message, %ChunkDownloader{handler_fun: handler} = state) do
     case Mint.HTTP.stream(state.conn, message) do
       {:ok, conn, responses} ->
@@ -366,8 +401,8 @@ defmodule Peridiod.Binary.ChunkDownloader do
 
   defp handle_responses([response | rest], %ChunkDownloader{} = state) do
     case handle_response(response, state) do
-      # this `status != nil` thing seems really weird. Shouldn't be needed.
-      %ChunkDownloader{status: status} = state when status != nil and status >= 400 ->
+      # a failed response is only final once its body has been read
+      %ChunkDownloader{error_done: true} = state ->
         # Normal exit prevents supervisor restart and link crash propagation
         {:stop, :normal, state}
 
@@ -409,7 +444,7 @@ defmodule Peridiod.Binary.ChunkDownloader do
     %ChunkDownloader{state | status: status}
   end
 
-  # the handle_responses/2 function checks this value again because this function only handles state
+  # The error is reported once the body has arrived, see the `:done` clause
   def handle_response(
         {:status, request_ref, status},
         %ChunkDownloader{
@@ -427,9 +462,10 @@ defmodule Peridiod.Binary.ChunkDownloader do
         "(range #{range_start}-#{range_end}). URL: #{LogSanitizer.sanitize_uri(uri)}"
     )
 
-    # Send fatal error with URL for logging, then mark for clean shutdown
-    state.handler_fun.({:fatal_http_error, status, uri})
-    %ChunkDownloader{state | status: status}
+    # a server that sends the status and then never finishes the body must not hold the
+    # report up until the idle timeout
+    Process.send_after(self(), {:error_body_timeout, request_ref}, error_body_wait_ms())
+    %ChunkDownloader{state | status: status, error_body: "", error_done: false}
   end
 
   def handle_response(
@@ -438,6 +474,15 @@ defmodule Peridiod.Binary.ChunkDownloader do
       )
       when status >= 200 and status < 300 do
     %ChunkDownloader{state | status: status}
+  end
+
+  # headers of a failed response aren't a download
+  def handle_response(
+        {:headers, request_ref, _headers},
+        %ChunkDownloader{request_ref: request_ref, status: status} = state
+      )
+      when is_integer(status) and status >= 400 do
+    state
   end
 
   # handles HTTP redirects.
@@ -484,6 +529,15 @@ defmodule Peridiod.Binary.ChunkDownloader do
     })
   end
 
+  # the body of a failed response is an error document, not firmware
+  def handle_response(
+        {:data, request_ref, data},
+        %ChunkDownloader{request_ref: request_ref, status: status, error_body: body} = state
+      )
+      when is_integer(status) and status >= 400 do
+    %ChunkDownloader{state | error_body: HttpError.append_body(body, data)}
+  end
+
   def handle_response(
         {:data, request_ref, data},
         %ChunkDownloader{
@@ -525,6 +579,14 @@ defmodule Peridiod.Binary.ChunkDownloader do
     end
   end
 
+  def handle_response(
+        {:done, request_ref},
+        %ChunkDownloader{request_ref: request_ref, status: status} = state
+      )
+      when is_integer(status) and status >= 400 do
+    report_fatal_error(state)
+  end
+
   def handle_response({:done, request_ref}, %ChunkDownloader{request_ref: request_ref} = state) do
     state
   end
@@ -534,12 +596,23 @@ defmodule Peridiod.Binary.ChunkDownloader do
     state
   end
 
+  defp report_fatal_error(%ChunkDownloader{status: status, uri: uri} = state) do
+    detail = HttpError.parse(state.error_body)
+    state.handler_fun.({:fatal_http_error, status, uri, detail})
+    %ChunkDownloader{state | error_done: true}
+  end
+
+  # how long a failed response gets to finish its body before it is reported as it is
+  defp error_body_wait_ms, do: Application.get_env(:peridiod, :error_body_wait_ms, 5_000)
+
   defp reset(%ChunkDownloader{} = state) do
     %ChunkDownloader{
       state
       | retry_number: 0,
         downloaded_length: 0,
-        initial_downloaded_length: 0
+        initial_downloaded_length: 0,
+        error_body: "",
+        error_done: false
     }
   end
 

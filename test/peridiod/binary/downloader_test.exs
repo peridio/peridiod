@@ -11,6 +11,76 @@ defmodule Peridiod.Binary.DownloaderTest do
                )
   @bin_1m_size 1_048_576
 
+  describe "a failed response whose body never finishes" do
+    setup do
+      Application.put_env(:peridiod, :error_body_wait_ms, 100)
+      on_exit(fn -> Application.delete_env(:peridiod, :error_body_wait_ms) end)
+    end
+
+    @tag capture_log: true
+    test "is reported after a short wait instead of the idle timeout" do
+      test_pid = self()
+      handler_fun = fn message -> send(test_pid, {:handler_received, message}) end
+      url = URI.parse("http://localhost:4001/s3/stall-4xx")
+
+      {:ok, pid} = Downloader.start_link("stalled-4xx", url, handler_fun, %RetryConfig{})
+      ref = Process.monitor(pid)
+
+      # nothing came after the status, so there is no S3 error document
+      assert_receive {:handler_received, {:fatal_http_error, 400, %URI{}, nil}}, 3000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
+    end
+  end
+
+  describe "S3 error detail" do
+    for {path, status, code} <- [
+          {"expired-token", 400, "ExpiredToken"},
+          {"request-expired", 403, "AccessDenied"},
+          {"invalid-argument", 400, "InvalidArgument"}
+        ] do
+      @tag capture_log: true
+      test "reports #{code} from a #{status} response (#{path})" do
+        test_pid = self()
+        handler_fun = fn message -> send(test_pid, {:handler_received, message}) end
+        url = URI.parse("http://localhost:4001/s3/#{unquote(path)}")
+
+        {:ok, pid} =
+          Downloader.start_link("s3-#{unquote(path)}", url, handler_fun, %RetryConfig{})
+
+        ref = Process.monitor(pid)
+
+        assert_receive {:handler_received,
+                        {:fatal_http_error, unquote(status), %URI{}, %{code: unquote(code)}}},
+                       2000
+
+        assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
+      end
+    end
+
+    @tag capture_log: true
+    test "detail is nil when the body isn't an S3 error document" do
+      test_pid = self()
+      handler_fun = fn message -> send(test_pid, {:handler_received, message}) end
+      url = URI.parse("http://localhost:4001/error/400")
+
+      {:ok, _pid} = Downloader.start_link("s3-plain-400", url, handler_fun, %RetryConfig{})
+
+      assert_receive {:handler_received, {:fatal_http_error, 400, %URI{}, nil}}, 2000
+    end
+
+    @tag capture_log: true
+    test "error body is not streamed as firmware" do
+      test_pid = self()
+      handler_fun = fn message -> send(test_pid, {:handler_received, message}) end
+      url = URI.parse("http://localhost:4001/s3/expired-token")
+
+      {:ok, _pid} = Downloader.start_link("s3-no-stream", url, handler_fun, %RetryConfig{})
+
+      assert_receive {:handler_received, {:fatal_http_error, 400, _, _}}, 2000
+      refute_received {:handler_received, {:stream, _}}
+    end
+  end
+
   describe "fatal HTTP error handling" do
     @tag capture_log: true
     test "sends fatal_http_error message on HTTP 400" do
@@ -24,7 +94,7 @@ defmodule Peridiod.Binary.DownloaderTest do
       ref = Process.monitor(downloader_pid)
 
       # Should receive fatal error message
-      assert_receive {:handler_received, {:fatal_http_error, 400, %URI{} = uri}}, 2000
+      assert_receive {:handler_received, {:fatal_http_error, 400, %URI{} = uri, _detail}}, 2000
       assert URI.to_string(uri) =~ "/error/400"
 
       # Should exit with :normal (not crash)
@@ -41,7 +111,7 @@ defmodule Peridiod.Binary.DownloaderTest do
 
       ref = Process.monitor(downloader_pid)
 
-      assert_receive {:handler_received, {:fatal_http_error, 403, %URI{}}}, 2000
+      assert_receive {:handler_received, {:fatal_http_error, 403, %URI{}, _detail}}, 2000
       assert_receive {:DOWN, ^ref, :process, ^downloader_pid, :normal}, 2000
     end
 
@@ -55,7 +125,7 @@ defmodule Peridiod.Binary.DownloaderTest do
 
       ref = Process.monitor(downloader_pid)
 
-      assert_receive {:handler_received, {:fatal_http_error, 404, %URI{}}}, 2000
+      assert_receive {:handler_received, {:fatal_http_error, 404, %URI{}, _detail}}, 2000
       assert_receive {:DOWN, ^ref, :process, ^downloader_pid, :normal}, 2000
     end
 
@@ -75,7 +145,7 @@ defmodule Peridiod.Binary.DownloaderTest do
       assert_receive {:DOWN, ^ref, :process, ^downloader_pid, :normal}, 2000
 
       # Verify we got the error message before exit
-      assert_received {:handler_received, {:fatal_http_error, 400, %URI{}}}
+      assert_received {:handler_received, {:fatal_http_error, 400, %URI{}, _detail}}
     end
   end
 
@@ -94,8 +164,8 @@ defmodule Peridiod.Binary.DownloaderTest do
         {:error, reason} ->
           send(test_pid, {:handler_received, {:error, reason}})
 
-        {:fatal_http_error, status, uri} ->
-          send(test_pid, {:handler_received, {:fatal_http_error, status, uri}})
+        {:fatal_http_error, status, uri, detail} ->
+          send(test_pid, {:handler_received, {:fatal_http_error, status, uri, detail}})
       end
 
       url = URI.parse("http://localhost:4001/1M.bin")

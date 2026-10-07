@@ -35,6 +35,44 @@ defmodule Peridiod.ConfigTest do
     end
   end
 
+  describe "distribution url refresh" do
+    test "defaults" do
+      config = %Peridiod.Config{}
+      assert config.distributions_url_refresh_max_attempts == 3
+      assert config.distributions_url_refresh_wait_ms == 5_000
+    end
+
+    test "are read from the config file" do
+      with_config_file("test/fixtures/peridio-url-refresh.json", fn ->
+        config = build_config()
+        assert config.distributions_url_refresh_max_attempts == 7
+        assert config.distributions_url_refresh_wait_ms == 250
+      end)
+    end
+
+    test "fall back to the defaults, with a warning, when they are not non-negative integers" do
+      log =
+        capture_log(fn ->
+          with_config_file("test/fixtures/peridio-url-refresh-invalid.json", fn ->
+            config = build_config()
+            assert config.distributions_url_refresh_max_attempts == 3
+            assert config.distributions_url_refresh_wait_ms == 5_000
+          end)
+        end)
+
+      assert log =~ "distributions_url_refresh_max_attempts must be a non-negative integer"
+      assert log =~ "distributions_url_refresh_wait_ms must be a non-negative integer"
+    end
+
+    test "keep their defaults when the config file doesn't set them" do
+      with_config_file("test/fixtures/peridio.json", fn ->
+        config = build_config()
+        assert config.distributions_url_refresh_max_attempts == 3
+        assert config.distributions_url_refresh_wait_ms == 5_000
+      end)
+    end
+  end
+
   describe "device_api_verify" do
     test "struct default is :verify_peer" do
       assert %Peridiod.Config{}.device_api_verify == :verify_peer

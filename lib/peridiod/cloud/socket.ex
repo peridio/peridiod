@@ -41,6 +41,18 @@ defmodule Peridiod.Cloud.Socket do
     try_cast(__MODULE__, :reconnect)
   end
 
+  @doc """
+  Rejoins the device channel so the cloud sends the pending update again.
+
+  Used when the URL of the firmware being downloaded has expired. The cloud signs
+  the URL in the update it sends on join. The join reports the firmware being
+  downloaded (`currently_downloading_uuid`), so the cloud doesn't count it as another
+  attempt to update the device. The update arrives through `handle_join/3`.
+  """
+  def refresh_update() do
+    try_cast(__MODULE__, :refresh_update)
+  end
+
   def send_binary_progress(binary_progress_map) do
     try_cast(__MODULE__, {:send_binary_progress, binary_progress_map})
   end
@@ -93,6 +105,7 @@ defmodule Peridiod.Cloud.Socket do
       |> assign(remote_access_tunnels: config.remote_access_tunnels)
       |> assign(remote_console_pid: nil)
       |> assign(remote_console_timer: nil)
+      |> assign(rejoin_for_update: false)
       |> assign(mode: :host)
       |> connect!(opts(config.device_api_host, config.device_api_port, config.socket))
 
@@ -103,15 +116,9 @@ defmodule Peridiod.Cloud.Socket do
 
   @impl Slipstream
   def handle_connect(socket) do
-    currently_downloading_uuid = Distribution.Server.currently_downloading_uuid()
-
-    device_join_params =
-      socket.assigns.params
-      |> Map.put("currently_downloading_uuid", currently_downloading_uuid)
-
     socket =
       socket
-      |> join(@device_topic, device_join_params)
+      |> join(@device_topic, device_join_params(socket))
       |> maybe_join_console()
 
     {:ok, socket}
@@ -123,7 +130,7 @@ defmodule Peridiod.Cloud.Socket do
     Cloud.Connection.connected()
     _ = handle_join_reply(reply)
     send(self(), :tunnel_synchronize)
-    {:ok, socket}
+    {:ok, assign(socket, rejoin_for_update: false)}
   end
 
   def handle_join(@console_topic, _reply, socket) do
@@ -150,6 +157,20 @@ defmodule Peridiod.Cloud.Socket do
     # See handle_disconnect/2 for the reconnect call once the connection is
     # closed.
     {:noreply, disconnect(socket)}
+  end
+
+  def handle_cast(:refresh_update, socket) do
+    if Slipstream.Socket.joined?(socket, @device_topic) do
+      Logger.info("[Cloud Socket] Rejoining Device channel to get a fresh firmware URL")
+      # joining a topic that is already joined does nothing, so leave first and join in
+      # handle_leave/2 once the cloud has acknowledged
+      {:noreply, socket |> assign(rejoin_for_update: true) |> leave(@device_topic)}
+    else
+      # nothing to leave, and a leave that never happens would leave the flag set. The
+      # join that follows reports the firmware being downloaded and delivers the update.
+      Logger.info("[Cloud Socket] Device channel is not joined, its next join gets the update")
+      {:noreply, socket}
+    end
   end
 
   def handle_cast({:send_binary_progress, binary_progress_map}, socket)
@@ -410,13 +431,33 @@ defmodule Peridiod.Cloud.Socket do
   end
 
   @impl Slipstream
+  def handle_leave(@device_topic, %{assigns: %{rejoin_for_update: true}} = socket) do
+    socket =
+      socket
+      |> assign(rejoin_for_update: false)
+      |> join(@device_topic, device_join_params(socket))
+
+    {:ok, socket}
+  end
+
+  def handle_leave(_topic, socket), do: {:ok, socket}
+
+  @impl Slipstream
   def handle_topic_close(topic, reason, socket) when reason != :left do
     if topic == @device_topic do
       _ = Cloud.Connection.disconnected()
       _ = Client.handle_error(reason)
     end
 
-    rejoin(socket, topic, socket.assigns.params)
+    # a refresh that was waiting for its leave is over, the rejoin below replaces it
+    socket = if topic == @device_topic, do: assign(socket, rejoin_for_update: false), else: socket
+
+    params =
+      if topic == @device_topic,
+        do: device_join_params(socket),
+        else: socket.assigns.params
+
+    rejoin(socket, topic, params)
   end
 
   @impl Slipstream
@@ -473,6 +514,16 @@ defmodule Peridiod.Cloud.Socket do
   def terminate(_reason, socket) do
     _ = Cloud.Connection.disconnected()
     disconnect(socket)
+  end
+
+  # Reporting the firmware being downloaded tells the cloud not to count the join as
+  # another attempt to update the device.
+  defp device_join_params(socket) do
+    Map.put(
+      socket.assigns.params,
+      "currently_downloading_uuid",
+      Distribution.Server.currently_downloading_uuid()
+    )
   end
 
   defp handle_join_reply(%{"firmware_url" => url} = update) when is_binary(url) do
