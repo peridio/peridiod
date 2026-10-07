@@ -27,6 +27,13 @@ defmodule PeridiodTest.StaticRouter do
     PeridiodTest.FakeS3.serve(conn, token, file)
   end
 
+  # Sends a 4xx and then never finishes the body
+  get "/s3/stall-4xx" do
+    conn = conn |> put_resp_header("content-length", "100") |> send_chunked(400)
+    Process.sleep(:infinity)
+    conn
+  end
+
   # S3 style error documents
   get "/s3/expired-token" do
     send_resp(

@@ -185,6 +185,25 @@ defmodule Peridiod.Simulation.FirmwareUrlRefreshTest do
     end
   end
 
+  describe "a refresh is requested while the channel isn't joined" do
+    @tag capture_log: true
+    test "there is nothing to leave, so no flag is left behind", %{config: config} do
+      # nothing listens on this port, so the socket never joins
+      config = %{config | device_api_port: 1}
+      PeridiodTest.FakeDeviceServer.set_join_handler(pending_update_join_handler())
+
+      start_supervised!(Cloud.Connection)
+      start_supervised!({Distribution.Server, config})
+      start_supervised!({Cloud.Socket, config})
+
+      Cloud.Socket.refresh_update()
+
+      # a leave that never happens would leave this set, and a later close would rejoin
+      assert %{assigns: %{rejoin_for_update: false}} = :sys.get_state(Cloud.Socket)
+      refute_receive {:fake_device, :leave, _}, 300
+    end
+  end
+
   describe "the channel crashes while the firmware downloads" do
     # Slipstream waits 5 seconds before it rejoins
     @tag :slow

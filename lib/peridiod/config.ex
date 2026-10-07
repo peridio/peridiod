@@ -159,6 +159,23 @@ defmodule Peridiod.Config do
     System.get_env("PERIDIO_CONFIG_FILE", default_path())
   end
 
+  # A wrong type in the config file would otherwise raise later, inside a running server.
+  defp validate_non_negative_integer(config, key) do
+    case Map.fetch!(config, key) do
+      value when is_integer(value) and value >= 0 ->
+        config
+
+      value ->
+        default = Map.fetch!(%Config{}, key)
+
+        Logger.warning(
+          "[Config] #{key} must be a non-negative integer, got #{inspect(value)}. Using #{default}."
+        )
+
+        Map.put(config, key, default)
+    end
+  end
+
   defp build_config(%Config{} = config, config_file) do
     {host, port} =
       case config_file["device_api"]["url"] do
@@ -240,6 +257,8 @@ defmodule Peridiod.Config do
         :distributions_url_refresh_wait_ms,
         config_file["distributions_url_refresh_wait_ms"]
       )
+      |> validate_non_negative_integer(:distributions_url_refresh_max_attempts)
+      |> validate_non_negative_integer(:distributions_url_refresh_wait_ms)
       |> override_if_set(
         :trusted_signing_key_threshold,
         config_file["trusted_signing_key_threshold"]

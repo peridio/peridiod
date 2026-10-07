@@ -34,8 +34,15 @@ defmodule Peridiod.Binary.HttpError do
   @spec parse(binary()) :: detail() | nil
   def parse(body) when is_binary(body) do
     case xml_field(body, "Code") do
-      nil -> nil
-      code -> %{code: code, message: xml_field(body, "Message")}
+      nil ->
+        nil
+
+      code ->
+        # Both end up in logs and come from a response we don't control. S3 codes are
+        # plain words, so anything else isn't an S3 error document.
+        if Regex.match?(~r/\A[A-Za-z0-9_.-]{1,64}\z/, code),
+          do: %{code: code, message: printable(xml_field(body, "Message"))},
+          else: nil
     end
   end
 
@@ -50,6 +57,12 @@ defmodule Peridiod.Binary.HttpError do
     do: String.contains?(String.downcase(message), "expired")
 
   def expired_url?(_detail), do: false
+
+  defp printable(nil), do: nil
+
+  defp printable(message) do
+    ~r/[^\x20-\x7E]/ |> Regex.replace(message, "") |> String.slice(0, 200)
+  end
 
   defp xml_field(body, tag) do
     case Regex.run(~r/<#{tag}>([^<]*)<\/#{tag}>/, body) do

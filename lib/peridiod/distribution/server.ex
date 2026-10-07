@@ -55,7 +55,7 @@ defmodule Peridiod.Distribution.Server do
             pending_download_plan: nil | any(),
             url_refresh: nil | UrlRefresh.t(),
             url_refresh_requester: (-> any()),
-            awaiting_url: nil | non_neg_integer(),
+            awaiting_url: nil | reference(),
             expired_url: nil | URI.t(),
             url_wait_timer: nil | reference(),
             downloaded_bytes: non_neg_integer(),
@@ -274,7 +274,7 @@ defmodule Peridiod.Distribution.Server do
   end
 
   # No new URL arrived in time, ask again or give up
-  def handle_info({:url_wait_timeout, attempt}, %State{awaiting_url: attempt} = state) do
+  def handle_info({:url_wait_timeout, wait_ref}, %State{awaiting_url: wait_ref} = state) do
     case UrlRefresh.next_after_timeout(state.url_refresh) do
       {:retry, wait, url_refresh} ->
         Logger.warning(
@@ -294,7 +294,7 @@ defmodule Peridiod.Distribution.Server do
   end
 
   # A timeout for an attempt that already got its answer, or an update that ended
-  def handle_info({:url_wait_timeout, _attempt}, state), do: {:noreply, state}
+  def handle_info({:url_wait_timeout, _wait_ref}, state), do: {:noreply, state}
 
   def handle_info({:download, {:error, reason}}, state) do
     Logger.warning(
@@ -1052,12 +1052,15 @@ defmodule Peridiod.Distribution.Server do
   defp request_new_url(%State{} = state, %UrlRefresh{} = url_refresh, wait) do
     if state.url_wait_timer, do: Process.cancel_timer(state.url_wait_timer)
     _ = state.url_refresh_requester.()
-    timer = Process.send_after(self(), {:url_wait_timeout, url_refresh.attempts}, wait)
+    # The attempt number can't tell waits apart: it goes back to 0 whenever data flows, and
+    # a timeout already in the mailbox can't be cancelled. A ref per wait can.
+    wait_ref = make_ref()
+    timer = Process.send_after(self(), {:url_wait_timeout, wait_ref}, wait)
 
     %State{
       state
       | url_refresh: url_refresh,
-        awaiting_url: url_refresh.attempts,
+        awaiting_url: wait_ref,
         url_wait_timer: timer
     }
   end

@@ -27,6 +27,38 @@ defmodule Peridiod.Binary.HttpErrorTest do
     end
   end
 
+  describe "parse/1 keeps response text out of the logs" do
+    test "a code that isn't a plain word isn't an S3 error document" do
+      assert HttpError.parse("<Error><Code>Bad\nCode</Code></Error>") == nil
+      assert HttpError.parse("<Error><Code>Expired Token</Code></Error>") == nil
+
+      assert HttpError.parse("<Error><Code>" <> String.duplicate("a", 65) <> "</Code></Error>") ==
+               nil
+
+      assert HttpError.parse("<Error><Code></Code></Error>") == nil
+    end
+
+    test "the message loses control characters and is capped" do
+      body =
+        "<Error><Code>AccessDenied</Code><Message>line one\nforged 2026 [error]\r\e[31m</Message></Error>"
+
+      assert %{code: "AccessDenied", message: "line oneforged 2026 [error][31m"} =
+               HttpError.parse(body)
+
+      long =
+        "<Error><Code>AccessDenied</Code><Message>" <>
+          String.duplicate("m", 500) <> "</Message></Error>"
+
+      assert %{message: message} = HttpError.parse(long)
+      assert String.length(message) == 200
+    end
+
+    test "a message that isn't valid text doesn't crash the parser" do
+      body = <<"<Error><Code>AccessDenied</Code><Message>caf", 255, 254, "</Message></Error>">>
+      assert %{code: "AccessDenied", message: "caf"} = HttpError.parse(body)
+    end
+  end
+
   describe "expired_url?/1" do
     test "expired STS token" do
       assert HttpError.expired_url?(HttpError.parse(s3_error("ExpiredToken", "expired")))

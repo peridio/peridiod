@@ -13,6 +13,37 @@ defmodule Peridiod.Binary.ChunkDownloaderTest do
     end
   end
 
+  describe "a failed response whose body never finishes" do
+    setup do
+      Application.put_env(:peridiod, :error_body_wait_ms, 100)
+      on_exit(fn -> Application.delete_env(:peridiod, :error_body_wait_ms) end)
+    end
+
+    @tag capture_log: true
+    test "is reported after a short wait instead of the idle timeout" do
+      test_pid = self()
+      handler_fun = fn message -> send(test_pid, {:handler_received, message}) end
+      url = URI.parse("http://localhost:4001/s3/stall-4xx")
+
+      {:ok, pid} =
+        ChunkDownloader.start(
+          "test-chunk-stalled",
+          url,
+          0,
+          0,
+          1000,
+          "test-chunk-stalled.part0000",
+          handler_fun,
+          %RetryConfig{}
+        )
+
+      ref = Process.monitor(pid)
+
+      assert_receive {:handler_received, {:fatal_http_error, 400, %URI{}, nil}}, 3000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
+    end
+  end
+
   describe "S3 error detail" do
     @tag capture_log: true
     test "reports the S3 error code from a 400 response" do

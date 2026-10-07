@@ -160,10 +160,17 @@ defmodule Peridiod.Cloud.Socket do
   end
 
   def handle_cast(:refresh_update, socket) do
-    Logger.info("[Cloud Socket] Rejoining Device channel to get a fresh firmware URL")
-    # joining a topic that is already joined does nothing, so leave first and join in
-    # handle_leave/2 once the cloud has acknowledged
-    {:noreply, socket |> assign(rejoin_for_update: true) |> leave(@device_topic)}
+    if Slipstream.Socket.joined?(socket, @device_topic) do
+      Logger.info("[Cloud Socket] Rejoining Device channel to get a fresh firmware URL")
+      # joining a topic that is already joined does nothing, so leave first and join in
+      # handle_leave/2 once the cloud has acknowledged
+      {:noreply, socket |> assign(rejoin_for_update: true) |> leave(@device_topic)}
+    else
+      # nothing to leave, and a leave that never happens would leave the flag set. The
+      # join that follows reports the firmware being downloaded and delivers the update.
+      Logger.info("[Cloud Socket] Device channel is not joined, its next join gets the update")
+      {:noreply, socket}
+    end
   end
 
   def handle_cast({:send_binary_progress, binary_progress_map}, socket)
@@ -441,6 +448,9 @@ defmodule Peridiod.Cloud.Socket do
       _ = Cloud.Connection.disconnected()
       _ = Client.handle_error(reason)
     end
+
+    # a refresh that was waiting for its leave is over, the rejoin below replaces it
+    socket = if topic == @device_topic, do: assign(socket, rejoin_for_update: false), else: socket
 
     params =
       if topic == @device_topic,

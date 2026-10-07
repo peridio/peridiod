@@ -309,6 +309,20 @@ defmodule Peridiod.Binary.ChunkDownloader do
     end
   end
 
+  # the error body did not finish in time, report what there is
+  def handle_info(
+        {:error_body_timeout, request_ref},
+        %ChunkDownloader{request_ref: request_ref, error_done: false, status: status} = state
+      )
+      when is_integer(status) and status >= 400 do
+    {:stop, :normal, report_fatal_error(state)}
+  end
+
+  # for a response that finished, or a request that has since been replaced
+  def handle_info({:error_body_timeout, _request_ref}, %ChunkDownloader{} = state) do
+    {:noreply, state, state.retry_args.idle_timeout}
+  end
+
   def handle_info(message, %ChunkDownloader{handler_fun: handler} = state) do
     case Mint.HTTP.stream(state.conn, message) do
       {:ok, conn, responses} ->
@@ -435,6 +449,9 @@ defmodule Peridiod.Binary.ChunkDownloader do
         "(range #{range_start}-#{range_end}). URL: #{LogSanitizer.sanitize_uri(uri)}"
     )
 
+    # a server that sends the status and then never finishes the body must not hold the
+    # report up until the idle timeout
+    Process.send_after(self(), {:error_body_timeout, request_ref}, error_body_wait_ms())
     %ChunkDownloader{state | status: status, error_body: "", error_done: false}
   end
 
@@ -551,12 +568,10 @@ defmodule Peridiod.Binary.ChunkDownloader do
 
   def handle_response(
         {:done, request_ref},
-        %ChunkDownloader{request_ref: request_ref, status: status, uri: uri} = state
+        %ChunkDownloader{request_ref: request_ref, status: status} = state
       )
       when is_integer(status) and status >= 400 do
-    detail = HttpError.parse(state.error_body)
-    state.handler_fun.({:fatal_http_error, status, uri, detail})
-    %ChunkDownloader{state | error_done: true}
+    report_fatal_error(state)
   end
 
   def handle_response({:done, request_ref}, %ChunkDownloader{request_ref: request_ref} = state) do
@@ -567,6 +582,15 @@ defmodule Peridiod.Binary.ChunkDownloader do
   def handle_response(_, %ChunkDownloader{status: nil} = state) do
     state
   end
+
+  defp report_fatal_error(%ChunkDownloader{status: status, uri: uri} = state) do
+    detail = HttpError.parse(state.error_body)
+    state.handler_fun.({:fatal_http_error, status, uri, detail})
+    %ChunkDownloader{state | error_done: true}
+  end
+
+  # how long a failed response gets to finish its body before it is reported as it is
+  defp error_body_wait_ms, do: Application.get_env(:peridiod, :error_body_wait_ms, 5_000)
 
   defp reset(%ChunkDownloader{} = state) do
     %ChunkDownloader{

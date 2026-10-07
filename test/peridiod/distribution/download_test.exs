@@ -549,7 +549,8 @@ defmodule Peridiod.Distribution.DownloadTest do
       send(server, expired_message())
 
       assert_receive :new_url_requested, 2000
-      assert %{awaiting_url: 1} = :sys.get_state(server)
+      assert %{awaiting_url: wait_ref} = :sys.get_state(server)
+      assert is_reference(wait_ref)
 
       # the cloud answers the rejoin with the pending update and a fresh URL
       Distribution.Server.apply_update(server, distribution("refresh-stream", @fresh_url))
@@ -580,7 +581,7 @@ defmodule Peridiod.Distribution.DownloadTest do
       Distribution.Server.apply_update(server, distribution("refresh-same", @unreachable_url))
 
       state = :sys.get_state(server)
-      assert state.awaiting_url == 1
+      assert is_reference(state.awaiting_url)
       assert state.download == first_download
 
       GenServer.stop(server)
@@ -598,7 +599,7 @@ defmodule Peridiod.Distribution.DownloadTest do
       Distribution.Server.apply_update(server, distribution("refresh-b", @fresh_url))
 
       state = :sys.get_state(server)
-      assert state.awaiting_url == 1
+      assert is_reference(state.awaiting_url)
       assert state.download == first_download
       assert state.distribution.firmware_meta.uuid == "refresh-a"
 
@@ -627,6 +628,25 @@ defmodule Peridiod.Distribution.DownloadTest do
       assert state.distribution == nil
       assert state.awaiting_url == nil
       assert state.url_wait_timer == nil
+
+      GenServer.stop(server)
+    end
+
+    @tag capture_log: true
+    test "a timeout left over from an earlier wait is ignored", %{config: config} do
+      {:ok, server} = start_server(config)
+      Distribution.Server.apply_update(server, distribution("refresh-stale", @unreachable_url))
+
+      send(server, expired_message())
+      assert_receive :new_url_requested, 2000
+      %{awaiting_url: wait_ref} = :sys.get_state(server)
+
+      # the attempt number is back at 0 whenever data flows, so it can't identify a wait.
+      # This one belongs to a wait that is long over.
+      send(server, {:url_wait_timeout, make_ref()})
+
+      refute_receive :new_url_requested, 200
+      assert %{awaiting_url: ^wait_ref} = :sys.get_state(server)
 
       GenServer.stop(server)
     end
@@ -679,7 +699,7 @@ defmodule Peridiod.Distribution.DownloadTest do
     test "a wait that ends after the update did is ignored", %{config: config} do
       {:ok, server} = start_server(config)
 
-      send(server, {:url_wait_timeout, 1})
+      send(server, {:url_wait_timeout, make_ref()})
 
       refute_receive :new_url_requested, 200
       assert :sys.get_state(server).status == :idle

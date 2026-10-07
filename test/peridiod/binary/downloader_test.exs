@@ -11,6 +11,27 @@ defmodule Peridiod.Binary.DownloaderTest do
                )
   @bin_1m_size 1_048_576
 
+  describe "a failed response whose body never finishes" do
+    setup do
+      Application.put_env(:peridiod, :error_body_wait_ms, 100)
+      on_exit(fn -> Application.delete_env(:peridiod, :error_body_wait_ms) end)
+    end
+
+    @tag capture_log: true
+    test "is reported after a short wait instead of the idle timeout" do
+      test_pid = self()
+      handler_fun = fn message -> send(test_pid, {:handler_received, message}) end
+      url = URI.parse("http://localhost:4001/s3/stall-4xx")
+
+      {:ok, pid} = Downloader.start_link("stalled-4xx", url, handler_fun, %RetryConfig{})
+      ref = Process.monitor(pid)
+
+      # nothing came after the status, so there is no S3 error document
+      assert_receive {:handler_received, {:fatal_http_error, 400, %URI{}, nil}}, 3000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
+    end
+  end
+
   describe "S3 error detail" do
     for {path, status, code} <- [
           {"expired-token", 400, "ExpiredToken"},
