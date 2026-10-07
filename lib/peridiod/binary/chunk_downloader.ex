@@ -147,8 +147,13 @@ defmodule Peridiod.Binary.ChunkDownloader do
     ])
   end
 
+  # A chunk can exit on its own between the caller deciding to stop it and the
+  # stop arriving, e.g. when several chunks hit the same HTTP error at once.
+  # That must not take the caller down with it.
   def stop(pid) do
     GenServer.stop(pid)
+  catch
+    :exit, _reason -> :ok
   end
 
   @impl GenServer

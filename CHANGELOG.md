@@ -7,6 +7,9 @@
   * [SOC2] Tighten packaged `/var/peridiod` to mode `0700` and `peridiod-state` to `0600` in deb and rpm packages. **Note:** operators who previously read `/var/peridiod/peridiod-state` as a non-root user will need to adjust access accordingly.
   * [Core] Failed firmware downloads now log the S3 error code (for example `ExpiredToken`) alongside the HTTP status. The body of a failed response is read and parsed instead of ignored, and is never treated as firmware data. The `fatal_http_error` download event now carries the parsed error as a fourth element.
 
+* Bug fixes
+  * [Distributions] Stopping parallel chunk downloads after an HTTP error no longer crashes the parallel downloader when a chunk has already exited, which could prevent the error from being reported.
+
 * Security
   * [Core] Update `mint`, `tesla`, `req`, `hpax`, `plug`, `plug_cowboy`, `cowboy` and `cowlib` to releases that fix newly disclosed advisories (memory exhaustion and response smuggling in `mint`, among others), and remove the unused `hackney` dependency, which carried six advisories and is not used by peridiod. The two `cowlib` advisories that have no fixed release yet are ignored in `hex.audit`, since `cowlib` is only used by the test suite.
 

@@ -3,6 +3,16 @@ defmodule Peridiod.Binary.ChunkDownloaderTest do
   alias Peridiod.Binary.ChunkDownloader
   alias Peridiod.Binary.Downloader.RetryConfig
 
+  describe "stop/1" do
+    test "is a no-op for a chunk that already exited" do
+      pid = spawn(fn -> :ok end)
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _}
+
+      assert :ok = ChunkDownloader.stop(pid)
+    end
+  end
+
   describe "S3 error detail" do
     @tag capture_log: true
     test "reports the S3 error code from a 400 response" do
