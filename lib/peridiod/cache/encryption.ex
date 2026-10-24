@@ -121,11 +121,36 @@ defmodule Peridiod.Cache.Encryption do
     hash = :crypto.hash(:sha256, dek) |> Base.encode16(case: :lower)
     sig_hex = sign(hash, :sha256, private_key)
 
-    with :ok <- File.write(dek_path, dek),
-         :ok <- File.chmod(dek_path, 0o600),
-         :ok <- File.write(dek_sig_path, sig_hex),
-         :ok <- File.chmod(dek_sig_path, 0o600) do
+    with :ok <- write_file_atomic(dek_path, dek),
+         :ok <- write_file_atomic(dek_sig_path, sig_hex) do
       {:ok, dek}
+    end
+  end
+
+  # The temp file is chmod 0600 before any content is written, then synced and
+  # renamed into place so a power loss never leaves a short DEK or signature.
+  defp write_file_atomic(path, content) do
+    tmp_path = path <> ".tmp"
+
+    result =
+      with {:ok, file} <- File.open(tmp_path, [:write, :binary]) do
+        write_result =
+          with :ok <- File.chmod(tmp_path, 0o600),
+               :ok <- IO.binwrite(file, content) do
+            :file.sync(file)
+          end
+
+        File.close(file)
+        write_result
+      end
+
+    with :ok <- result,
+         :ok <- File.rename(tmp_path, path) do
+      :ok
+    else
+      error ->
+        File.rm(tmp_path)
+        error
     end
   end
 

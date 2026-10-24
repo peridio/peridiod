@@ -120,12 +120,8 @@ defmodule Peridiod.Cache do
         if dek != nil, do: cleanup_orphaned_plaintext(cache_dir)
         {:ok, %{state | dek: dek}}
 
-      {:error, :dek_signature_invalid} ->
-        Logger.warning(
-          "[Cache] DEK signature invalid — device key may have been rotated. " <>
-            "Regenerating DEK; previously cached encrypted files will require re-download. " <>
-            "If key rotation was not expected, investigate for potential tampering."
-        )
+      {:error, reason} ->
+        log_dek_load_error(reason)
 
         case Encryption.regenerate_dek(cache_dir, private_key) do
           {:ok, dek} ->
@@ -133,15 +129,30 @@ defmodule Peridiod.Cache do
             cleanup_orphaned_plaintext(cache_dir)
             {:ok, %{state | dek: dek}}
 
-          {:error, reason} ->
-            Logger.error("[Cache] Failed to regenerate DEK: #{inspect(reason)}")
-            {:stop, reason}
-        end
+          {:error, regen_reason} ->
+            Logger.error(
+              "[Cache] Failed to regenerate DEK in #{cache_dir}: #{inspect(regen_reason)}. " <>
+                "Cache cannot start."
+            )
 
-      {:error, reason} ->
-        Logger.error("[Cache] Failed to load or create DEK: #{inspect(reason)}")
-        {:stop, reason}
+            {:stop, regen_reason}
+        end
     end
+  end
+
+  defp log_dek_load_error(:dek_signature_invalid) do
+    Logger.warning(
+      "[Cache] DEK signature invalid — device key may have been rotated. " <>
+        "Regenerating DEK; previously cached encrypted files will require re-download. " <>
+        "If key rotation was not expected, investigate for potential tampering."
+    )
+  end
+
+  defp log_dek_load_error(reason) do
+    Logger.warning(
+      "[Cache] Failed to load DEK: #{inspect(reason)}. " <>
+        "Regenerating DEK; previously cached encrypted files will require re-download."
+    )
   end
 
   def handle_call({:exists?, file}, _from, state) do
