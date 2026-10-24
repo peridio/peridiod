@@ -102,6 +102,9 @@ defmodule Peridiod.Cache do
 
     dek_result =
       if encryption_enabled do
+        # A power loss can lose both DEK files while encrypted files survive.
+        # A new DEK cannot read those files.
+        unless Encryption.dek_exists?(cache_dir), do: purge_stale_encrypted_files(cache_dir)
         Encryption.load_or_create_dek(cache_dir, private_key, public_key)
       else
         {:ok, nil}

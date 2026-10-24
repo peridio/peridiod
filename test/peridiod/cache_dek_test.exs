@@ -108,6 +108,20 @@ defmodule Peridiod.Cache.DekTest do
     refute File.exists?(Path.join(cache_dir, ".dek.tmp"))
   end
 
+  test "purges stale encrypted files when .dek and .dek.sig are both missing", %{
+    cache_dir: cache_dir
+  } do
+    {pid, _log, old_dek} =
+      restart_with_corrupt_dek(cache_dir, fn ->
+        File.rm!(Path.join(cache_dir, ".dek"))
+        File.rm!(Path.join(cache_dir, ".dek.sig"))
+        File.write!(Path.join(cache_dir, "plain"), "unencrypted content")
+      end)
+
+    assert File.read!(Path.join(cache_dir, "plain")) == "unencrypted content"
+    assert_dek_regenerated(pid, cache_dir, old_dek)
+  end
+
   test "regenerated DEK loads cleanly on the next start", %{cache_dir: cache_dir} do
     {pid, _log, _old_dek} =
       restart_with_corrupt_dek(cache_dir, fn ->

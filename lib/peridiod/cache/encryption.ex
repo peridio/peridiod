@@ -75,12 +75,19 @@ defmodule Peridiod.Cache.Encryption do
       dek_path = dek_path(cache_dir)
       dek_sig_path = dek_sig_path(cache_dir)
 
-      if File.exists?(dek_path) or File.exists?(dek_sig_path) do
+      if dek_exists?(cache_dir) do
         load_dek(dek_path, dek_sig_path, public_key)
       else
         generate_and_save_dek(dek_path, dek_sig_path, private_key)
       end
     end
+  end
+
+  @doc """
+  Returns true if `.dek` or `.dek.sig` exists in `cache_dir`.
+  """
+  def dek_exists?(cache_dir) do
+    File.exists?(dek_path(cache_dir)) or File.exists?(dek_sig_path(cache_dir))
   end
 
   @doc """
