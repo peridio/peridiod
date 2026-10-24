@@ -12,7 +12,14 @@ defmodule Peridiod.Cache.DekTest do
   setup context do
     cache_dir = "test/workspace/cache/#{context.test}"
     File.rm_rf!(cache_dir)
-    on_exit(fn -> File.rm_rf!(cache_dir) end)
+    level = Logger.level()
+    Logger.configure(level: :warning)
+
+    on_exit(fn ->
+      Logger.configure(level: level)
+      File.rm_rf!(cache_dir)
+    end)
+
     {:ok, cache_dir: cache_dir}
   end
 
