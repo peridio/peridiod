@@ -122,10 +122,10 @@ defmodule Peridiod.Cache do
 
       {:error, reason} ->
         log_dek_load_error(reason)
+        purge_stale_encrypted_files(cache_dir)
 
         case Encryption.regenerate_dek(cache_dir, private_key) do
           {:ok, dek} ->
-            purge_stale_encrypted_files(cache_dir)
             cleanup_orphaned_plaintext(cache_dir)
             {:ok, %{state | dek: dek}}
 
@@ -150,7 +150,7 @@ defmodule Peridiod.Cache do
 
   defp log_dek_load_error(reason) do
     Logger.warning(
-      "[Cache] Failed to load DEK: #{inspect(reason)}. " <>
+      "[Cache] Failed to load or create DEK: #{inspect(reason)}. " <>
         "Regenerating DEK; previously cached encrypted files will require re-download."
     )
   end

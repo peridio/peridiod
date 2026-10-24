@@ -22,7 +22,7 @@ defmodule Peridiod.Cache.DekTest do
         File.write!(Path.join(cache_dir, ".dek"), "")
       end)
 
-    assert log =~ "Failed to load DEK: :invalid_dek_size"
+    assert log =~ "Failed to load or create DEK: :invalid_dek_size"
     assert_dek_regenerated(pid, cache_dir, old_dek)
   end
 
@@ -33,7 +33,7 @@ defmodule Peridiod.Cache.DekTest do
         File.write!(dek_path, binary_part(File.read!(dek_path), 0, 31))
       end)
 
-    assert log =~ "Failed to load DEK: :invalid_dek_size"
+    assert log =~ "Failed to load or create DEK: :invalid_dek_size"
     assert_dek_regenerated(pid, cache_dir, old_dek)
   end
 
@@ -43,7 +43,7 @@ defmodule Peridiod.Cache.DekTest do
         File.write!(Path.join(cache_dir, ".dek.sig"), "not hex")
       end)
 
-    assert log =~ "Failed to load DEK: :invalid_dek_signature_format"
+    assert log =~ "Failed to load or create DEK: :invalid_dek_signature_format"
     assert_dek_regenerated(pid, cache_dir, old_dek)
   end
 
@@ -56,6 +56,49 @@ defmodule Peridiod.Cache.DekTest do
     assert log =~ "DEK signature invalid"
     assert log =~ "investigate for potential tampering"
     assert_dek_regenerated(pid, cache_dir, old_dek)
+  end
+
+  test "regenerates the DEK when .dek exists but .dek.sig is missing", %{cache_dir: cache_dir} do
+    {pid, log, old_dek} =
+      restart_with_corrupt_dek(cache_dir, fn ->
+        File.rm!(Path.join(cache_dir, ".dek.sig"))
+      end)
+
+    assert log =~ "Failed to load or create DEK: :enoent"
+    assert_dek_regenerated(pid, cache_dir, old_dek)
+  end
+
+  test "stops when the DEK cannot be regenerated", %{cache_dir: cache_dir} do
+    {:ok, pid} = Cache.start_link(Map.put(base_config(), :cache_dir, cache_dir), [])
+    GenServer.stop(pid)
+
+    dek_path = Path.join(cache_dir, ".dek")
+    File.rm!(dek_path)
+    File.mkdir_p!(Path.join(dek_path, "blocker"))
+    Process.flag(:trap_exit, true)
+
+    log =
+      capture_log(fn ->
+        assert {:error, _reason} =
+                 Cache.start_link(Map.put(base_config(), :cache_dir, cache_dir), [])
+      end)
+
+    assert log =~ "Failed to regenerate DEK"
+    refute File.exists?(Path.join(cache_dir, ".dek.tmp"))
+  end
+
+  test "starts and removes a leftover .dek.tmp from an interrupted write", %{
+    cache_dir: cache_dir
+  } do
+    File.mkdir_p!(cache_dir)
+    File.chmod!(cache_dir, 0o700)
+    File.write!(Path.join(cache_dir, ".dek.tmp"), "partial")
+
+    {:ok, pid} = Cache.start_link(Map.put(base_config(), :cache_dir, cache_dir), [])
+    GenServer.stop(pid)
+
+    assert byte_size(File.read!(Path.join(cache_dir, ".dek"))) == 32
+    refute File.exists?(Path.join(cache_dir, ".dek.tmp"))
   end
 
   test "regenerated DEK loads cleanly on the next start", %{cache_dir: cache_dir} do
@@ -94,13 +137,9 @@ defmodule Peridiod.Cache.DekTest do
     old_dek = File.read!(Path.join(cache_dir, ".dek"))
     corrupt_fun.()
 
-    log =
-      capture_log(fn ->
-        {:ok, pid} = Cache.start_link(Map.put(base_config(), :cache_dir, cache_dir), [])
-        send(self(), {:cache_pid, pid})
-      end)
+    {{:ok, pid}, log} =
+      with_log(fn -> Cache.start_link(Map.put(base_config(), :cache_dir, cache_dir), []) end)
 
-    assert_received {:cache_pid, pid}
     {pid, log, old_dek}
   end
 

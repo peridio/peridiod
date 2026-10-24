@@ -66,7 +66,8 @@ defmodule Peridiod.Cache.Encryption do
   # ---------------------------------------------------------------------------
 
   @doc """
-  Load the DEK from disk, or generate and persist a new one if it does not exist.
+  Load the DEK from disk, or generate and persist a new one if neither `.dek` nor
+  `.dek.sig` exists.
   Returns `{:ok, dek}` on success or `{:error, reason}` on failure.
   """
   def load_or_create_dek(cache_dir, private_key, public_key) do
@@ -74,7 +75,7 @@ defmodule Peridiod.Cache.Encryption do
       dek_path = dek_path(cache_dir)
       dek_sig_path = dek_sig_path(cache_dir)
 
-      if File.exists?(dek_path) and File.exists?(dek_sig_path) do
+      if File.exists?(dek_path) or File.exists?(dek_sig_path) do
         load_dek(dek_path, dek_sig_path, public_key)
       else
         generate_and_save_dek(dek_path, dek_sig_path, private_key)
@@ -131,9 +132,10 @@ defmodule Peridiod.Cache.Encryption do
   # renamed into place so a power loss never leaves a short DEK or signature.
   defp write_file_atomic(path, content) do
     tmp_path = path <> ".tmp"
+    File.rm(tmp_path)
 
     result =
-      with {:ok, file} <- File.open(tmp_path, [:write, :binary]) do
+      with {:ok, file} <- File.open(tmp_path, [:write, :binary, :exclusive]) do
         write_result =
           with :ok <- File.chmod(tmp_path, 0o600),
                :ok <- IO.binwrite(file, content) do
