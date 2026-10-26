@@ -102,6 +102,9 @@ defmodule Peridiod.Cache do
 
     dek_result =
       if encryption_enabled do
+        # A power loss can lose both DEK files while encrypted files survive.
+        # A new DEK cannot read those files.
+        unless Encryption.dek_exists?(cache_dir), do: purge_stale_encrypted_files(cache_dir)
         Encryption.load_or_create_dek(cache_dir, private_key, public_key)
       else
         {:ok, nil}
@@ -120,28 +123,39 @@ defmodule Peridiod.Cache do
         if dek != nil, do: cleanup_orphaned_plaintext(cache_dir)
         {:ok, %{state | dek: dek}}
 
-      {:error, :dek_signature_invalid} ->
-        Logger.warning(
-          "[Cache] DEK signature invalid — device key may have been rotated. " <>
-            "Regenerating DEK; previously cached encrypted files will require re-download. " <>
-            "If key rotation was not expected, investigate for potential tampering."
-        )
+      {:error, reason} ->
+        log_dek_load_error(reason)
+        purge_stale_encrypted_files(cache_dir)
 
         case Encryption.regenerate_dek(cache_dir, private_key) do
           {:ok, dek} ->
-            purge_stale_encrypted_files(cache_dir)
             cleanup_orphaned_plaintext(cache_dir)
             {:ok, %{state | dek: dek}}
 
-          {:error, reason} ->
-            Logger.error("[Cache] Failed to regenerate DEK: #{inspect(reason)}")
-            {:stop, reason}
-        end
+          {:error, regen_reason} ->
+            Logger.error(
+              "[Cache] Failed to regenerate DEK in #{cache_dir}: #{inspect(regen_reason)}. " <>
+                "Cache cannot start."
+            )
 
-      {:error, reason} ->
-        Logger.error("[Cache] Failed to load or create DEK: #{inspect(reason)}")
-        {:stop, reason}
+            {:stop, regen_reason}
+        end
     end
+  end
+
+  defp log_dek_load_error(:dek_signature_invalid) do
+    Logger.warning(
+      "[Cache] DEK signature invalid — device key may have been rotated. " <>
+        "Regenerating DEK; previously cached encrypted files will require re-download. " <>
+        "If key rotation was not expected, investigate for potential tampering."
+    )
+  end
+
+  defp log_dek_load_error(reason) do
+    Logger.warning(
+      "[Cache] Failed to load or create DEK: #{inspect(reason)}. " <>
+        "Regenerating DEK; previously cached encrypted files will require re-download."
+    )
   end
 
   def handle_call({:exists?, file}, _from, state) do
