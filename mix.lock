@@ -15,7 +15,7 @@
   "mint_web_socket": {:hex, :mint_web_socket, "1.0.6", "5ffcf350df5b90f2d7a04adf877165228804993714592512374218d4679e325a", [:mix], [{:mint, ">= 1.4.1 and < 2.0.0-0", [hex: :mint, repo: "hexpm", optional: false]}], "hexpm", "0c360e9012413f1c115a63532601eb5d63731aab7010949178769760686c1698"},
   "nimble_options": {:hex, :nimble_options, "1.1.1", "e3a492d54d85fc3fd7c5baf411d9d2852922f66e69476317787a7b2bb000a61b", [:mix], [], "hexpm", "821b2470ca9442c4b6984882fe9bb0389371b8ddec4d45a9504f00a66f650b44"},
   "nimble_pool": {:hex, :nimble_pool, "1.1.0", "bf9c29fbdcba3564a8b800d1eeb5a3c58f36e1e11d7b7fb2e084a643f645f06b", [:mix], [], "hexpm", "af2e4e6b34197db81f7aad230c1118eac993acc0dae6bc83bac0126d4ae0813a"},
-  "peridio_net_mon": {:git, "https://github.com/peridio/peridio-net-mon.git", "0ce37dd604209441cee325a9f2bd33cc74d1c972", [branch: "main"]},
+  "peridio_net_mon": {:git, "https://github.com/peridio/peridio-net-mon.git", "572121121b778eebc3b6dbec5dfe7a3755538fb3", [branch: "main"]},
   "peridio_rat": {:git, "https://github.com/peridio/peridio-rat.git", "1028e3d5b07ae8a6b078e1ea56ec24d31d94fd76", [branch: "main"]},
   "peridio_sdk": {:git, "https://github.com/peridio/peridio-elixir.git", "f3749b0ecac384f71f554ec3754ace7fe792f874", [branch: "main"]},
   "peridiod_persistence": {:git, "https://github.com/peridio/peridiod-persistence.git", "44733e8af532d9bf1acb726d4dc43712de29ad0a", [branch: "main"]},
