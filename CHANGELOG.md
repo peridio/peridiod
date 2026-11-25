@@ -15,6 +15,7 @@
 
 * Security
   * [Core] Update `mint`, `tesla`, `req`, `hpax`, `plug`, `plug_cowboy`, `cowboy` and `cowlib` to releases that fix newly disclosed advisories (memory exhaustion and response smuggling in `mint`, among others), and remove the unused `hackney` dependency, which carried six advisories and is not used by peridiod. The two `cowlib` advisories that have no fixed release yet are ignored in `hex.audit`, since `cowlib` is only used by the test suite.
+  * [Core] Update the test-only dependencies `cowboy` to 2.21.0, `cowlib` to 2.22.0, `plug` to 1.20.4 and `ranch` to 2.4.0 for EEF-CVE-2026-115701, EEF-CVE-2026-113431 and EEF-CVE-2026-120287. `cowlib` 2.22.0 also fixes CVE-2026-43966 and CVE-2026-43969, so `hex.audit` no longer ignores any advisories. These packages are not part of the peridiod release.
 
 ## 3.4.1
 
