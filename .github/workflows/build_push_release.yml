@@ -90,6 +90,7 @@ jobs:
         context: .
         file: ./release/Containerfile-release
         push: true
+        provenance: false
         tags: |
           peridio/peridiod:${{ env.RELEASE_TAG }}-${{ matrix.target }}
 

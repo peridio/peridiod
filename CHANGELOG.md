@@ -1,5 +1,13 @@
 # peridiod releases
 
+## 3.5.1
+
+peridiod has no code changes in this release. For the upgrade notes, see 3.5.0.
+
+* Bug fixes
+  * [Release] Build the rhel9 rpm packages with Erlang/OTP 27.3, the same version as the other packages. OTP 27.1.3 cannot connect to builds.hex.pm, so 3.5.0 has no rpm packages.
+  * [Release] Push the container image for each architecture without a provenance attestation. The release workflow can then create the multi-architecture `peridio/peridiod` image and move `latest`. 3.5.0 has no multi-architecture image.
+
 ## 3.5.0
 
 * Upgrade notes
