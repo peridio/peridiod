@@ -4,6 +4,7 @@
 
 * Upgrade notes
   * Cache encryption is on by default. At first start, peridiod creates a data encryption key (DEK) in `cache_dir/.dek` and `cache_dir/.dek.sig`, and encrypts the bundle binaries it writes to the cache. Firmware cached by legacy distribution updates (`distributions_cache_download`) is not encrypted. To turn it off, set `"cache_encryption_enabled": false` in `peridio-config.json`.
+  * Bundle binaries that 3.4.x cached are not encrypted, and 3.5.0 cannot read them. The first install from such a cache entry fails with `invalid_format` or `invalid_signature`, and peridiod deletes the entry. The next attempt downloads the binary again. A rollback to 3.4.x has the same result: 3.4.x fails the hash check on binaries that 3.5.0 encrypted, deletes them, and downloads them again.
   * Production builds ignore `"verify": false` in `peridio-config.json`. peridiod always verifies the server certificate, and logs a warning when the config asks it not to.
   * peridiod stops at startup if the device certificate or private key is missing or cannot be parsed. Before, it started and failed later during the TLS handshake. Make sure the key pair source is correct before you update devices.
   * At startup, peridiod sets `cache_dir` and `{cache_dir}/log` to mode `0700` if their mode is different.
