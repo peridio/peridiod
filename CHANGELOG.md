@@ -1,20 +1,37 @@
 # peridiod releases
 
-## Unreleased
+## 3.5.0
+
+* Upgrade notes
+  * Cache encryption is on by default. At first start, peridiod creates a data encryption key (DEK) in `cache_dir/.dek` and `cache_dir/.dek.sig`, and encrypts the files it writes to the cache. To turn it off, set `"cache_encryption_enabled": false` in `peridio-config.json`.
+  * Production builds ignore `"verify": false` in `peridio-config.json`. peridiod always verifies the server certificate, and logs a warning when the config asks it not to.
+  * peridiod stops at startup if the device certificate or private key is missing or cannot be parsed. Before, it started and failed later during the TLS handshake. Make sure the key pair source is correct before you update devices.
+  * At startup, peridiod sets `cache_dir` and `{cache_dir}/log` to mode `0700` if their mode is different.
+  * The deb and rpm packages set `/var/peridiod` to mode `0700` and `peridiod-state` to mode `0600`. Users other than root can no longer read `/var/peridiod/peridiod-state`.
 
 * Enhancements
-  * [SOC2] Enforce `cache_dir` ownership and log subdir permissions — at startup peridiod validates that `cache_dir` and `{cache_dir}/log` have mode `0700` and are owned by the daemon user, warns on any deviation, and corrects mode drift automatically. Symlinked paths are inspected but not chmoded; the log subdir is skipped entirely when `cache_dir` is a symlink.
-  * [SOC2] Tighten packaged `/var/peridiod` to mode `0700` and `peridiod-state` to `0600` in deb and rpm packages. **Note:** operators who previously read `/var/peridiod/peridiod-state` as a non-root user will need to adjust access accordingly.
-  * [Core] Failed firmware downloads now log the S3 error code (for example `ExpiredToken`) alongside the HTTP status. The body of a failed response is read and parsed instead of ignored, and is never treated as firmware data. The `fatal_http_error` download event now carries the parsed error as a fourth element.
-  * [Distributions] Refresh expired firmware download URLs — when a firmware download fails because its signed URL has expired (S3 `ExpiredToken` or `Request has expired`), peridiod rejoins the device channel to get the pending update with a freshly signed URL and resumes from the bytes it already has, in streamed, cached and parallel downloads. The rejoin reports the firmware being downloaded (`currently_downloading_uuid`), so the cloud doesn't count it as another update attempt. Configure with `distributions_url_refresh_max_attempts` (default `3`) and `distributions_url_refresh_wait_ms` (default `5000`, how long to wait for the new URL on the first attempt, doubling per attempt up to 60s). A value that is not a non-negative integer falls back to its default with a warning. Other 4xx errors still abort the update. A fresh URL that arrives for the firmware being downloaded is also kept for later resumes.
-  * [Distributions] The device channel now rejoins with `currently_downloading_uuid` set when it closes abnormally during a firmware download, for example when the cloud's channel process crashes, as it already did on connect.
+  * [SOC2] Encrypt cached firmware and binaries at rest with AES-256-GCM. Each device has its own DEK, signed with the device key, so peridiod detects changes to the key at startup. Installers that need a file path get a decrypted temporary file. Streaming installers decrypt as they read.
+  * [SOC2] Remove sensitive data from log output: signed URL query parameters, key material, PRNs, IP addresses, update payloads and PKCS#11 key IDs.
+  * [SOC2] In production builds, peridiod uses `verify_peer` even when `peridio-config.json` sets `"verify": false`, and logs a warning.
+  * [SOC2] peridiod stops at startup with a clear error when a certificate or key is missing or cannot be parsed. The error gives the field, the key pair source (`file`, `env`, `uboot-env` or `pkcs11`), the path or variable, and the reason.
+  * [SOC2] Add TLS 1.3 for HTTP and WebSocket connections. TLS 1.2 is still supported.
+  * [SOC2] The binary downloader checks the SHA-256 hash and the size of each download while it receives it. The hash check is skipped for resumed downloads. The size check still applies.
+  * [SOC2] At startup, peridiod checks that `cache_dir` and `{cache_dir}/log` have mode `0700` and belong to the user that runs peridiod. It logs a warning if they do not, and corrects the mode. For a symlinked `cache_dir`, peridiod checks the path but does not change its mode, and skips the log directory.
+  * [SOC2] Set `/var/peridiod` to mode `0700` and `peridiod-state` to mode `0600` in the deb and rpm packages.
+  * [Core] Failed firmware downloads log the S3 error code (for example `ExpiredToken`) with the HTTP status. peridiod reads and parses the body of a failed response, and never uses it as firmware data. The `fatal_http_error` download event has the parsed error as a fourth element.
+  * [Distributions] Refresh expired firmware download URLs. When a download fails because its signed URL has expired (S3 `ExpiredToken` or `Request has expired`), peridiod rejoins the device channel to get the pending update with a new signed URL. It then continues from the bytes it already has, in streamed, cached and parallel downloads. The rejoin reports the firmware being downloaded (`currently_downloading_uuid`), so the cloud does not count it as another update attempt. Configure with `distributions_url_refresh_max_attempts` (default `3`) and `distributions_url_refresh_wait_ms` (default `5000`). The wait is for the first attempt and doubles for each attempt, up to 60s. A value that is not a non-negative integer uses the default, with a warning. Other 4xx errors still stop the update. A new URL that arrives for the firmware being downloaded is kept for later resumes.
+  * [Distributions] When the device channel closes unexpectedly during a firmware download, for example because the cloud channel process crashes, it rejoins with `currently_downloading_uuid` set. It already did this on connect.
 
 * Bug fixes
-  * [Distributions] A firmware download no longer crashes the distribution server when fwup exits early, for example because it refuses the firmware, while chunks are still arriving. The server used to restart without remembering which firmware it was downloading, so the next channel join reported none.
-  * [Distributions] Stopping parallel chunk downloads after an HTTP error no longer crashes the parallel downloader when a chunk has already exited, which could prevent the error from being reported.
+  * [Core] If the DEK files are damaged or incomplete, for example after a power loss at the first start, peridiod makes a new DEK, removes the cached files encrypted with the old DEK, and downloads them again. Before, peridiod stopped and systemd restarted it again and again. DEK files are now written atomically.
+  * [Core] Firmware and binary downloads use the network interface that the network monitor selected, the same as the cloud connection. Before, downloads used the default route and could stop when that interface lost its connection.
+  * [Network Monitor] Update `peridio_net_mon` to fix a memory leak in the `if_monitor` process. On devices with frequent network interface changes, its memory grew to about 200 MB after 40 to 50 days.
+  * [Distributions] A firmware download no longer crashes the distribution server when fwup exits early (for example because it refuses the firmware) while chunks are still arriving. Before, the server restarted without the firmware it was downloading, so the next channel join reported none.
+  * [Distributions] When parallel chunk downloads stop after an HTTP error, the parallel downloader no longer crashes if a chunk has already exited. Before, this could prevent the error from being reported.
 
 * Security
-  * [Core] Update `mint`, `tesla`, `req`, `hpax`, `plug`, `plug_cowboy`, `cowboy` and `cowlib` to releases that fix newly disclosed advisories (memory exhaustion and response smuggling in `mint`, among others), and remove the unused `hackney` dependency, which carried six advisories and is not used by peridiod. The two `cowlib` advisories that have no fixed release yet are ignored in `hex.audit`, since `cowlib` is only used by the test suite.
+  * [Core] Update `mint`, `tesla`, `req`, `hpax`, `plug`, `plug_cowboy`, `cowboy` and `cowlib` to releases that fix published advisories (for example, memory exhaustion and response smuggling in `mint`). Remove the unused `hackney` dependency, which had six advisories.
+  * [Core] Update `plug_crypto` to 2.2.1 for EEF-CVE-2026-105963.
   * [Core] Update the test-only dependencies `cowboy` to 2.21.0, `cowlib` to 2.22.0, `plug` to 1.20.4 and `ranch` to 2.4.0 for EEF-CVE-2026-115701, EEF-CVE-2026-113431 and EEF-CVE-2026-120287. `cowlib` 2.22.0 also fixes CVE-2026-43966 and CVE-2026-43969, so `hex.audit` no longer ignores any advisories. These packages are not part of the peridiod release.
 
 ## 3.4.1
