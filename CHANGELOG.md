@@ -3,19 +3,19 @@
 ## 3.5.0
 
 * Upgrade notes
-  * Cache encryption is on by default. At first start, peridiod creates a data encryption key (DEK) in `cache_dir/.dek` and `cache_dir/.dek.sig`, and encrypts the files it writes to the cache. To turn it off, set `"cache_encryption_enabled": false` in `peridio-config.json`.
+  * Cache encryption is on by default. At first start, peridiod creates a data encryption key (DEK) in `cache_dir/.dek` and `cache_dir/.dek.sig`, and encrypts the bundle binaries it writes to the cache. Firmware cached by legacy distribution updates (`distributions_cache_download`) is not encrypted. To turn it off, set `"cache_encryption_enabled": false` in `peridio-config.json`.
   * Production builds ignore `"verify": false` in `peridio-config.json`. peridiod always verifies the server certificate, and logs a warning when the config asks it not to.
   * peridiod stops at startup if the device certificate or private key is missing or cannot be parsed. Before, it started and failed later during the TLS handshake. Make sure the key pair source is correct before you update devices.
   * At startup, peridiod sets `cache_dir` and `{cache_dir}/log` to mode `0700` if their mode is different.
   * The deb and rpm packages set `/var/peridiod` to mode `0700` and `peridiod-state` to mode `0600`. Users other than root can no longer read `/var/peridiod/peridiod-state`.
 
 * Enhancements
-  * [SOC2] Encrypt cached firmware and binaries at rest with AES-256-GCM. Each device has its own DEK, signed with the device key, so peridiod detects changes to the key at startup. Installers that need a file path get a decrypted temporary file. Streaming installers decrypt as they read.
+  * [SOC2] Encrypt cached bundle binaries at rest with AES-256-GCM. Firmware cached by legacy distribution updates is not encrypted. Each device has its own DEK, signed with the device key, so peridiod detects changes to the key at startup. Installers that need a file path get a decrypted temporary file. Streaming installers decrypt as they read.
   * [SOC2] Remove sensitive data from log output: signed URL query parameters, key material, PRNs, IP addresses, update payloads and PKCS#11 key IDs.
   * [SOC2] In production builds, peridiod uses `verify_peer` even when `peridio-config.json` sets `"verify": false`, and logs a warning.
   * [SOC2] peridiod stops at startup with a clear error when a certificate or key is missing or cannot be parsed. The error gives the field, the key pair source (`file`, `env`, `uboot-env` or `pkcs11`), the path or variable, and the reason.
   * [SOC2] Add TLS 1.3 for HTTP and WebSocket connections. TLS 1.2 is still supported.
-  * [SOC2] The binary downloader checks the SHA-256 hash and the size of each download while it receives it. The hash check is skipped for resumed downloads. The size check still applies.
+  * [SOC2] For bundle binary downloads, the downloader checks the SHA-256 hash and the size while it receives the data. The hash check is skipped for resumed downloads. The size check still applies. Legacy distribution firmware downloads do not get these checks, because the distribution payload has no hash.
   * [SOC2] At startup, peridiod checks that `cache_dir` and `{cache_dir}/log` have mode `0700` and belong to the user that runs peridiod. It logs a warning if they do not, and corrects the mode. For a symlinked `cache_dir`, peridiod checks the path but does not change its mode, and skips the log directory.
   * [SOC2] Set `/var/peridiod` to mode `0700` and `peridiod-state` to mode `0600` in the deb and rpm packages.
   * [Core] Failed firmware downloads log the S3 error code (for example `ExpiredToken`) with the HTTP status. peridiod reads and parses the body of a failed response, and never uses it as firmware data. The `fatal_http_error` download event has the parsed error as a fourth element.
@@ -24,7 +24,7 @@
 
 * Bug fixes
   * [Core] If the DEK files are damaged or incomplete, for example after a power loss at the first start, peridiod makes a new DEK, removes the cached files encrypted with the old DEK, and downloads them again. Before, peridiod stopped and systemd restarted it again and again. DEK files are now written atomically.
-  * [Core] Firmware and binary downloads use the network interface that the network monitor selected, the same as the cloud connection. Before, downloads used the default route and could stop when that interface lost its connection.
+  * [Core] Bundle binary downloads and single-connection firmware downloads use the network interface that the network monitor selected, the same as the cloud connection. Before, they used the default route and could stop when that interface lost its connection. Parallel firmware downloads (`distributions_download_parallel_count` greater than 1) still use the default route.
   * [Network Monitor] Update `peridio_net_mon` to fix a memory leak in the `if_monitor` process. On devices with frequent network interface changes, its memory grew to about 200 MB after 40 to 50 days.
   * [Distributions] A firmware download no longer crashes the distribution server when fwup exits early (for example because it refuses the firmware) while chunks are still arriving. Before, the server restarted without the firmware it was downloading, so the next channel join reported none.
   * [Distributions] When parallel chunk downloads stop after an HTTP error, the parallel downloader no longer crashes if a chunk has already exited. Before, this could prevent the error from being reported.

@@ -68,17 +68,3 @@ SRCBRANCH = "main"
 ```
 
 Get the SHA with `git rev-parse 3.5.0^{commit}` in peridiod. Commit with the message `peridiod: v3.5.0 release`, and open a PR into the branch. Do the same for `scarthgap` and `main`.
-
-## Release candidates
-
-1. Set `VERSION` to `3.5.0-rc.0`, merge, and push the tag `3.5.0-rc.0`. A tag with `-rc`, `-beta` or `-alpha` makes a GitHub pre-release and does not move the `latest` Docker tag.
-2. Keep `## Unreleased` in `CHANGELOG.md`. The pre-release then has only the notes that GitHub makes from the PR titles.
-3. Do not change meta-peridio. Give Yocto users a `peridiod_%.bbappend` for their own layer. It works on kirkstone and scarthgap:
-
-   ```
-   PV = "3.5.0-rc.0"
-   SRCREV = "<full 40-character SHA of the 3.5.0-rc.0 tag>"
-   SRCBRANCH = "main"
-   ```
-
-4. If the RC has problems, fix them on `main` and make `3.5.0-rc.1`. When the RC is approved, release `3.5.0` with the steps above.
